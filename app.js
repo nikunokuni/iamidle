@@ -1,0 +1,1270 @@
+"use strict";
+/* ============================================================
+   自己管理アプリ（箱モデル）
+   - 1箱 = 30分。箱は時間そのもの。1箱に入るタスクは1つ
+   - 日付の切り替えは午前2時。午前 2:00-14:00 / 午後 14:00-翌2:00
+   - 仕様は SPEC.md。勝手に広げないこと
+   ============================================================ */
+
+/* ================= storage ================= */
+const KEY = "jiko-kanri-v1";
+const DEFAULTS = {
+  v: 3,
+  tasks: [],
+  philos: [],
+  philoIdx: 0,
+  routines: [],       // { id, text, slot:"am"|"pm" }
+  routineDone: {},    // { "2026-08-09": [routineId, ...] }
+  days: {},           // { "2026-08-09": { count, slots:[taskId|null], cuts:[{at,label}] } }
+  base: { weekday: 8, holiday: 12 },
+  lastOpen: "",
+  foldDone: false,
+  foldSkip: false
+};
+
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return structuredClone(DEFAULTS);
+    return migrate(Object.assign(structuredClone(DEFAULTS), JSON.parse(raw)));
+  }catch(e){
+    return structuredClone(DEFAULTS);
+  }
+}
+/* v1（単発＋習慣） → v2（頻度つきタスク） → v3（箱モデル） */
+function migrate(d){
+  // v1 → v2
+  if(d.habits){
+    d.tasks = (d.tasks || []).map(t => t.freq ? t : ({
+      id: t.id, text: t.text, freq: { unit: "once" },
+      done: !!t.done, log: [], createdAt: t.createdAt || Date.now()
+    }));
+    (d.habits || []).forEach(h => {
+      const log = Object.keys(h.hist || {}).map(k => {
+        const [y,m,dd] = k.split("-").map(Number);
+        return new Date(y, m-1, dd, 12).getTime();
+      });
+      d.tasks.push({ id: h.id, text: h.name, freq: { unit:"day", count:1 }, done:false, log, createdAt: Date.now() });
+    });
+    delete d.habits;
+    d.v = 2;
+  }
+  // v2 → v3 : 朝/夜 → 午前/午後、必要箱数
+  if(!(d.v >= 3)){
+    (d.tasks || []).forEach(t => {
+      if(t.when === "morning") t.when = "am";
+      else if(t.when === "night") t.when = "pm";
+      else t.when = "any";
+    });
+    d.v = 3;
+  }
+  // 取りこぼしの保険（壊れた値で描画が止まらないように）
+  d.tasks = Array.isArray(d.tasks) ? d.tasks : [];
+  d.tasks.forEach(t => {
+    if(!t.freq) t.freq = { unit: "once" };
+    if(!Array.isArray(t.log)) t.log = [];
+    if(!Array.isArray(t.actuals)) t.actuals = [];
+    if(typeof t.size !== "number" || !(t.size >= 1)) t.size = 1;
+    t.size = Math.min(16, Math.round(t.size));
+    if(t.when !== "am" && t.when !== "pm") t.when = "any";
+  });
+  d.philos    = Array.isArray(d.philos) ? d.philos : [];
+  d.routines  = Array.isArray(d.routines) ? d.routines : [];
+  d.routineDone = (d.routineDone && typeof d.routineDone === "object") ? d.routineDone : {};
+  d.days      = (d.days && typeof d.days === "object") ? d.days : {};
+  d.base      = Object.assign({ weekday: 8, holiday: 12 }, d.base || {});
+  delete d.links;   // v2 までの未使用フィールド
+  return d;
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch(e){ toast("保存に失敗しました"); }
+}
+let S = load();
+
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const DAY = 86400000;
+const CUT = 2;          // 日付の切り替え（午前2時）
+const PM_FROM = 14;     // 午後のはじまり
+
+/* 1箱 = 30分。箱数を「◯時間◯分」に */
+function boxTime(n){
+  const m = n * 30;
+  if(m < 60) return m + "分";
+  const h = Math.floor(m / 60), r = m % 60;
+  return h + "時間" + (r ? r + "分" : "");
+}
+
+function ymd(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+/* 午前2時区切りの「その日」。深夜1時はまだ前日 */
+function dayKey(at){
+  const x = new Date(at || Date.now());
+  x.setHours(x.getHours() - CUT);
+  return ymd(x);
+}
+function dayStart(key){
+  const [y,m,d] = (key || dayKey()).split("-").map(Number);
+  return new Date(y, m-1, d, CUT, 0, 0, 0);
+}
+function dayStartTs(key){ return dayStart(key).getTime(); }
+/* いまが午前か午後か */
+function nowSlot(){
+  const h = new Date().getHours();
+  return (h >= CUT && h < PM_FROM) ? "am" : "pm";
+}
+const SLOT = { am:{label:"午前", icon:"☀"}, pm:{label:"午後", icon:"🌙"}, any:{label:"いつでも", icon:"・"} };
+
+let toastTimer;
+/* action を渡すとボタン付きで出る。関数なら「取り消す」扱い */
+function toast(msg, action){
+  const t = $("toast");
+  t.innerHTML = "";
+  t.appendChild(document.createTextNode(msg));
+  if(action){
+    const a = typeof action === "function" ? { label:"取り消す", run:action } : action;
+    const b = document.createElement("button");
+    b.className = "act";
+    b.textContent = a.label;
+    b.onclick = ()=>{ t.classList.remove("on"); a.run(); };
+    t.appendChild(b);
+  }
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove("on"), action ? 6000 : 1800);
+}
+
+/* ================= アプリ内ダイアログ =================
+   この画面では window.confirm / prompt が無効化されることがあるため、
+   ネイティブダイアログは使わず自前で出す
+====================================================== */
+let modalDone = null;
+function openModal(opt){
+  const m = $("modal");
+  $("mTitle").textContent = opt.title || "";
+  $("mDesc").textContent  = opt.desc || "";
+  $("mDesc").style.display = opt.desc ? "" : "none";
+  const inp = $("mInput");
+  inp.style.display = opt.input ? "" : "none";
+  inp.value = opt.value || "";
+  inp.placeholder = opt.placeholder || "";
+  $("mOk").textContent = opt.ok || "OK";
+  $("mOk").className = "btn" + (opt.danger ? " danger" : "");
+  $("mCancel").textContent = opt.cancel || "やめる";
+  m.classList.add("on");
+  if(opt.input) setTimeout(()=>{ inp.focus(); inp.select(); }, 30);
+  return new Promise(res => { modalDone = res; });
+}
+function closeModal(val){
+  $("modal").classList.remove("on");
+  const f = modalDone; modalDone = null;
+  if(f) f(val);
+}
+$("mOk").onclick     = ()=> closeModal($("mInput").style.display === "none" ? true : $("mInput").value);
+$("mCancel").onclick = ()=> closeModal(null);
+$("modal").onclick   = e => { if(e.target === $("modal")) closeModal(null); };
+$("mInput").addEventListener("keydown", e => { if(e.key === "Enter") $("mOk").click(); });
+
+const askConfirm = (title, ok, desc) => openModal({ title, desc, ok: ok || "OK", danger: ok === "削除" });
+const askInput   = (title, value, placeholder) => openModal({ title, value, placeholder, input: true, ok: "決定" });
+
+/* ================= 箱（1日の器） ================= */
+function isHoliday(key){
+  const w = dayStart(key).getDay();
+  return w === 0 || w === 6;          // 土日を休日とみなす
+}
+function baseCount(key){
+  const n = isHoliday(key) ? S.base.holiday : S.base.weekday;
+  return Math.max(0, Math.min(48, Math.round(n) || 0));
+}
+/* その日の箱。無ければ基本値から作る */
+function getDay(key){
+  key = key || dayKey();
+  let d = S.days[key];
+  if(!d) d = S.days[key] = { count: baseCount(key), slots: [], cuts: [] };
+  if(!Array.isArray(d.slots)) d.slots = [];
+  if(!Array.isArray(d.cuts))  d.cuts  = [];
+  if(typeof d.count !== "number") d.count = d.slots.length;
+  while(d.slots.length < d.count) d.slots.push(null);
+  if(d.slots.length > d.count) d.slots.length = d.count;
+  // 消えたタスクが箱に残っていたら片付ける
+  for(let i = 0; i < d.slots.length; i++){
+    if(d.slots[i] && !taskById(d.slots[i])) d.slots[i] = null;
+  }
+  return d;
+}
+const taskById = id => S.tasks.find(t => t.id === id) || null;
+
+/* その日のうちに完了したか（単発は done、くり返しは log） */
+function doneOn(t, key){
+  const from = dayStartTs(key || dayKey()), to = from + DAY;
+  if(t.freq.unit === "once") return !!t.done && t.doneAt >= from && t.doneAt < to;
+  return (t.log || []).some(ts => ts >= from && ts < to);
+}
+/* 箱の列を「連続した同じタスク」でまとめる */
+function boxGroups(d){
+  const g = [];
+  for(let i = 0; i < d.slots.length; i++){
+    const id = d.slots[i], last = g[g.length-1];
+    if(id && last && last.id === id && last.to === i-1) last.to = i;
+    else g.push({ id, from: i, to: i });
+  }
+  return g;
+}
+const emptyBoxes = d => d.slots.filter(x => x === null).length;
+/* 残り箱数 ＝ まだ消費していない箱（完了した箱を引いたもの） */
+function usedBoxes(d){
+  let n = 0;
+  boxGroups(d).forEach(g => {
+    const t = g.id && taskById(g.id);
+    if(t && doneOn(t)) n += g.to - g.from + 1;
+  });
+  return n;
+}
+const remainBoxes = d => Math.max(0, d.count - usedBoxes(d));
+/* 箱を使い切った ＝ 箱があって、空きが無く、全部完了している */
+function dayFinished(d){
+  return d.count > 0 && emptyBoxes(d) === 0 && remainBoxes(d) === 0;
+}
+
+function placeTask(id){
+  const t = taskById(id); if(!t) return;
+  const d = getDay();
+  if(d.slots.includes(id)){ toast("すでに箱に入っています"); return; }
+  const size = Math.max(1, t.size || 1);
+  let at = -1;
+  for(let i = 0; i + size <= d.slots.length; i++){
+    let ok = true;
+    for(let k = 0; k < size; k++) if(d.slots[i+k] !== null){ ok = false; break; }
+    if(ok){ at = i; break; }
+  }
+  if(at < 0){
+    toast(size > 1 ? "連続した" + size + "箱の空きがありません" : "空き箱がありません");
+    return;
+  }
+  for(let k = 0; k < size; k++) d.slots[at+k] = id;
+  save(); renderAll();
+  toast("箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
+}
+function unplace(id){
+  const d = getDay();
+  if(!d.slots.includes(id)) return;
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
+  save(); renderAll(); toast("箱から出した");
+}
+function addBox(){
+  const d = getDay();
+  if(d.count >= 48){ toast("これ以上は増やせません"); return; }
+  d.count++; d.slots.push(null);
+  save(); renderAll();
+  toast("箱を増やした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）");
+}
+function removeBox(){
+  const d = getDay();
+  if(d.count <= 0){ toast("箱がありません"); return; }
+  let i = d.slots.length - 1;
+  while(i >= 0 && d.slots[i] !== null) i--;
+  if(i < 0){ toast("空いている箱がありません。先に箱から出してください"); return; }
+  d.slots.splice(i, 1);
+  d.count--;
+  const cut = { at: Date.now(), label: "" };   // 理由はあとから任意でつける
+  d.cuts.push(cut);
+  save(); renderAll();
+  toast("箱を減らした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）", {
+    label: "理由をつける",
+    run: async ()=>{
+      const v = await askInput("この箱は何で潰れた？", "", "例：家庭教師");
+      if(v === null) return;
+      cut.label = v.trim();
+      save(); renderStats();
+      if(cut.label) toast("「" + cut.label + "」として記録した");
+    }
+  });
+}
+
+/* ================= 頻度モデル =================
+   freq = { unit: "once" | "day" | "week" | "month" | "days", count, n }
+   期間の区切りも午前2時に合わせる
+================================================ */
+function periodOf(f){
+  const k = dayKey(), s0 = dayStartTs(k);
+  if(f.unit === "day") return { start: s0, end: s0 + DAY, label: "今日" };
+  if(f.unit === "week"){
+    const d = dayStart(k);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));   // 月曜はじまり
+    return { start: d.getTime(), end: d.getTime() + 7*DAY, label: "今週" };
+  }
+  if(f.unit === "month"){
+    const d = dayStart(k);
+    const s = new Date(d.getFullYear(), d.getMonth(), 1, CUT);
+    const e = new Date(d.getFullYear(), d.getMonth()+1, 1, CUT);
+    return { start: s.getTime(), end: e.getTime(), label: "今月" };
+  }
+  const n = Math.max(1, f.n || 1);
+  return { start: Date.now() - n*DAY, end: Date.now(), label: "直近" + n + "日", rolling: true };
+}
+function freqLabel(f){
+  if(f.unit === "once")  return "単発";
+  if(f.unit === "day")   return f.count === 1 ? "毎日" : "1日" + f.count + "回";
+  if(f.unit === "week")  return "週" + f.count + "回";
+  if(f.unit === "month") return "月" + f.count + "回";
+  return f.n + "日に" + f.count + "回";
+}
+function statOf(t){
+  const f = t.freq, p = periodOf(f);
+  const count = Math.max(1, f.count || 1);
+  const actual = (t.log || []).filter(ts => ts >= p.start && ts < Math.max(p.end, Date.now()+1)).length;
+  let expected = count, remainDays = 0;
+  if(f.unit === "week" || f.unit === "month"){
+    const total = p.end - p.start;
+    const elapsed = Math.min(total, Date.now() - p.start);
+    expected = count * (elapsed / total);
+    remainDays = Math.ceil((p.end - Date.now()) / DAY);
+  }
+  return {
+    period: p, count, actual, expected,
+    met: actual >= count,
+    deficit: Math.max(0, expected - actual),
+    remainDays,
+    ratio: Math.min(1, actual / count)
+  };
+}
+/* 連続日数（毎日タスクのみ） */
+function streakOf(t){
+  if(t.freq.unit !== "day") return 0;
+  const need = Math.max(1, t.freq.count || 1);
+  const per = {};
+  (t.log || []).forEach(ts => { const k = dayKey(ts); per[k] = (per[k] || 0) + 1; });
+  let n = 0;
+  const d = dayStart(dayKey());
+  if((per[ymd(d)] || 0) < need) d.setDate(d.getDate() - 1);   // 今日未達でも昨日までは保つ
+  for(let i = 0; i < 400; i++){
+    if((per[ymd(d)] || 0) >= need){ n++; d.setDate(d.getDate() - 1); }
+    else break;
+  }
+  return n;
+}
+
+/* ================= 「今日やること」の判定 ================= */
+const canSkip = t => t.freq.unit !== "day";
+const whenOf  = t => (t.when === "am" || t.when === "pm") ? t.when : "any";
+function slotBonus(t){
+  const w = whenOf(t);
+  if(w === "any") return 0;
+  return w === nowSlot() ? 10 : -10;
+}
+function todayNeed(t){
+  if(canSkip(t) && t.skipDay === dayKey()) return null;       // 今日は見送り
+  if(t.freq.unit === "once") return t.done ? null : { urgency: 2, st: null };
+  const st = statOf(t);
+  if(st.met) return null;
+  if(t.freq.unit === "day")  return { urgency: 1, st };
+  if(t.freq.unit === "days") return { urgency: 3, st };
+  const needed = st.count - st.actual;
+  const daysLeft = Math.max(1, st.remainDays);
+  if(needed >= daysLeft) return { urgency: 5, st };            // 残り全日やらないと間に合わない
+  if(st.deficit >= 1)    return { urgency: 4, st };            // ペースから1回分以上の遅れ
+  return null;
+}
+function todayTasks(){
+  return S.tasks
+    .map(t => { const n = todayNeed(t); return n ? { t, ...n, score: n.urgency + slotBonus(t) } : null; })
+    .filter(Boolean)
+    .sort((a,b) => b.score - a.score);
+}
+/* まだ箱に入れていない、今日やるべきもの */
+function unplacedTasks(){
+  const d = getDay();
+  return todayTasks().filter(o => !d.slots.includes(o.t.id) && !doneOn(o.t));
+}
+
+/* ================= 記録する / 取り消す ================= */
+function doTask(id){
+  const t = taskById(id); if(!t) return;
+  const d = getDay();
+  const stamp = Date.now();
+  if(t.freq.unit === "once"){ t.done = true; t.doneAt = stamp; }
+  else {
+    t.log = t.log || [];
+    t.log.push(stamp);
+    if(t.log.length > 1000) t.log = t.log.slice(-1000);
+  }
+  // 箱に入れてやったものだけ、実績の器を用意する（入力は任意）
+  const planned = d.slots.filter(x => x === id).length;
+  if(planned > 0){
+    t.actuals = t.actuals || [];
+    t.actuals.push({ ts: stamp, day: dayKey(), planned, actual: null });
+  }
+  save(); renderAll();
+  toast(t.freq.unit === "once" ? "よくやった" : "記録した", ()=> undoStamp(id, stamp));
+}
+function undoStamp(id, stamp){
+  const t = taskById(id); if(!t) return;
+  if(t.freq.unit === "once"){ t.done = false; delete t.doneAt; }
+  else {
+    const i = (t.log || []).lastIndexOf(stamp);
+    if(i >= 0) t.log.splice(i, 1);
+  }
+  const j = (t.actuals || []).findIndex(a => a.ts === stamp);
+  if(j >= 0) t.actuals.splice(j, 1);
+  save(); renderAll(); toast("戻しました");
+}
+/* 今日ぶんの記録を1つ取り消す */
+function undoToday(id){
+  const t = taskById(id); if(!t) return;
+  const from = dayStartTs();
+  if(t.freq.unit === "once"){
+    if(!t.done){ toast("今日の記録はありません"); return; }
+    t.done = false; delete t.doneAt;
+  } else {
+    const idx = (t.log || []).map((ts,i) => ({ts,i})).filter(o => o.ts >= from).map(o => o.i).pop();
+    if(idx === undefined){ toast("今日の記録はありません"); return; }
+    t.log.splice(idx, 1);
+  }
+  const j = (t.actuals || []).map((a,i) => ({a,i})).filter(o => o.a.ts >= from).map(o => o.i).pop();
+  if(j !== undefined) t.actuals.splice(j, 1);
+  save(); renderAll(); toast("1回ぶん取り消しました");
+}
+/* いまの期間の記録を1つ減らす（タスクタブの − ） */
+function undoDo(id){
+  const t = taskById(id); if(!t || !t.log || !t.log.length) return;
+  const st = statOf(t);
+  const idx = t.log.map((ts,i) => ({ts,i})).filter(o => o.ts >= st.period.start).map(o => o.i).pop();
+  if(idx === undefined){ toast("この期間の記録はありません"); return; }
+  t.log.splice(idx, 1);
+  save(); renderAll();
+  toast("1回ぶん減らした（" + statOf(t).actual + "/" + st.count + "）");
+}
+function skipToday(id){
+  const t = taskById(id); if(!t || !canSkip(t)) return;
+  if(getDay().slots.includes(id)) unplaceSilent(id);
+  t.skipDay = dayKey();
+  save(); renderAll(); toast("今日は見送り。明日また出ます");
+}
+function unplaceSilent(id){
+  const d = getDay();
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
+}
+function unskip(id){
+  const t = taskById(id); if(!t) return;
+  delete t.skipDay;
+  save(); renderAll();
+}
+function skippedToday(){
+  const k = dayKey();
+  return S.tasks.filter(t => canSkip(t) && t.skipDay === k && !(t.freq.unit === "once" && t.done));
+}
+
+/* ================= 「いま、これ」のカーソル ================= */
+let cursor = 0;
+/* 箱に入っていて、まだ終わっていないもの */
+function pendingGroups(){
+  return boxGroups(getDay()).filter(g => {
+    const t = g.id && taskById(g.id);
+    return t && !doneOn(t);
+  });
+}
+function currentGroup(){
+  const gs = pendingGroups();
+  if(!gs.length) return null;
+  return gs[((cursor % gs.length) + gs.length) % gs.length];
+}
+function moveCursor(n){
+  const gs = pendingGroups();
+  if(!gs.length) return;
+  cursor = ((cursor + n) % gs.length + gs.length) % gs.length;
+  renderNow(); renderBoxes();
+}
+
+/* ================= URL ================= */
+function normalizeUrl(u){
+  u = (u || "").trim();
+  if(!u) return "";
+  if(/^javascript:/i.test(u) || /^data:/i.test(u)) return "";
+  if(!/^https?:\/\//i.test(u)) u = "https://" + u;
+  try{ new URL(u); }catch(e){ return ""; }
+  return u;
+}
+function hostOf(url){
+  try{ return new URL(url).hostname.replace(/^www\./,""); }catch(e){ return ""; }
+}
+function taskTitle(t){
+  if(!t.url) return '<div class="t">' + esc(t.text) + '</div>';
+  return '<div class="t"><a class="tasklink" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">' +
+    '<span>' + esc(t.text) + '</span><span class="ico">🔗</span></a></div>';
+}
+
+/* ================= 描画：ヘッダーと箱バー ================= */
+function renderHeader(){
+  const now = new Date();
+  const key = dayKey();
+  const ds  = dayStart(key);
+  const wd  = ["日","月","火","水","木","金","土"][ds.getDay()];
+  const late = now.getHours() < CUT ? "（深夜）" : "";
+  $("date").textContent = `${ds.getFullYear()}年${ds.getMonth()+1}月${ds.getDate()}日（${wd}）${late}`;
+  $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+  const s = nowSlot();
+  $("greet").textContent = SLOT[s].icon + " " + SLOT[s].label + (isHoliday(key) ? " ・休日" : " ・平日");
+}
+function renderBoxBar(){
+  const d = getDay();
+  const rest = remainBoxes(d), empty = emptyBoxes(d);
+  const cls = rest === 0 ? " zero" : (rest <= 2 ? " low" : "");
+  $("boxBar").innerHTML =
+    '<div class="bb-main' + cls + '">残り <b>' + rest + '</b> 箱</div>' +
+    '<div class="bb-sub">' + boxTime(rest) + ' ぶん ・ 空き ' + empty + ' 箱 ・ 今日は全 ' + d.count + ' 箱</div>' +
+    (dayFinished(d) ? '<div class="bb-end">今日は終了</div>' : '') +
+    '<div class="bb-btns">' +
+      '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
+      '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
+    '</div>';
+  $("boxPlus").onclick  = addBox;
+  $("boxMinus").onclick = removeBox;
+}
+
+/* ================= 描画：哲学バー ================= */
+function renderPhiloBar(){
+  if(!S.philos.length){
+    $("philoText").textContent = "哲学タブから、大事にしたい言葉を登録してください。";
+    return;
+  }
+  if(S.philoIdx >= S.philos.length){ S.philoIdx = 0; save(); }
+  $("philoText").textContent = S.philos[S.philoIdx].text;
+}
+$("philoBar").addEventListener("click", ()=>{
+  if(!S.philos.length){ switchTab("philo"); return; }
+  S.philoIdx = (S.philoIdx + 1) % S.philos.length;
+  save(); renderPhiloBar();
+});
+
+/* ================= 描画：いま、これ ================= */
+function renderNow(){
+  const el = $("nowCard");
+  const d = getDay();
+  const g = currentGroup();
+
+  if(!g){
+    let msg;
+    if(d.count === 0)              msg = "今日は箱がありません。\n右上の ＋ で足せます。";
+    else if(dayFinished(d))        msg = "箱を使い切りました。今日は終了。";
+    else if(emptyBoxes(d) === d.count) msg = "箱にタスクを入れてください。\n右の一覧からクリックで入ります。";
+    else                           msg = "入れたぶんは終わりました。\n空き箱にまだ入れられます。";
+    el.innerHTML =
+      '<div class="label">いま、これ</div>' +
+      '<div class="empty">' + esc(msg) + '</div>';
+    return;
+  }
+
+  const t = taskById(g.id);
+  const size = g.to - g.from + 1;
+  const st = t.freq.unit === "once" ? null : statOf(t);
+  const w = whenOf(t);
+  const parts = [];
+  parts.push("箱 " + (g.from+1) + (size > 1 ? "–" + (g.to+1) : "") + "（" + boxTime(size) + "）");
+  if(w !== "any") parts.push(SLOT[w].icon + SLOT[w].label);
+  parts.push(t.freq.unit === "once"
+    ? "単発タスク"
+    : freqLabel(t.freq) + ' ・ ' + st.period.label + ' ' + st.actual + '/' + st.count +
+      (st.remainDays ? '（残り' + st.remainDays + '日）' : ''));
+  if(t.url) parts.push(hostOf(t.url));
+
+  const title = t.url
+    ? '<a href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">' + esc(t.text) + ' <span style="font-size:18px">🔗</span></a>'
+    : esc(t.text);
+
+  el.innerHTML =
+    '<div class="label">いま、これ</div>' +
+    '<div class="txt">' + title + '</div>' +
+    '<div class="sub">' + esc(parts.join(" ・ ")) + '</div>' +
+    '<div class="btnrow">' +
+      '<button id="nowDone">' + (t.freq.unit === "once" ? "できた" : "やった") + '</button>' +
+      (t.url ? '<a class="open" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">開く</a>' : '') +
+      '<button class="skip" id="nowNext">次の箱へ</button>' +
+      (canSkip(t) ? '<button class="skip" id="nowSkip">今日はやらない</button>' : '') +
+    '</div>' +
+    '<div class="kbd">Space で完了 ／ N で次の箱へ</div>';
+
+  $("nowDone").onclick = ()=> doTask(t.id);
+  $("nowNext").onclick = ()=> moveCursor(1);
+  if($("nowSkip")) $("nowSkip").onclick = ()=> skipToday(t.id);
+}
+
+/* ================= 描画：今日の箱の列 ================= */
+function renderBoxes(){
+  const d = getDay();
+  const cur = currentGroup();
+  if(d.count === 0){
+    $("boxList").innerHTML = '<div class="allclear"><span class="big">📦</span>今日は箱がありません。</div>';
+    return;
+  }
+  const rows = boxGroups(d).map(g => {
+    const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
+    if(!g.id){
+      return '<div class="boxrow empty" data-put="' + g.from + '">' +
+        '<span class="bi">' + no + '</span>' +
+        '<div class="bt">空き　（クリックで上から入れる）</div>' +
+      '</div>';
+    }
+    const t = taskById(g.id);
+    const size = g.to - g.from + 1;
+    const done = doneOn(t);
+    const isCur = cur && cur.from === g.from;
+    const sub = [boxTime(size), freqLabel(t.freq)];
+    if(whenOf(t) !== "any") sub.unshift(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
+    return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
+        (size > 1 ? " span2" : "") + '" data-id="' + t.id + '">' +
+      '<span class="bi">' + no + '</span>' +
+      '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
+      '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
+      (done
+        ? '<button class="iconbtn" data-act="boxundo" title="取り消す">↩</button>'
+        : '<button class="iconbtn" data-act="boxout" title="箱から出す">✕</button>') +
+    '</div>';
+  }).join("");
+
+  $("boxList").innerHTML =
+    '<h2>今日の箱（1箱 ＝ 30分）</h2>' + rows +
+    (dayFinished(d) ? '<div class="allclear"><span class="big">🌙</span>箱を使い切りました。今日は終了。<br>まだやるなら、上の ＋ で箱を足してください。</div>' : '');
+}
+$("boxList").addEventListener("click", e => {
+  const put = e.target.closest("[data-put]");
+  if(put && !e.target.closest("[data-act]")){
+    const first = unplacedTasks()[0];
+    if(!first){ toast("入れるタスクがありません"); return; }
+    placeTask(first.t.id);
+    return;
+  }
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const row = e.target.closest(".boxrow"); if(!row || !row.dataset.id) return;
+  const id = row.dataset.id;
+  if(btn.dataset.act === "boxdo")   doTask(id);
+  if(btn.dataset.act === "boxout")  unplace(id);
+  if(btn.dataset.act === "boxundo") undoToday(id);
+});
+
+/* ================= 描画：箱に入れていないタスク ================= */
+function renderUnplaced(){
+  const list = unplacedTasks();
+  const d = getDay();
+  if(!S.tasks.length){
+    $("unplaced").innerHTML =
+      '<div class="panel"><div class="ph"><span>箱に入れていないタスク</span></div>' +
+      '<div class="empty-note">まだタスクがありません。「タスク」タブから追加してください。</div></div>';
+    return;
+  }
+  const body = !list.length
+    ? '<div class="empty-note">今日やることは、全部箱に入っています。</div>'
+    : list.map(o => {
+        const t = o.t, st = o.st;
+        const late = o.urgency >= 4;
+        const sub = [];
+        if(whenOf(t) !== "any") sub.push(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
+        sub.push(t.size > 1 ? t.size + "箱" : "1箱");
+        sub.push(t.freq.unit === "once"
+          ? "単発"
+          : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
+        return '<div class="item" data-id="' + t.id + '">' +
+          '<div class="grow">' + taskTitle(t) + '<div class="s">' + esc(sub.join(" ・ ")) + '</div></div>' +
+          (late ? '<span class="tag late">遅れ</span>' : '') +
+          '<button class="iconbtn put" data-act="put" title="箱に入れる">箱へ</button>' +
+          (canSkip(t) ? '<button class="iconbtn" data-act="skip" title="今日はやらない">⏭</button>' : '') +
+        '</div>';
+      }).join("");
+
+  $("unplaced").innerHTML =
+    '<div class="panel">' +
+      '<div class="ph"><span>箱に入れていないタスク</span><span class="cnt">' +
+        list.length + ' 件 ・ 空き ' + emptyBoxes(d) + ' 箱</span></div>' +
+      body +
+    '</div>';
+}
+$("unplaced").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const row = e.target.closest(".item"); if(!row) return;
+  const id = row.dataset.id;
+  if(btn.dataset.act === "put")  placeTask(id);
+  if(btn.dataset.act === "skip") skipToday(id);
+});
+
+/* ================= 描画：ルーティーン ================= */
+function routinesNow(){
+  const s = nowSlot();
+  return S.routines.filter(r => r.slot === s);
+}
+const routineDoneIds = () => S.routineDone[dayKey()] || [];
+function toggleRoutine(id){
+  const k = dayKey();
+  const arr = S.routineDone[k] = S.routineDone[k] || [];
+  const i = arr.indexOf(id);
+  if(i >= 0) arr.splice(i, 1); else arr.push(id);
+  save(); renderRoutines();
+}
+function renderRoutines(){
+  const list = routinesNow();
+  const s = nowSlot();
+  if(!list.length){
+    $("routineBox").innerHTML =
+      '<div class="panel"><div class="ph"><span>' + SLOT[s].icon + ' ' + SLOT[s].label + 'のルーティーン</span></div>' +
+      '<div class="empty-note">「タスク」タブの下から登録できます。箱は消費しません。</div></div>';
+    return;
+  }
+  const done = routineDoneIds();
+  $("routineBox").innerHTML =
+    '<div class="panel">' +
+      '<div class="ph"><span>' + SLOT[s].icon + ' ' + SLOT[s].label + 'のルーティーン</span>' +
+        '<span class="cnt">' + list.filter(r => done.includes(r.id)).length + '/' + list.length + '</span></div>' +
+      list.map(r => {
+        const on = done.includes(r.id);
+        return '<div class="routine' + (on ? " on" : "") + '" data-id="' + r.id + '">' +
+          '<button class="check' + (on ? " on" : "") + '" data-act="rt">✓</button>' +
+          '<div class="rt">' + esc(r.text) + '</div>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+}
+$("routineBox").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const row = e.target.closest(".routine"); if(!row) return;
+  toggleRoutine(row.dataset.id);
+});
+
+/* ================= 描画：見送り / 今日やったこと ================= */
+function renderSkipped(){
+  const el = $("skippedList");
+  const list = skippedToday();
+  if(!list.length){ el.innerHTML = ""; return; }
+  el.innerHTML =
+    '<button class="fold" id="foldSkip">' + (S.foldSkip ? "▸" : "▾") + ' 今日は見送り ' + list.length + ' 件</button>' +
+    (S.foldSkip ? "" : list.map(t =>
+      '<div class="item skipped" data-id="' + t.id + '">' +
+        '<div class="grow"><div class="t">' + esc(t.text) + '</div>' +
+          '<div class="s">' + esc(freqLabel(t.freq)) + '</div></div>' +
+        '<button class="iconbtn" data-act="unskip" title="やっぱりやる">↩</button>' +
+      '</div>').join(""));
+  $("foldSkip").onclick = ()=>{ S.foldSkip = !S.foldSkip; save(); renderSkipped(); };
+}
+function renderDoneToday(){
+  const el = $("doneToday");
+  const from = dayStartTs();
+  const done = S.tasks.filter(t => doneOn(t));
+  if(!done.length){ el.innerHTML = ""; return; }
+  el.innerHTML =
+    '<button class="fold" id="foldDone">' + (S.foldDone ? "▸" : "▾") + ' 今日やったこと ' + done.length + ' 件</button>' +
+    (S.foldDone ? "" : done.map(t => {
+      const n = t.freq.unit === "once" ? 1 : (t.log || []).filter(ts => ts >= from).length;
+      const a = (t.actuals || []).filter(x => x.ts >= from).pop();
+      // 実績（実際に何箱かかったか）は任意入力。空のままでよい
+      const act = a
+        ? '<span class="s">実績</span>' +
+          '<input class="actin" type="number" min="1" max="16" data-act="actual" ' +
+            'value="' + (a.actual == null ? "" : a.actual) + '" placeholder="' + a.planned + '" title="実際にかかった箱数（任意）">' +
+          '<span class="s">箱</span>'
+        : '';
+      return '<div class="item done" data-id="' + t.id + '">' +
+        '<button class="check on" data-act="undoToday" title="取り消す">✓</button>' +
+        '<div class="grow"><div class="t">' + esc(t.text) + '</div></div>' +
+        (n > 1 ? '<span class="tag freq">' + n + '回</span>' : '') + act +
+        '<button class="iconbtn" data-act="undoToday" title="1回取り消す">↩</button>' +
+      '</div>';
+    }).join(""));
+  $("foldDone").onclick = ()=>{ S.foldDone = !S.foldDone; save(); renderDoneToday(); };
+}
+/* 実績の入力（任意・飛ばしてよい） */
+$("doneToday").addEventListener("change", e => {
+  const inp = e.target.closest('[data-act="actual"]'); if(!inp) return;
+  const id = e.target.closest(".item").dataset.id;
+  const t = taskById(id); if(!t) return;
+  const a = (t.actuals || []).filter(x => x.ts >= dayStartTs()).pop();
+  if(!a) return;
+  const v = parseInt(inp.value, 10);
+  a.actual = (inp.value === "" || isNaN(v)) ? null : Math.min(16, Math.max(1, v));
+  save();
+  if(a.actual != null) toast("実績 " + a.actual + " 箱（" + boxTime(a.actual) + "）");
+});
+$("doneToday").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn || btn.dataset.act !== "undoToday") return;
+  undoToday(e.target.closest(".item").dataset.id);
+});
+$("skippedList").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn || btn.dataset.act !== "unskip") return;
+  unskip(e.target.closest(".item").dataset.id);
+});
+
+/* ================= タスク追加フォーム ================= */
+let taskWhen = "any";
+$("whenChips").addEventListener("click", e => {
+  const c = e.target.closest(".chip"); if(!c) return;
+  taskWhen = c.dataset.when;
+  document.querySelectorAll("#whenChips .chip").forEach(x => x.classList.toggle("on", x === c));
+});
+let freqUnit = "once";
+$("freqChips").addEventListener("click", e => {
+  const c = e.target.closest(".chip"); if(!c) return;
+  freqUnit = c.dataset.unit;
+  document.querySelectorAll("#freqChips .chip").forEach(x => x.classList.toggle("on", x === c));
+  syncFreqLine();
+});
+function syncFreqLine(){
+  const line = $("freqLine");
+  if(freqUnit === "once"){ line.style.display = "none"; return; }
+  line.style.display = "flex";
+  $("freqPre").textContent = { day:"1日に", week:"1週間に", month:"1か月に", days:"" }[freqUnit];
+  $("freqN").style.display   = freqUnit === "days" ? "" : "none";
+  $("freqMid").style.display = freqUnit === "days" ? "" : "none";
+}
+$("taskSize").addEventListener("input", ()=>{
+  const n = Math.min(16, Math.max(1, parseInt($("taskSize").value, 10) || 1));
+  $("taskSizeNote").textContent = "箱 ＝ " + boxTime(n);
+});
+function addTask(){
+  const v = $("taskInput").value.trim();
+  if(!v) return;
+  let freq = { unit: "once" };
+  if(freqUnit !== "once"){
+    const count = Math.min(99, Math.max(1, parseInt($("freqCount").value, 10) || 1));
+    const n = Math.min(365, Math.max(1, parseInt($("freqN").value, 10) || 1));
+    freq = { unit: freqUnit, count };
+    if(freqUnit === "days") freq.n = n;
+  }
+  const size = Math.min(16, Math.max(1, parseInt($("taskSize").value, 10) || 1));
+  S.tasks.push({
+    id: uid(), text: v, url: normalizeUrl($("taskUrl").value),
+    when: taskWhen, freq, size, done: false, log: [], actuals: [], createdAt: Date.now()
+  });
+  $("taskInput").value = ""; $("taskUrl").value = "";
+  save(); renderAll(); toast("追加しました（" + size + "箱）");
+}
+$("taskAdd").onclick = addTask;
+$("taskInput").addEventListener("keydown", e => { if(e.key === "Enter") addTask(); });
+$("taskUrl").addEventListener("keydown", e => { if(e.key === "Enter") addTask(); });
+
+/* ================= タスク一覧（タスクタブ） ================= */
+function whenBtn(t){
+  const w = whenOf(t);
+  return '<button class="iconbtn' + (w === "any" ? " faint" : "") + '" data-act="when" title="午前／午後の切り替え">' +
+    (w === "any" ? "🕘" : SLOT[w].icon) + '</button>';
+}
+function cycleWhen(id){
+  const t = taskById(id); if(!t) return;
+  const order = ["any","am","pm"];
+  t.when = order[(order.indexOf(whenOf(t)) + 1) % 3];
+  save(); renderAll(); toast(SLOT[t.when].label + " に設定");
+}
+function sizeBox(t){
+  return '<input class="sizein" type="number" min="1" max="16" value="' + t.size + '" data-act="size" title="必要な箱数">';
+}
+/* 実績の平均（溜まっていれば見せる。見せ方は今後詰める） */
+function actualHint(t){
+  const xs = (t.actuals || []).filter(a => typeof a.actual === "number");
+  if(!xs.length) return "";
+  const avg = xs.reduce((s,a) => s + a.actual, 0) / xs.length;
+  return ' ・実績 平均' + (Math.round(avg*10)/10) + '箱';
+}
+const GROUPS = [
+  { key:"once",  title:"単発タスク" },
+  { key:"day",   title:"毎日" },
+  { key:"week",  title:"今週" },
+  { key:"month", title:"今月" },
+  { key:"days",  title:"◯日ごと" }
+];
+function renderTasks(){
+  const el = $("taskList");
+  if(!S.tasks.length){ el.innerHTML = '<div class="empty-note">タスクはまだありません。</div>'; return; }
+  let html = "";
+  GROUPS.forEach(g => {
+    let list = S.tasks.filter(t => t.freq.unit === g.key);
+    if(!list.length) return;
+    if(g.key === "once") list = list.slice().sort((a,b) => (a.done?1:0) - (b.done?1:0));
+    html += '<h2>' + g.title + '</h2>' + list.map(t => g.key === "once" ? onceRow(t) : repeatRow(t)).join("");
+  });
+  el.innerHTML = html;
+}
+function onceRow(t){
+  return '<div class="item' + (t.done ? " done" : "") + '" data-id="' + t.id + '">' +
+    '<button class="check' + (t.done ? " on" : "") + '" data-act="toggle">✓</button>' +
+    '<div class="grow">' + taskTitle(t) +
+      '<div class="s">' + boxTime(t.size) + esc(actualHint(t)) + (t.url ? ' ・ ' + esc(hostOf(t.url)) : '') + '</div>' +
+    '</div>' +
+    sizeBox(t) +
+    (t.done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>') +
+    whenBtn(t) + linkBtn(t) +
+    '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
+  '</div>';
+}
+function repeatRow(t){
+  const st = statOf(t);
+  // 「遅れ」は期間のあるもの（週/月/N日ごと）だけ。毎日は未実行なだけなので出さない
+  const late = !st.met && st.deficit >= 1 && t.freq.unit !== "day";
+  const streak = streakOf(t);
+  const meta = '<b>' + st.actual + '/' + st.count + '</b>' +
+    (st.remainDays ? ' ・残' + st.remainDays + '日' : '') +
+    (streak > 1 ? ' ・🔥' + streak : '');
+  return '<div class="item' + (st.met ? " met" : "") + '" data-id="' + t.id + '">' +
+    '<button class="check' + (st.met ? " on" : (st.actual > 0 ? " part" : "")) + '" data-act="do">' +
+      (st.met ? "✓" : (st.actual > 0 ? st.actual : "＋")) + '</button>' +
+    '<div class="grow">' +
+      taskTitle(t) +
+      '<div class="prog">' +
+        '<div class="bar"><i class="' + (st.met ? "met" : (late ? "late" : "")) + '" style="width:' + Math.round(st.ratio*100) + '%"></i></div>' +
+        '<span class="pmeta">' + meta + '</span>' +
+        (late ? '<span class="tag late">遅れ</span>' : (st.met ? '<span class="tag ok">達成</span>' : '')) +
+      '</div>' +
+      '<div class="s">' + esc(freqLabel(t.freq)) + ' ・ ' + esc(st.period.label) + ' ・ ' + boxTime(t.size) + esc(actualHint(t)) + '</div>' +
+    '</div>' +
+    sizeBox(t) +
+    (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
+    whenBtn(t) + linkBtn(t) +
+    '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
+  '</div>';
+}
+function linkBtn(t){
+  return '<button class="iconbtn' + (t.url ? "" : " faint") + '" data-act="link" title="リンクを設定">🔗</button>';
+}
+async function editUrl(id){
+  const t = taskById(id); if(!t) return;
+  const v = await openModal({
+    title: "「" + t.text + "」を開くリンク",
+    desc: "空にすると解除します",
+    input: true, value: t.url || "", placeholder: "https://...", ok: "決定"
+  });
+  if(v === null) return;
+  if(!v.trim()){ t.url = ""; save(); renderAll(); toast("リンクを外しました"); return; }
+  const u = normalizeUrl(v);
+  if(!u){ toast("URLを確認してください"); return; }
+  t.url = u; save(); renderAll(); toast("リンクを設定しました");
+}
+async function taskClick(e){
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  if(btn.dataset.act === "size") return;           // 数値入力は change で扱う
+  const row = e.target.closest(".item"); if(!row || !row.dataset.id) return;
+  const id = row.dataset.id;
+  const i = S.tasks.findIndex(t => t.id === id); if(i < 0) return;
+  const act = btn.dataset.act, t = S.tasks[i];
+
+  if(act === "toggle"){
+    t.done = !t.done;
+    if(t.done) t.doneAt = Date.now(); else delete t.doneAt;
+    save(); renderAll(); return;
+  }
+  if(act === "do")   { doTask(id); return; }
+  if(act === "undo") { undoDo(id); return; }
+  if(act === "link") { editUrl(id); return; }
+  if(act === "when") { cycleWhen(id); return; }
+  if(act === "up" && i > 0){ const [x] = S.tasks.splice(i,1); S.tasks.unshift(x); save(); renderAll(); return; }
+  if(act === "del"){
+    const ok = await askConfirm("「" + t.text + "」を削除しますか？", "削除",
+      t.freq.unit === "once" ? "" : "これまでの記録もいっしょに消えます");
+    if(!ok) return;
+    const idx = S.tasks.findIndex(x => x.id === id);   // 待っている間にずれる可能性に備える
+    if(idx < 0) return;
+    const removed = S.tasks.splice(idx, 1)[0];
+    unplaceSilent(id);
+    save(); renderAll();
+    toast("削除しました", ()=>{
+      S.tasks.splice(idx, 0, removed);
+      save(); renderAll(); toast("戻しました");
+    });
+  }
+}
+$("taskList").addEventListener("click", taskClick);
+$("taskList").addEventListener("change", e => {
+  const inp = e.target.closest('[data-act="size"]'); if(!inp) return;
+  const id = e.target.closest(".item").dataset.id;
+  const t = taskById(id); if(!t) return;
+  const before = t.size;
+  t.size = Math.min(16, Math.max(1, parseInt(inp.value, 10) || 1));
+  if(t.size !== before && getDay().slots.includes(id)) unplaceSilent(id);   // 箱の占有が変わるので入れ直し
+  save(); renderAll();
+  toast(t.text + " は " + t.size + "箱（" + boxTime(t.size) + "）");
+});
+
+/* ================= ルーティーン管理（タスクタブ） ================= */
+let routineSlot = "am";
+$("routineSlotChips").addEventListener("click", e => {
+  const c = e.target.closest(".chip"); if(!c) return;
+  routineSlot = c.dataset.slot;
+  document.querySelectorAll("#routineSlotChips .chip").forEach(x => x.classList.toggle("on", x === c));
+});
+function addRoutine(){
+  const v = $("routineInput").value.trim();
+  if(!v) return;
+  S.routines.push({ id: uid(), text: v, slot: routineSlot });
+  $("routineInput").value = "";
+  save(); renderAll(); toast(SLOT[routineSlot].label + "のルーティーンに追加");
+}
+$("routineAdd").onclick = addRoutine;
+$("routineInput").addEventListener("keydown", e => { if(e.key === "Enter") addRoutine(); });
+
+function renderRoutineList(){
+  const el = $("routineList");
+  if(!S.routines.length){ el.innerHTML = '<div class="empty-note">ルーティーンはまだありません。</div>'; return; }
+  el.innerHTML = ["am","pm"].map(s => {
+    const list = S.routines.filter(r => r.slot === s);
+    if(!list.length) return "";
+    return '<h2>' + SLOT[s].icon + ' ' + SLOT[s].label + '</h2>' + list.map(r =>
+      '<div class="item" data-id="' + r.id + '">' +
+        '<div class="grow"><div class="t">' + esc(r.text) + '</div></div>' +
+        '<button class="iconbtn" data-act="rslot" title="午前／午後を入れ替え">⇅</button>' +
+        '<button class="iconbtn del" data-act="rdel" title="削除">✕</button>' +
+      '</div>').join("");
+  }).join("");
+}
+$("routineList").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const id = e.target.closest(".item").dataset.id;
+  const i = S.routines.findIndex(r => r.id === id); if(i < 0) return;
+  if(btn.dataset.act === "rslot"){
+    S.routines[i].slot = S.routines[i].slot === "am" ? "pm" : "am";
+    save(); renderAll(); toast(SLOT[S.routines[i].slot].label + " に移した");
+    return;
+  }
+  if(btn.dataset.act === "rdel"){
+    const ok = await askConfirm("このルーティーンを削除しますか？", "削除", S.routines[i].text);
+    if(!ok) return;
+    const idx = S.routines.findIndex(r => r.id === id); if(idx < 0) return;
+    const removed = S.routines.splice(idx, 1)[0];
+    save(); renderAll();
+    toast("削除しました", ()=>{ S.routines.splice(idx, 0, removed); save(); renderAll(); toast("戻しました"); });
+  }
+});
+
+/* ================= 哲学 ================= */
+function addPhilo(){
+  const v = $("philoInput").value.trim();
+  if(!v) return;
+  S.philos.push({ id: uid(), text: v });
+  $("philoInput").value = "";
+  setForm("philoForm", false);
+  save(); renderAll(); toast("追加しました");
+}
+$("philoAdd").onclick = addPhilo;
+function renderPhilos(){
+  const el = $("philoList");
+  if(!S.philos.length){ el.innerHTML = '<div class="empty-note">迷ったときに立ち返る言葉を書いておくと、上に表示されます。</div>'; return; }
+  el.innerHTML = S.philos.map(p =>
+    '<div class="philo-item" data-id="' + p.id + '">' +
+      '<div class="t">' + esc(p.text) + '</div>' +
+      '<button class="iconbtn" data-act="pin" title="上に表示">📌</button>' +
+      '<button class="iconbtn del" data-act="del">✕</button>' +
+    '</div>'
+  ).join("");
+}
+$("philoList").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const id = e.target.closest(".philo-item").dataset.id;
+  const i = S.philos.findIndex(p => p.id === id); if(i < 0) return;
+  if(btn.dataset.act === "pin"){ S.philoIdx = i; save(); renderAll(); toast("上に表示しました"); return; }
+  if(btn.dataset.act === "del"){
+    const ok = await askConfirm("この言葉を削除しますか？", "削除", S.philos[i].text);
+    if(!ok) return;
+    const idx = S.philos.findIndex(p => p.id === id); if(idx < 0) return;
+    const removed = S.philos.splice(idx, 1)[0];
+    if(S.philoIdx >= S.philos.length) S.philoIdx = 0;
+    save(); renderAll();
+    toast("削除しました", ()=>{ S.philos.splice(idx, 0, removed); save(); renderAll(); toast("戻しました"); });
+  }
+});
+
+/* 追加フォームの開閉 */
+const ADD_LABEL = { philoForm: "＋ 言葉を追加" };
+function setForm(name, open){
+  const b = document.querySelector('.addtoggle[data-form="' + name + '"]');
+  $(name).style.display = open ? "" : "none";
+  b.textContent = open ? "× 閉じる" : ADD_LABEL[name];
+}
+document.querySelectorAll(".addtoggle").forEach(b => b.onclick = ()=>{
+  setForm(b.dataset.form, $(b.dataset.form).style.display === "none");
+});
+
+/* ================= 設定 ================= */
+function renderSettings(){
+  const w = $("baseWeekday"), h = $("baseHoliday");
+  if(document.activeElement !== w) w.value = S.base.weekday;
+  if(document.activeElement !== h) h.value = S.base.holiday;
+}
+function onBaseChange(){
+  S.base.weekday = Math.min(48, Math.max(0, parseInt($("baseWeekday").value, 10) || 0));
+  S.base.holiday = Math.min(48, Math.max(0, parseInt($("baseHoliday").value, 10) || 0));
+  save(); renderAll();
+  toast("基本値を変えました（明日から反映。今日は ＋− で調整）");
+}
+$("baseWeekday").addEventListener("change", onBaseChange);
+$("baseHoliday").addEventListener("change", onBaseChange);
+
+/* 今月、何で箱が潰れたか */
+function renderCutStats(){
+  const d = dayStart(dayKey());
+  const pre = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  const per = {};
+  let total = 0;
+  Object.keys(S.days).forEach(k => {
+    if(k.indexOf(pre) !== 0) return;
+    (S.days[k].cuts || []).forEach(c => {
+      const label = (c.label || "").trim() || "（理由なし）";
+      per[label] = (per[label] || 0) + 1;
+      total++;
+    });
+  });
+  if(!total){
+    $("cutStats").innerHTML = '<div class="empty-note">今月はまだ箱を減らしていません。</div>';
+    return;
+  }
+  $("cutStats").innerHTML =
+    Object.keys(per).sort((a,b) => per[b] - per[a]).map(k =>
+      '<div class="kv"><span>' + esc(k) + '</span><span><b>' + per[k] + '</b> 箱 ・ ' + boxTime(per[k]) + '</span></div>'
+    ).join("") +
+    '<div class="kv"><span>合計</span><span><b>' + total + '</b> 箱 ・ ' + boxTime(total) + '</span></div>';
+}
+function renderStats(){
+  renderCutStats();
+  const once = S.tasks.filter(t => t.freq.unit === "once");
+  const rep  = S.tasks.filter(t => t.freq.unit !== "once");
+  // 「遅れ」の数え方は一覧と揃える（毎日タスクは未実行なだけなので数えない）
+  const late = rep.filter(t => {
+    if(t.freq.unit === "day") return false;
+    const s = statOf(t);
+    return !s.met && s.deficit >= 1;
+  }).length;
+  const d = getDay();
+  $("stats").innerHTML =
+    '<div class="kv"><span>今日の箱</span><span>全 ' + d.count + ' 箱 ・ 残り <b>' + remainBoxes(d) + '</b> 箱</span></div>' +
+    '<div class="kv"><span>単発タスク</span><span>' + once.length + '件（完了 ' + once.filter(t=>t.done).length + '）</span></div>' +
+    '<div class="kv"><span>くり返しタスク</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
+    '<div class="kv"><span>ルーティーン</span><span>' + S.routines.length + '件</span></div>' +
+    '<div class="kv"><span>リンク付きタスク</span><span>' + S.tasks.filter(t => t.url).length + '件</span></div>' +
+    '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>';
+}
+$("btnExport").onclick = ()=>{
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "自己管理_" + dayKey() + ".json";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+};
+$("btnImport").onclick = ()=> $("fileInput").click();
+$("fileInput").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = async ()=>{
+    let d;
+    try{
+      d = JSON.parse(r.result);
+      if(typeof d !== "object" || d === null) throw 0;
+    }catch(err){ toast("読み込めませんでした"); return; }
+    const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
+      "いまのタスク・ルーティーン・箱・哲学はすべて消えます");
+    if(!ok) return;
+    S = migrate(Object.assign(structuredClone(DEFAULTS), d));
+    save(); renderAll(); toast("読み込みました");
+  };
+  r.readAsText(f);
+  e.target.value = "";
+};
+$("btnClearDone").onclick = async ()=>{
+  const gone = S.tasks.filter(t => t.freq.unit === "once" && t.done);
+  if(!gone.length){ toast("完了タスクはありません"); return; }
+  const ok = await askConfirm("完了した " + gone.length + " 件を削除しますか？", "削除",
+    gone.map(t => t.text).join("、"));
+  if(!ok) return;
+  const before = S.tasks.slice();
+  S.tasks = S.tasks.filter(t => !(t.freq.unit === "once" && t.done));
+  gone.forEach(t => unplaceSilent(t.id));
+  save(); renderAll();
+  toast("削除しました", ()=>{ S.tasks = before; save(); renderAll(); toast("戻しました"); });
+};
+
+/* ================= tabs ================= */
+function switchTab(name){
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === "sec-" + name));
+  window.scrollTo(0,0);
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = ()=> switchTab(b.dataset.tab));
+
+/* ================= キーボード ================= */
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && modalDone){ closeModal(null); return; }
+  if($("modal").classList.contains("on")) return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target.tagName || "").toLowerCase();
+  if(tag === "input" || tag === "textarea" || tag === "select") return;
+  if(!$("sec-now").classList.contains("on")) return;
+
+  if(e.key === " " || e.key === "Enter"){ e.preventDefault(); const g = currentGroup(); if(g) doTask(g.id); }
+  else if(e.key === "n" || e.key === "N" || e.key === "ArrowDown"){ e.preventDefault(); moveCursor(1); }
+  else if(e.key === "p" || e.key === "P" || e.key === "ArrowUp"){ e.preventDefault(); moveCursor(-1); }
+  else if(e.key === "+" || e.key === "=" ){ e.preventDefault(); addBox(); }
+  else if(e.key === "-" || e.key === "_" ){ e.preventDefault(); removeBox(); }
+});
+
+/* ================= boot ================= */
+function renderAll(){
+  renderHeader();
+  renderBoxBar();
+  renderPhiloBar();
+  renderNow();
+  renderBoxes();
+  renderUnplaced();
+  renderRoutines();
+  renderSkipped();
+  renderDoneToday();
+  renderTasks();
+  renderRoutineList();
+  // リンク欄の候補は、いま使っているタスクのURLから作る
+  $("taskUrlList").innerHTML = [...new Set(S.tasks.map(t => t.url).filter(Boolean))]
+    .map(u => '<option value="' + esc(u) + '"></option>').join("");
+  renderPhilos();
+  renderSettings();
+  renderStats();
+}
+
+/* 古い日のデータを捨てる（保存を太らせない） */
+function prune(){
+  const keep = 180;
+  const keys = Object.keys(S.days).sort();
+  if(keys.length > keep) keys.slice(0, keys.length - keep).forEach(k => delete S.days[k]);
+  const rk = Object.keys(S.routineDone).sort();
+  if(rk.length > 60) rk.slice(0, rk.length - 60).forEach(k => delete S.routineDone[k]);
+}
+/* 日付が変わったら哲学を1つ進める */
+function rollDay(){
+  const k = dayKey();
+  if(S.lastOpen !== k){
+    if(S.lastOpen && S.philos.length) S.philoIdx = (S.philoIdx + 1) % S.philos.length;
+    S.lastOpen = k;
+    cursor = 0;
+    prune();
+    getDay(k);      // その日の箱を基本値から用意する
+    save();
+  }
+}
+
+prune();
+rollDay();
+syncFreqLine();
+$("taskSize").dispatchEvent(new Event("input"));
+renderAll();
+save();
+
+/* タブを開きっぱなしでも、午前2時／午後の切り替わりで表示が変わること */
+let lastKey = dayKey(), lastSlot = nowSlot();
+setInterval(()=>{
+  renderHeader();
+  const k = dayKey(), s = nowSlot();
+  if(k !== lastKey || s !== lastSlot){
+    lastKey = k; lastSlot = s;
+    rollDay();
+    renderAll();
+  }
+}, 15000);
+document.addEventListener("visibilitychange", ()=>{
+  if(document.hidden) return;
+  const k = dayKey(), s = nowSlot();
+  if(k !== lastKey || s !== lastSlot){ lastKey = k; lastSlot = s; rollDay(); }
+  renderAll();
+});
