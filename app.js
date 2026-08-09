@@ -20,13 +20,32 @@ const KEY = "jiko-kanri-v1";
    下に置くと TDZ で落ちる。落ちると catch が初期状態を返し、
    本人のデータを空で上書きしてしまう。動かさないこと */
 function lid(){ return "lk" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-/* 起動ファイルから呼べるブラウザ。cmd は Windows の App Paths に登録される名前 */
+/* 起動ファイルから呼ぶブラウザ。
+   ▼ `start "" chrome "url"` のように名前で呼ぶのは駄目。名前が実行ファイルとして
+     解決されないと、start はその引数をただのURLとして扱い、結局**既定のブラウザ**で開く。
+     しかも黙って開くので気づけない（実際にそうなった）。
+     だから実体の exe を探して、フルパスで叩く。paths は上から順に見て、
+     最初に見つかったものを使う */
 const BROWSERS = [
-  { key:"",        label:"既定のブラウザ", cmd:"" },
-  { key:"chrome",  label:"Chrome",  cmd:"chrome" },
-  { key:"brave",   label:"Brave",   cmd:"brave" },
-  { key:"edge",    label:"Edge",    cmd:"msedge" },
-  { key:"firefox", label:"Firefox", cmd:"firefox" }
+  { key:"", label:"既定のブラウザ", paths: [] },
+  { key:"chrome",  label:"Chrome", paths: [
+    "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe",
+    "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe",
+    "%LocalAppData%\\Google\\Chrome\\Application\\chrome.exe"
+  ]},
+  { key:"brave", label:"Brave", paths: [
+    "%ProgramFiles%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+    "%ProgramFiles(x86)%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+    "%LocalAppData%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+  ]},
+  { key:"edge", label:"Edge", paths: [
+    "%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe",
+    "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe"
+  ]},
+  { key:"firefox", label:"Firefox", paths: [
+    "%ProgramFiles%\\Mozilla Firefox\\firefox.exe",
+    "%ProgramFiles(x86)%\\Mozilla Firefox\\firefox.exe"
+  ]}
 ];
 
 /* 最初から入れておく一言。消したぶんは保存側が空配列で上書きするので復活しない */
@@ -47,6 +66,8 @@ const DEFAULTS = {
   // { "2026-08-09": { count, holiday, slots:[taskId|null], cuts:[{at,label}], roulette:[taskId] } }
   days: {},
   base: { weekday: 8, holiday: 12 },
+  // 起動ファイル用。自動で見つからないブラウザだけ、設定タブで場所を教えてもらう
+  browserPaths: {},   // { chrome:"C:\\...\\chrome.exe", brave:"", edge:"", firefox:"" }
   lastOpen: "",
   foldDone: false,
   foldSkip: false
@@ -150,6 +171,7 @@ function migrate(d){
   d.routineDone = (d.routineDone && typeof d.routineDone === "object") ? d.routineDone : {};
   d.days      = (d.days && typeof d.days === "object") ? d.days : {};
   d.base      = Object.assign({ weekday: 8, holiday: 12 }, d.base || {});
+  d.browserPaths = (d.browserPaths && typeof d.browserPaths === "object") ? d.browserPaths : {};
   delete d.links;   // v2 までの未使用フィールド
   return d;
 }
@@ -840,6 +862,26 @@ function batStr(s){
   // " は消す（引数の切れ目になる）。% はバッチが変数として食うので %% にする
   return String(s).replace(/"/g, "").replace(/%/g, "%%");
 }
+/* 引数は本人が書いたものなので " をそのまま通す（複数のURLを渡したいことがある） */
+function batArg(s){ return String(s).replace(/%/g, "%%"); }
+
+/* 指定のブラウザを探して起動する行を作る。
+   見つからなければ**黙って既定で開かず**、はっきり知らせて止まる */
+function batBrowser(b, urls){
+  const out = ["rem --- " + b.label + " で開く ---"];
+  // 設定タブで場所を教えてもらっていれば、そちらを先に見る。
+  // %LocalAppData% のような書き方も通したいので、ここは %% にしない
+  const mine = String((S.browserPaths || {})[b.key] || "").trim().replace(/"/g, "");
+  const paths = mine ? [mine].concat(b.paths) : b.paths;
+  paths.forEach((p, i) => {
+    out.push((i === 0 ? 'set "B=' : 'if not exist "%B%" set "B=') + p + '"');
+  });
+  out.push('if exist "%B%" start "" "%B%" ' + urls.map(u => '"' + batStr(u) + '"').join(" "));
+  out.push('if not exist "%B%" echo *** ' + b.label +
+    ' が見つかりませんでした。アプリの設定タブ「ブラウザの場所」に入れてください。');
+  out.push('if not exist "%B%" pause');
+  return out;
+}
 function batFor(t){
   const ls = linksOf(t);
   const out = [
@@ -849,6 +891,7 @@ function batFor(t){
     "rem タスク: " + batStr(t.text).replace(/[\r\n]+/g, " "),
     // リンクを変えても、書き出しずみのバッチは古いまま。いつのものか分かるようにしておく
     "rem 書き出し: " + dayKey() + "（アプリ側でリンクを変えたら、書き出し直すこと）",
+    "rem ブラウザが見つからないと言われたら、アプリの設定タブ「ブラウザの場所」に入れて書き出し直してください",
     ""
   ];
   let i = 0;
@@ -862,7 +905,7 @@ function batFor(t){
          スキーム（steam:// など）にはフォルダが無いので付けない */
       const dir = isScheme(l.path) ? "" : l.path.replace(/[\\/][^\\/]*$/, "");
       out.push('start ""' + (dir && dir !== l.path ? ' /d "' + batStr(dir) + '"' : "") +
-        ' "' + batStr(l.path) + '"' + (l.args ? " " + batStr(l.args) : ""));
+        ' "' + batStr(l.path) + '"' + (l.args ? " " + batArg(l.args) : ""));
       i++;
       continue;
     }
@@ -872,8 +915,10 @@ function batFor(t){
     while(i < ls.length && ls[i].kind === "url" && ls[i].browser === l.browser){
       urls.push(ls[i].url); i++;
     }
-    if(!b.cmd) urls.forEach(u => out.push('start "" "' + batStr(u) + '"'));
-    else out.push('start "" ' + b.cmd + " " + urls.map(u => '"' + batStr(u) + '"').join(" "));
+    // 既定のブラウザは、URLをそのまま Windows に渡せばよい（それが「既定」の意味）
+    if(!b.paths.length) urls.forEach(u => out.push('start "" "' + batStr(u) + '"'));
+    else batBrowser(b, urls).forEach(x => out.push(x));
+    out.push("");
   }
   out.push("");
   return out.join("\r\n");
@@ -1835,7 +1880,32 @@ function renderSettings(){
   const w = $("baseWeekday"), h = $("baseHoliday");
   if(document.activeElement !== w) w.value = S.base.weekday;
   if(document.activeElement !== h) h.value = S.base.holiday;
+  renderBrowserPaths();
 }
+/* 起動ファイル用のブラウザの場所。空なら自動で探す */
+function renderBrowserPaths(){
+  const el = $("browserPaths");
+  // 入力中に作り直すと打てなくなるので、開いている間は触らない
+  if(el.contains(document.activeElement)) return;
+  el.innerHTML = BROWSERS.filter(b => b.paths.length).map(b =>
+    '<div class="row mt8">' +
+      '<span class="flabel">' + esc(b.label) + '</span>' +
+      '<input class="bpath" data-b="' + b.key + '" spellcheck="false" ' +
+        'value="' + esc((S.browserPaths || {})[b.key] || "") + '" ' +
+        'placeholder="自動で探します（見つからないときだけ入れる）">' +
+    '</div>'
+  ).join("");
+}
+$("browserPaths").addEventListener("change", e => {
+  const inp = e.target.closest(".bpath"); if(!inp) return;
+  const key = inp.dataset.b;
+  const v = inp.value.trim().replace(/"/g, "");
+  S.browserPaths = S.browserPaths || {};
+  if(v) S.browserPaths[key] = v; else delete S.browserPaths[key];
+  save();
+  toast(v ? browserOf(key).label + " の場所を覚えました。起動ファイルを書き出し直してください"
+          : browserOf(key).label + " は自動で探します");
+});
 function onBaseChange(){
   S.base.weekday = Math.min(48, Math.max(0, parseInt($("baseWeekday").value, 10) || 0));
   S.base.holiday = Math.min(48, Math.max(0, parseInt($("baseHoliday").value, 10) || 0));

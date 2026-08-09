@@ -105,8 +105,19 @@
 
 この2つのために **起動ファイル(.bat) の書き出し**を付けてある。
 リンク編集の「起動ファイル(.bat)を書き出す」、または「いま、これ」の「起動ファイル」ボタンから出る。
-中身は `start "" "C:\…\obs64.exe"` と `start "" chrome "url1" "url2"` の並び。
 **同じブラウザ指定が連続する行は1つのコマンドにまとめる**ので、1つの窓にタブで並ぶ。
+
+> **`start "" chrome "url"` のように名前で呼んではいけない（実際にやって外した）。**
+> `chrome` が実行ファイルとして解決されないと、`start` はその引数をただのURLとして扱い、
+> 結局**既定のブラウザで開く**。しかもエラーを出さずに開くので、
+> 「Chrome指定にしたのに全部 Brave で開く」という形でしか気づけない。
+> いまは `BROWSERS[].paths` の候補を `if not exist` で順に見て、
+> **見つかった exe をフルパスで叩く**。どれも無ければ `echo` ＋ `pause` で止めて知らせる。
+> **黙って既定にフォールバックさせないこと。**
+
+自動で見つからないブラウザは、設定タブ「ブラウザの場所」に入れてもらう（`S.browserPaths`）。
+入っていれば候補の先頭に来る。`%LocalAppData%` のような書き方も通したいので、
+**この値は `%` を `%%` にしない**（URLとは扱いが違う）。
 
 - 文字コードは **UTF-8（BOM無し）**。2行目の `chcp 65001 > nul` より後の行は cmd が UTF-8 として読む。
   日本語を含むパスのために必要なので消さないこと
@@ -246,6 +257,7 @@ GitHub Pages は `index.html` も `css` / `js` も **10分ほどキャッシュ�
   days: { "2026-08-09": { count, holiday, slots:[taskId|null],
                           cuts:[{at,label}], roulette:[taskId], img } },  // slots の長さ = count
   base: { weekday, holiday },
+  browserPaths: { chrome, brave, edge, firefox },   // 起動ファイル用。空なら自動で探す
   philos: [{id,text}], philoIdx, lastOpen, foldDone, foldSkip
 }
 ```
