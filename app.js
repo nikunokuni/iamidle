@@ -6,6 +6,11 @@
    - 仕様は SPEC.md。勝手に広げないこと
    ============================================================ */
 
+/* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
+   style.css?v=、app.js?v=）も同じ値に揃えること。
+   揃っていないと「新しい版があります」が出っぱなしになる */
+const APP_VERSION = "2026-08-09.1";
+
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
 /* 最初から入れておく一言。消したぶんは保存側が空配列で上書きするので復活しない */
@@ -1627,6 +1632,86 @@ $("btnClearDone").onclick = async ()=>{
   toast("削除しました", ()=>{ S.tasks = before; save(); renderAll(); toast("戻しました"); });
 };
 
+/* ================= 更新とキャッシュ =================
+   GitHub Pages は index.html も css/js も10分ほどキャッシュされる。
+   そのため版を上げた直後は、古い index.html と新しい app.js のような
+   ちぐはぐな組み合わせで動くことがある。
+   - index.html の meta と APP_VERSION がずれていたら、それを検知して知らせる
+   - 「最新に更新」は、まだ使われていないURL（?r=時刻）へ移ることで
+     index.html を必ずネットワークから取り直させる。
+     新しい index.html は新しい ?v= を持つので、css/js も一緒に入れ替わる
+   - localStorage は別物なので、この操作でデータは消えない
+====================================================== */
+function pageVersion(){
+  const m = document.querySelector('meta[name="app-version"]');
+  return m ? (m.content || "") : "";
+}
+let serverVersion = "";     // 公開されている版（起動時に見にいく）
+
+/* 古い版で動いているか。
+   - 画面と中身の版が食い違う（ちぐはぐなキャッシュ）
+   - 公開されている版が、いま動いている版と違う（まるごと古い） */
+function isStale(){
+  if(pageVersion() && pageVersion() !== APP_VERSION) return true;
+  if(serverVersion && serverVersion !== APP_VERSION) return true;
+  return false;
+}
+/* ブックマークから開くと1件も問い合わせずキャッシュだけで動くことがある。
+   そのままでは古いと気づけないので、起動時に一度だけ見にいく */
+async function checkForUpdate(){
+  if(location.protocol === "file:") return;
+  try{
+    const res = await fetch(location.pathname + "?r=" + Date.now(), { cache: "no-store" });
+    if(!res.ok) return;
+    const m = (await res.text()).match(/name=["']app-version["'][^>]*content=["']([^"']+)["']/);
+    if(!m) return;
+    serverVersion = m[1];
+    renderVersion();
+  }catch(e){ /* 見にいけなくても、いまの版で普通に使える */ }
+}
+
+async function hardReload(){
+  save();                                     // いまの状態を書いてから出る
+  try{                                        // 将来 Service Worker を足したとき用
+    if(navigator.serviceWorker && navigator.serviceWorker.getRegistrations){
+      const rs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map(r => r.unregister()));
+    }
+  }catch(e){}
+  try{
+    if(typeof caches !== "undefined" && caches.keys){
+      const ks = await caches.keys();
+      await Promise.all(ks.map(k => caches.delete(k)));
+    }
+  }catch(e){}
+  if(location.protocol === "file:"){ location.reload(); return; }
+  location.replace(location.pathname + "?r=" + Date.now());
+}
+
+function renderVersion(){
+  const stale = isStale();
+  $("verBox").innerHTML =
+    '<div class="kv"><span>いま動いている版</span><span><b>' + esc(APP_VERSION) + '</b></span></div>' +
+    (serverVersion
+      ? '<div class="kv"><span>公開されている版</span><span><b>' + esc(serverVersion) + '</b>' +
+        (serverVersion === APP_VERSION ? "（最新）" : "（新しい版があります）") + '</span></div>'
+      : '') +
+    (pageVersion() && pageVersion() !== APP_VERSION
+      ? '<div class="kv"><span>画面の版</span><span><b>' + esc(pageVersion()) + '</b>（食い違い）</span></div>'
+      : '') +
+    '<div class="row mt8" style="margin-top:14px">' +
+      '<button class="btn ghost" id="btnUpdate">キャッシュを消して最新に更新</button>' +
+    '</div>' +
+    '<div class="empty-note">' +
+      'GitHub Pages では、更新しても10分ほど古い版が表示されることがあります。<br>' +
+      '新しくしたのに変わらないときは、これを押してください。<br>' +
+      '<b>タスク・画像・哲学などのデータは消えません。</b>' +
+    '</div>';
+  $("btnUpdate").onclick = hardReload;
+  $("updateBar").classList.toggle("on", stale);
+}
+$("updateNow").onclick = hardReload;
+
 /* ================= tabs ================= */
 function switchTab(name){
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
@@ -1672,6 +1757,7 @@ function renderAll(){
   renderCheers();
   renderSettings();
   renderStats();
+  renderVersion();
 }
 
 /* 古い日のデータを捨てる（保存を太らせない） */
@@ -1696,12 +1782,18 @@ function rollDay(){
   }
 }
 
+/* 更新用に付けた ?r=… はURLに残さない（残すとその形でキャッシュされる） */
+if(location.protocol !== "file:" && /[?&]r=/.test(location.search)){
+  try{ history.replaceState(null, "", location.pathname); }catch(e){}
+}
+
 prune();
 rollDay();
 syncFreqLine();
 $("taskSize").dispatchEvent(new Event("input"));
 renderAll();
 save();
+checkForUpdate();
 
 /* タブを開きっぱなしでも、午前2時／午後の切り替わりで表示が変わること */
 let lastKey = dayKey(), lastSlot = nowSlot();

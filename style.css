@@ -31,6 +31,21 @@ body{
 }
 .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
 
+/* ---------- 更新のお知らせ ---------- */
+.updatebar{
+  display:none;
+  align-items:center;gap:12px;flex-wrap:wrap;
+  background:var(--accent2);color:#241c00;
+  padding:10px 24px;font-size:14px;font-weight:700;
+}
+.updatebar.on{display:flex}
+.updatebar button{
+  background:#241c00;color:var(--accent2);border:none;border-radius:8px;
+  padding:7px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;
+}
+.updatebar button:hover{filter:brightness(1.25)}
+.updatebar .note{font-weight:400;opacity:.75;font-size:12px}
+
 /* ---------- header ---------- */
 header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .date{color:var(--fg-faint);font-size:13px;letter-spacing:.08em}

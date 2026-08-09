@@ -4,11 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
+<!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
+<meta name="app-version" content="2026-08-09.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2026-08-09.1">
 </head>
 <body>
+
+<!-- 古いキャッシュで動いていることを検知したら出る -->
+<div class="updatebar" id="updateBar">
+  <span>新しい版があります。読み込み直してください。</span>
+  <button id="updateNow">最新に更新</button>
+  <span class="note">タスクや画像は消えません</span>
+</div>
 
 <div class="wrap">
   <header>
@@ -177,6 +186,9 @@
     </div>
     <input type="file" id="fileInput" accept="application/json" style="display:none">
 
+    <h2>バージョンと更新</h2>
+    <div id="verBox"></div>
+
     <h2>リセット</h2>
     <button class="btn ghost" id="btnClearDone">完了した単発タスクを消す</button>
     <div class="empty-note">
@@ -213,6 +225,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=2026-08-09.1"></script>
 </body>
 </html>
