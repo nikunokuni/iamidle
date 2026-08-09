@@ -40,6 +40,7 @@
       <aside class="col side">
         <div id="routineBox"></div>
         <div id="unplaced"></div>
+        <div id="rouletteBox"></div>
         <div class="keyhelp">
           <b>キーボード</b>
           <div><kbd>Space</kbd> いま、これを完了</div>
@@ -116,6 +117,19 @@
       </div>
     </div>
     <div id="philoList"></div>
+
+    <h2>やったときの一言</h2>
+    <div class="empty-note" style="padding-top:0">
+      タスクを終えたとき、この中から1つがドーンと出ます。
+    </div>
+    <button class="addtoggle" data-form="cheerForm">＋ 一言を追加</button>
+    <div class="form" id="cheerForm" style="display:none">
+      <input id="cheerInput" placeholder="例: やったぜ！" autocomplete="off">
+      <div class="row mt8" style="justify-content:flex-end">
+        <button class="btn" id="cheerAdd">追加</button>
+      </div>
+    </div>
+    <div id="cheerList"></div>
   </section>
 
   <!-- ============ 設定 ============ -->
@@ -128,13 +142,13 @@
         <span class="fnote">箱</span>
       </div>
       <div class="row mt8">
-        <span class="flabel">休日（土日）</span>
+        <span class="flabel">休みの日</span>
         <input type="number" id="baseHoliday" min="0" max="48">
         <span class="fnote">箱</span>
       </div>
       <div class="empty-note">
-        その日の箱数はこの値から始まります。<br>
-        ＋−でその日だけ増減できます。翌日は基本値に戻ります。
+        どの日も<b>平日（仕事）</b>から始まります。休みの日は、上の「平日／休み」を押して切り替えてください。<br>
+        ＋−でその日だけ増減できます。翌日はまた平日の基本値に戻ります。
       </div>
     </div>
 
@@ -168,6 +182,9 @@
 </nav>
 
 <div class="toast" id="toast"></div>
+
+<!-- 完了したときの一言（ドーンと出る） -->
+<div class="cheer" id="cheer"><div class="ctxt" id="cheerText"></div></div>
 
 <!-- アプリ内ダイアログ（confirm/prompt の代わり） -->
 <div class="modal" id="modal">

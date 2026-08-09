@@ -57,6 +57,7 @@ header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:sp
   font-size:18px;font-family:inherit;cursor:pointer;line-height:1;
 }
 .boxbar .bb-btns button:hover{border-color:var(--accent);color:var(--accent)}
+.boxbar .bb-btns #dayType{width:auto;padding:0 14px;font-size:13px;font-weight:700;color:var(--fg-dim)}
 .boxbar .bb-end{
   font-size:12px;font-weight:700;color:var(--ok);
   background:rgba(78,203,143,.14);padding:4px 12px;border-radius:99px;
@@ -146,9 +147,15 @@ h2{font-size:12px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;mar
 }
 .boxrow .bt{flex:1;min-width:0;font-size:15px;word-break:break-word}
 .boxrow .bs{font-size:11px;color:var(--fg-faint);margin-top:2px}
-.boxrow.empty{border-style:dashed;background:none;cursor:pointer}
+.boxrow.empty{border-style:dashed;background:none}
 .boxrow.empty .bt{color:var(--fg-faint);font-size:13px}
-.boxrow.empty:hover{border-color:var(--accent);border-style:solid}
+/* ドラッグ中の受け皿 */
+.boxrow.over{border-color:var(--accent);border-style:solid;background:rgba(91,156,255,.12)}
+.boxrow.over .bt{color:var(--accent)}
+.boxrow[draggable="true"]{cursor:grab}
+.boxrow.dragging,.item.dragging{opacity:.35}
+.grip{flex:none;color:var(--fg-faint);font-size:13px;cursor:grab;line-height:1;padding:0 2px}
+.grip:active{cursor:grabbing}
 .boxrow.current{border-color:var(--accent);background:#1d2534}
 .boxrow.done{opacity:.45}
 .boxrow.done .bt{text-decoration:line-through}
@@ -309,6 +316,57 @@ kbd{
   background:none;border:none;color:var(--accent);font-weight:700;
   font-size:14px;font-family:inherit;cursor:pointer;padding:0 0 0 14px;
 }
+
+/* ---------- 完了したときの一言（ドーン） ---------- */
+.cheer{
+  position:fixed;inset:0;z-index:150;display:none;
+  align-items:center;justify-content:center;pointer-events:none;
+}
+.cheer.on{display:flex}
+.cheer .ctxt{
+  font-size:clamp(40px,9vw,110px);font-weight:800;line-height:1.2;
+  text-align:center;padding:0 24px;white-space:pre-wrap;word-break:break-word;
+  color:var(--accent2);
+  text-shadow:0 0 40px rgba(255,209,102,.45), 0 10px 40px rgba(0,0,0,.6);
+  animation:doon .9s cubic-bezier(.18,1.5,.4,1) forwards;
+}
+@keyframes doon{
+  0%{transform:scale(.3) rotate(-6deg);opacity:0}
+  35%{transform:scale(1.12) rotate(2deg);opacity:1}
+  55%{transform:scale(1) rotate(0)}
+  100%{transform:scale(1);opacity:1}
+}
+.cheer.out .ctxt{animation:doonout .35s ease forwards}
+@keyframes doonout{to{transform:scale(1.25);opacity:0}}
+
+/* ---------- ルーレット ---------- */
+.roulette .drop{
+  border:1px dashed var(--line);border-radius:12px;
+  padding:14px;text-align:center;color:var(--fg-faint);font-size:13px;
+  margin-bottom:10px;
+}
+.roulette .drop.over{border-color:var(--accent2);border-style:solid;background:rgba(255,209,102,.1);color:var(--accent2)}
+.roulette .cand{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 0;border-bottom:1px solid var(--line);font-size:14px;
+}
+.roulette .cand:last-of-type{border-bottom:none}
+.roulette .cand .cn{flex:1;min-width:0;word-break:break-word}
+.roulette .face{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:16px 12px;text-align:center;font-size:19px;font-weight:700;
+  margin:10px 0;min-height:58px;display:flex;align-items:center;justify-content:center;
+  word-break:break-word;
+}
+.roulette .face.spin{color:var(--accent2);border-color:var(--accent2)}
+.roulette .face.won{color:var(--accent);border-color:var(--accent);background:#1d2534}
+.roulette .spinbtn{
+  width:100%;background:var(--accent2);color:#241c00;border:none;border-radius:10px;
+  padding:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;
+}
+.roulette .spinbtn:disabled{opacity:.5;cursor:default}
+.roulette .wonrow{display:flex;gap:8px;margin-top:8px}
+.roulette .wonrow .btn{flex:1;padding:9px}
 
 /* ---------- アプリ内ダイアログ ---------- */
 .modal{

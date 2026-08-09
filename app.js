@@ -8,14 +8,22 @@
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
+/* 最初から入れておく一言。消したぶんは保存側が空配列で上書きするので復活しない */
+const SEED_CHEERS = ["やったぜ！", "よくやった", "えらい", "その調子", "ひとつ片づいた"];
+/* 箱を使い切ったときに出す一言（仮。差し替えたければここ） */
+const SLEEP_LINE = "あとは寝るだけ。";
+
 const DEFAULTS = {
-  v: 3,
+  v: 4,
   tasks: [],
   philos: [],
   philoIdx: 0,
+  // { id, text } 完了したときに1つ出る一言
+  cheers: SEED_CHEERS.map((t,i) => ({ id: "cheer" + i, text: t })),
   routines: [],       // { id, text, slot:"am"|"pm" }
   routineDone: {},    // { "2026-08-09": [routineId, ...] }
-  days: {},           // { "2026-08-09": { count, slots:[taskId|null], cuts:[{at,label}] } }
+  // { "2026-08-09": { count, holiday, slots:[taskId|null], cuts:[{at,label}], roulette:[taskId] } }
+  days: {},
   base: { weekday: 8, holiday: 12 },
   lastOpen: "",
   foldDone: false,
@@ -58,6 +66,23 @@ function migrate(d){
     });
     d.v = 3;
   }
+  // v3 → v4 : 休みは曜日ではなく手入力。完了したときの一言
+  if(!(d.v >= 4)){
+    // ここは load() の途中で動く。あとで宣言される uid / CUT には触れないこと
+    if(!Array.isArray(d.cheers) || !d.cheers.length){
+      d.cheers = SEED_CHEERS.map((t,i) => ({ id: "cheer" + i + Date.now().toString(36), text: t }));
+    }
+    // これまで土日から作られていた箱数は、その日の休みフラグとして引き継ぐ
+    Object.keys(d.days || {}).forEach(k => {
+      const day = d.days[k];
+      if(day && typeof day.holiday !== "boolean"){
+        const [y,m,dd] = k.split("-").map(Number);
+        const w = new Date(y, m-1, dd).getDay();
+        day.holiday = (w === 0 || w === 6);
+      }
+    });
+    d.v = 4;
+  }
   // 取りこぼしの保険（壊れた値で描画が止まらないように）
   d.tasks = Array.isArray(d.tasks) ? d.tasks : [];
   d.tasks.forEach(t => {
@@ -69,6 +94,7 @@ function migrate(d){
     if(t.when !== "am" && t.when !== "pm") t.when = "any";
   });
   d.philos    = Array.isArray(d.philos) ? d.philos : [];
+  d.cheers    = Array.isArray(d.cheers) ? d.cheers : [];
   d.routines  = Array.isArray(d.routines) ? d.routines : [];
   d.routineDone = (d.routineDone && typeof d.routineDone === "object") ? d.routineDone : {};
   d.days      = (d.days && typeof d.days === "object") ? d.days : {};
@@ -173,29 +199,47 @@ const askConfirm = (title, ok, desc) => openModal({ title, desc, ok: ok || "OK",
 const askInput   = (title, value, placeholder) => openModal({ title, value, placeholder, input: true, ok: "決定" });
 
 /* ================= 箱（1日の器） ================= */
-function isHoliday(key){
-  const w = dayStart(key).getDay();
-  return w === 0 || w === 6;          // 土日を休日とみなす
-}
-function baseCount(key){
-  const n = isHoliday(key) ? S.base.holiday : S.base.weekday;
+/* 休みかどうかは曜日で決めない。どの日も平日（仕事）から始まり、手で切り替える */
+function baseFor(holiday){
+  const n = holiday ? S.base.holiday : S.base.weekday;
   return Math.max(0, Math.min(48, Math.round(n) || 0));
 }
-/* その日の箱。無ければ基本値から作る */
+const isHoliday = key => !!getDay(key).holiday;
+/* その日の箱。無ければ平日の基本値から作る */
 function getDay(key){
   key = key || dayKey();
   let d = S.days[key];
-  if(!d) d = S.days[key] = { count: baseCount(key), slots: [], cuts: [] };
-  if(!Array.isArray(d.slots)) d.slots = [];
-  if(!Array.isArray(d.cuts))  d.cuts  = [];
+  if(!d) d = S.days[key] = { count: baseFor(false), holiday: false, slots: [], cuts: [], roulette: [] };
+  if(typeof d.holiday !== "boolean") d.holiday = false;
+  if(!Array.isArray(d.slots))    d.slots    = [];
+  if(!Array.isArray(d.cuts))     d.cuts     = [];
+  if(!Array.isArray(d.roulette)) d.roulette = [];
   if(typeof d.count !== "number") d.count = d.slots.length;
   while(d.slots.length < d.count) d.slots.push(null);
   if(d.slots.length > d.count) d.slots.length = d.count;
-  // 消えたタスクが箱に残っていたら片付ける
+  // 消えたタスクが箱やルーレットに残っていたら片付ける
   for(let i = 0; i < d.slots.length; i++){
     if(d.slots[i] && !taskById(d.slots[i])) d.slots[i] = null;
   }
+  d.roulette = d.roulette.filter(id => taskById(id));
   return d;
+}
+/* 平日 ⇄ 休み。箱数をその区分の基本値に合わせ直す */
+function setDayType(holiday){
+  const d = getDay();
+  d.holiday = !!holiday;
+  const target = baseFor(d.holiday);
+  while(d.count < target){ d.count++; d.slots.push(null); }
+  let stuck = false;
+  while(d.count > target){
+    let i = d.slots.length - 1;
+    while(i >= 0 && d.slots[i] !== null) i--;
+    if(i < 0){ stuck = true; break; }        // 埋まっていて減らせない
+    d.slots.splice(i, 1); d.count--;
+  }
+  save(); renderAll();
+  toast((d.holiday ? "休み" : "平日") + "にした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）" +
+    (stuck ? "／埋まっている箱があるのでここまで" : ""));
 }
 const taskById = id => S.tasks.find(t => t.id === id) || null;
 
@@ -231,6 +275,7 @@ function dayFinished(d){
   return d.count > 0 && emptyBoxes(d) === 0 && remainBoxes(d) === 0;
 }
 
+/* 上から順に、空いている連続した箱へ入れる */
 function placeTask(id){
   const t = taskById(id); if(!t) return;
   const d = getDay();
@@ -249,6 +294,26 @@ function placeTask(id){
   for(let k = 0; k < size; k++) d.slots[at+k] = id;
   save(); renderAll();
   toast("箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
+}
+/* 落とした位置に入れる（すでに箱にあるものは、そこへ動かす） */
+function placeTaskAt(id, at){
+  const t = taskById(id); if(!t) return false;
+  const d = getDay();
+  const size = Math.max(1, t.size || 1);
+  const prev = d.slots.slice();
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;  // 動かす前にどける
+  at = Math.max(0, Math.min(at, d.slots.length - 1));
+  let ok = at + size <= d.slots.length;
+  if(ok) for(let k = 0; k < size; k++) if(d.slots[at+k] !== null){ ok = false; break; }
+  if(!ok){
+    d.slots = prev;
+    toast(size > 1 ? "そこには入りません（連続した" + size + "箱が必要）" : "その箱はふさがっています");
+    return false;
+  }
+  for(let k = 0; k < size; k++) d.slots[at+k] = id;
+  save(); renderAll();
+  toast("箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
+  return true;
 }
 function unplace(id){
   const d = getDay();
@@ -399,8 +464,10 @@ function doTask(id){
     t.actuals = t.actuals || [];
     t.actuals.push({ ts: stamp, day: dayKey(), planned, actual: null });
   }
+  if(d.roulette.includes(id)) removeFromRoulette(id);   // 済んだものは候補から外す
   save(); renderAll();
-  toast(t.freq.unit === "once" ? "よくやった" : "記録した", ()=> undoStamp(id, stamp));
+  cheer();
+  toast(t.freq.unit === "once" ? "できた" : "記録した", ()=> undoStamp(id, stamp));
 }
 function undoStamp(id, stamp){
   const t = taskById(id); if(!t) return;
@@ -508,7 +575,7 @@ function renderHeader(){
   $("date").textContent = `${ds.getFullYear()}年${ds.getMonth()+1}月${ds.getDate()}日（${wd}）${late}`;
   $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
   const s = nowSlot();
-  $("greet").textContent = SLOT[s].icon + " " + SLOT[s].label + (isHoliday(key) ? " ・休日" : " ・平日");
+  $("greet").textContent = SLOT[s].icon + " " + SLOT[s].label + (isHoliday(key) ? " ・休み" : " ・平日");
 }
 function renderBoxBar(){
   const d = getDay();
@@ -519,11 +586,13 @@ function renderBoxBar(){
     '<div class="bb-sub">' + boxTime(rest) + ' ぶん ・ 空き ' + empty + ' 箱 ・ 今日は全 ' + d.count + ' 箱</div>' +
     (dayFinished(d) ? '<div class="bb-end">今日は終了</div>' : '') +
     '<div class="bb-btns">' +
+      '<button id="dayType" title="平日／休みを切り替える">' + (d.holiday ? "休み" : "平日") + '</button>' +
       '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
       '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
     '</div>';
   $("boxPlus").onclick  = addBox;
   $("boxMinus").onclick = removeBox;
+  $("dayType").onclick  = ()=> setDayType(!getDay().holiday);
 }
 
 /* ================= 描画：哲学バー ================= */
@@ -550,7 +619,7 @@ function renderNow(){
   if(!g){
     let msg;
     if(d.count === 0)              msg = "今日は箱がありません。\n右上の ＋ で足せます。";
-    else if(dayFinished(d))        msg = "箱を使い切りました。今日は終了。";
+    else if(dayFinished(d))        msg = "箱を使い切りました。今日は終了。\n" + SLEEP_LINE;
     else if(emptyBoxes(d) === d.count) msg = "箱にタスクを入れてください。\n右の一覧からクリックで入ります。";
     else                           msg = "入れたぶんは終わりました。\n空き箱にまだ入れられます。";
     el.innerHTML =
@@ -604,9 +673,9 @@ function renderBoxes(){
   const rows = boxGroups(d).map(g => {
     const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
     if(!g.id){
-      return '<div class="boxrow empty" data-put="' + g.from + '">' +
+      return '<div class="boxrow empty" data-i="' + g.from + '">' +
         '<span class="bi">' + no + '</span>' +
-        '<div class="bt">空き　（クリックで上から入れる）</div>' +
+        '<div class="bt">空き　（右からドラッグして入れる）</div>' +
       '</div>';
     }
     const t = taskById(g.id);
@@ -616,7 +685,8 @@ function renderBoxes(){
     const sub = [boxTime(size), freqLabel(t.freq)];
     if(whenOf(t) !== "any") sub.unshift(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
     return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
-        (size > 1 ? " span2" : "") + '" data-id="' + t.id + '">' +
+        (size > 1 ? " span2" : "") + '" data-id="' + t.id + '" data-i="' + g.from + '"' +
+        (done ? "" : ' draggable="true"') + '>' +
       '<span class="bi">' + no + '</span>' +
       '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
       '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
@@ -628,22 +698,60 @@ function renderBoxes(){
 
   $("boxList").innerHTML =
     '<h2>今日の箱（1箱 ＝ 30分）</h2>' + rows +
-    (dayFinished(d) ? '<div class="allclear"><span class="big">🌙</span>箱を使い切りました。今日は終了。<br>まだやるなら、上の ＋ で箱を足してください。</div>' : '');
+    (dayFinished(d)
+      ? '<div class="allclear"><span class="big">🌙</span>箱を使い切りました。今日は終了。<br>' +
+        esc(SLEEP_LINE) + '<br>まだやるなら、上の ＋ で箱を足してください。</div>'
+      : '');
 }
 $("boxList").addEventListener("click", e => {
-  const put = e.target.closest("[data-put]");
-  if(put && !e.target.closest("[data-act]")){
-    const first = unplacedTasks()[0];
-    if(!first){ toast("入れるタスクがありません"); return; }
-    placeTask(first.t.id);
-    return;
-  }
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   const row = e.target.closest(".boxrow"); if(!row || !row.dataset.id) return;
   const id = row.dataset.id;
   if(btn.dataset.act === "boxdo")   doTask(id);
   if(btn.dataset.act === "boxout")  unplace(id);
   if(btn.dataset.act === "boxundo") undoToday(id);
+});
+
+/* ================= ドラッグで箱に入れる ================= */
+let dragId = null;
+function dragStart(e){
+  const row = e.target.closest("[data-id]"); if(!row) return;
+  dragId = row.dataset.id;
+  try{ e.dataTransfer.setData("text/plain", dragId); }catch(_){}
+  // 箱へは move、ルーレットへは copy。どちらも許すこと（片方だけだと drop が起きない）
+  e.dataTransfer.effectAllowed = "copyMove";
+  row.classList.add("dragging");
+}
+function dragEnd(){
+  dragId = null;
+  document.querySelectorAll(".dragging").forEach(x => x.classList.remove("dragging"));
+  document.querySelectorAll(".over").forEach(x => x.classList.remove("over"));
+}
+function draggedId(e){
+  if(dragId) return dragId;
+  try{ return e.dataTransfer.getData("text/plain"); }catch(_){ return ""; }
+}
+document.addEventListener("dragend", dragEnd);
+
+$("boxList").addEventListener("dragstart", dragStart);
+$("boxList").addEventListener("dragover", e => {
+  const row = e.target.closest(".boxrow"); if(!row) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  document.querySelectorAll(".boxrow.over").forEach(x => x.classList.remove("over"));
+  row.classList.add("over");
+});
+$("boxList").addEventListener("dragleave", e => {
+  const row = e.target.closest(".boxrow");
+  if(row && !row.contains(e.relatedTarget)) row.classList.remove("over");
+});
+$("boxList").addEventListener("drop", e => {
+  e.preventDefault();
+  const row = e.target.closest(".boxrow");
+  const id = draggedId(e);
+  dragEnd();
+  if(!row || !id || !taskById(id)) return;
+  placeTaskAt(id, parseInt(row.dataset.i, 10) || 0);
 });
 
 /* ================= 描画：箱に入れていないタスク ================= */
@@ -667,10 +775,10 @@ function renderUnplaced(){
         sub.push(t.freq.unit === "once"
           ? "単発"
           : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
-        return '<div class="item" data-id="' + t.id + '">' +
+        return '<div class="item" data-id="' + t.id + '" draggable="true">' +
+          '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
           '<div class="grow">' + taskTitle(t) + '<div class="s">' + esc(sub.join(" ・ ")) + '</div></div>' +
           (late ? '<span class="tag late">遅れ</span>' : '') +
-          '<button class="iconbtn put" data-act="put" title="箱に入れる">箱へ</button>' +
           (canSkip(t) ? '<button class="iconbtn" data-act="skip" title="今日はやらない">⏭</button>' : '') +
         '</div>';
       }).join("");
@@ -680,15 +788,15 @@ function renderUnplaced(){
       '<div class="ph"><span>箱に入れていないタスク</span><span class="cnt">' +
         list.length + ' 件 ・ 空き ' + emptyBoxes(d) + ' 箱</span></div>' +
       body +
+      (list.length ? '<div class="empty-note" style="padding:10px 2px 0">左の箱か、下のルーレットへドラッグ。</div>' : '') +
     '</div>';
 }
 $("unplaced").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   const row = e.target.closest(".item"); if(!row) return;
-  const id = row.dataset.id;
-  if(btn.dataset.act === "put")  placeTask(id);
-  if(btn.dataset.act === "skip") skipToday(id);
+  if(btn.dataset.act === "skip") skipToday(row.dataset.id);
 });
+$("unplaced").addEventListener("dragstart", dragStart);
 
 /* ================= 描画：ルーティーン ================= */
 function routinesNow(){
@@ -731,6 +839,133 @@ $("routineBox").addEventListener("click", e => {
   const row = e.target.closest(".routine"); if(!row) return;
   toggleRoutine(row.dataset.id);
 });
+
+/* ================= ルーレット =================
+   決めるのが面倒なとき用。ドラッグで候補を入れて、回して1つ選ぶ
+============================================================ */
+let spinning = false;
+let winner = null;      // 選ばれたタスクid（保存しない。その場かぎり）
+
+function addToRoulette(id){
+  const d = getDay();
+  if(!taskById(id)) return;
+  if(d.roulette.includes(id)){ toast("すでに入っています"); return; }
+  d.roulette.push(id);
+  save(); renderRoulette(); toast("ルーレットに追加");
+}
+function removeFromRoulette(id){
+  const d = getDay();
+  const i = d.roulette.indexOf(id);
+  if(i < 0) return;
+  d.roulette.splice(i, 1);
+  if(winner === id) winner = null;
+  save(); renderRoulette();
+}
+function spinRoulette(){
+  if(spinning) return;
+  const ids = getDay().roulette.filter(id => taskById(id));
+  if(ids.length < 2){ toast("2つ以上入れてから回してください"); return; }
+  spinning = true; winner = null;
+  renderRoulette();
+  const face = $("spinFace");
+  let i = Math.floor(Math.random() * ids.length), t = 0, wait = 55;
+  const step = ()=>{
+    if(!face.isConnected){ spinning = false; return; }
+    face.textContent = taskById(ids[i % ids.length]).text;
+    i++; t += wait;
+    if(t < 1500){
+      if(t > 950) wait += 22;                 // 終わりに向けてゆっくりに
+      setTimeout(step, wait);
+    } else {
+      winner = ids[Math.floor(Math.random() * ids.length)];
+      spinning = false;
+      renderRoulette();
+    }
+  };
+  step();
+}
+function renderRoulette(){
+  if(spinning && $("spinFace")) return;        // 回転中は組み替えない
+  const d = getDay();
+  const ids = d.roulette.filter(id => taskById(id));
+  const cands = ids.map(id => {
+    const t = taskById(id);
+    return '<div class="cand" data-id="' + id + '">' +
+      '<div class="cn">' + esc(t.text) + '</div>' +
+      '<span class="s">' + boxTime(t.size) + '</span>' +
+      '<button class="iconbtn" data-act="rout" title="外す">✕</button>' +
+    '</div>';
+  }).join("");
+
+  const w = winner && taskById(winner);
+  const face = spinning
+    ? '<div class="face spin" id="spinFace">…</div>'
+    : (w ? '<div class="face won" id="spinFace">' + esc(w.text) + '</div>' : '');
+
+  $("rouletteBox").innerHTML =
+    '<div class="panel roulette">' +
+      '<div class="ph"><span>🎲 ルーレット</span><span class="cnt">' + ids.length + ' 件</span></div>' +
+      '<div class="drop" id="rouDrop">' +
+        (ids.length ? 'ここにドラッグして候補を足す' : '決められないときは、ここにタスクをドラッグ') +
+      '</div>' +
+      cands + face +
+      (ids.length >= 2
+        ? '<button class="spinbtn" id="spinBtn"' + (spinning ? ' disabled' : '') + '>' +
+            (spinning ? '回っています…' : '回す') + '</button>'
+        : '') +
+      (w && !spinning
+        ? '<div class="wonrow">' +
+            '<button class="btn" data-act="rwin">これを箱に入れる</button>' +
+            '<button class="btn ghost" data-act="rspin">もう一回</button>' +
+          '</div>'
+        : '') +
+    '</div>';
+  if($("spinBtn")) $("spinBtn").onclick = spinRoulette;
+}
+$("rouletteBox").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const act = btn.dataset.act;
+  if(act === "rout"){ removeFromRoulette(e.target.closest(".cand").dataset.id); return; }
+  if(act === "rspin"){ spinRoulette(); return; }
+  if(act === "rwin" && winner){
+    const id = winner;
+    placeTask(id);
+    if(getDay().slots.includes(id)){ removeFromRoulette(id); renderAll(); }
+  }
+});
+$("rouletteBox").addEventListener("dragover", e => {
+  const z = e.target.closest(".roulette"); if(!z) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+  const drop = $("rouDrop"); if(drop) drop.classList.add("over");
+});
+$("rouletteBox").addEventListener("dragleave", e => {
+  if(!e.target.closest(".roulette")) return;
+  const drop = $("rouDrop"); if(drop) drop.classList.remove("over");
+});
+$("rouletteBox").addEventListener("drop", e => {
+  e.preventDefault();
+  const id = draggedId(e);
+  dragEnd();
+  const drop = $("rouDrop"); if(drop) drop.classList.remove("over");
+  if(id && taskById(id)) addToRoulette(id);
+});
+
+/* ================= 完了したときの一言（ドーン） ================= */
+let cheerTimer, cheerOut;
+function cheer(){
+  if(!S.cheers.length) return;
+  const el = $("cheer");
+  $("cheerText").textContent = S.cheers[Math.floor(Math.random() * S.cheers.length)].text;
+  clearTimeout(cheerTimer); clearTimeout(cheerOut);
+  el.classList.remove("out");
+  el.classList.add("on");
+  // 取り消しの邪魔をしないよう、すぐ引っこめる
+  cheerTimer = setTimeout(()=>{
+    el.classList.add("out");
+    cheerOut = setTimeout(()=> el.classList.remove("on", "out"), 350);
+  }, 1100);
+}
 
 /* ================= 描画：見送り / 今日やったこと ================= */
 function renderSkipped(){
@@ -1069,8 +1304,53 @@ $("philoList").addEventListener("click", async e => {
   }
 });
 
+/* ================= やったときの一言 ================= */
+function addCheer(){
+  const v = $("cheerInput").value.trim();
+  if(!v) return;
+  S.cheers.push({ id: uid(), text: v });
+  $("cheerInput").value = "";
+  save(); renderAll(); cheer();          // その場で出して見せる
+}
+$("cheerAdd").onclick = addCheer;
+$("cheerInput").addEventListener("keydown", e => { if(e.key === "Enter") addCheer(); });
+
+function renderCheers(){
+  const el = $("cheerList");
+  if(!S.cheers.length){
+    el.innerHTML = '<div class="empty-note">一言が無いときは、何も出ません。</div>';
+    return;
+  }
+  el.innerHTML = S.cheers.map(c =>
+    '<div class="item" data-id="' + c.id + '">' +
+      '<div class="grow"><div class="t">' + esc(c.text) + '</div></div>' +
+      '<button class="iconbtn" data-act="ctry" title="出してみる">▶</button>' +
+      '<button class="iconbtn del" data-act="cdel" title="削除">✕</button>' +
+    '</div>').join("");
+}
+$("cheerList").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const id = e.target.closest(".item").dataset.id;
+  const i = S.cheers.findIndex(c => c.id === id); if(i < 0) return;
+  if(btn.dataset.act === "ctry"){
+    $("cheerText").textContent = S.cheers[i].text;
+    const el = $("cheer");
+    el.classList.remove("out"); el.classList.add("on");
+    setTimeout(()=>{ el.classList.add("out"); setTimeout(()=> el.classList.remove("on","out"), 350); }, 1100);
+    return;
+  }
+  if(btn.dataset.act === "cdel"){
+    const ok = await askConfirm("この一言を削除しますか？", "削除", S.cheers[i].text);
+    if(!ok) return;
+    const idx = S.cheers.findIndex(c => c.id === id); if(idx < 0) return;
+    const removed = S.cheers.splice(idx, 1)[0];
+    save(); renderAll();
+    toast("削除しました", ()=>{ S.cheers.splice(idx, 0, removed); save(); renderAll(); toast("戻しました"); });
+  }
+});
+
 /* 追加フォームの開閉 */
-const ADD_LABEL = { philoForm: "＋ 言葉を追加" };
+const ADD_LABEL = { philoForm: "＋ 言葉を追加", cheerForm: "＋ 一言を追加" };
 function setForm(name, open){
   const b = document.querySelector('.addtoggle[data-form="' + name + '"]');
   $(name).style.display = open ? "" : "none";
@@ -1210,6 +1490,7 @@ function renderAll(){
   renderNow();
   renderBoxes();
   renderUnplaced();
+  renderRoulette();
   renderRoutines();
   renderSkipped();
   renderDoneToday();
@@ -1219,6 +1500,7 @@ function renderAll(){
   $("taskUrlList").innerHTML = [...new Set(S.tasks.map(t => t.url).filter(Boolean))]
     .map(u => '<option value="' + esc(u) + '"></option>').join("");
   renderPhilos();
+  renderCheers();
   renderSettings();
   renderStats();
 }
@@ -1238,6 +1520,7 @@ function rollDay(){
     if(S.lastOpen && S.philos.length) S.philoIdx = (S.philoIdx + 1) % S.philos.length;
     S.lastOpen = k;
     cursor = 0;
+    winner = null;
     prune();
     getDay(k);      // その日の箱を基本値から用意する
     save();
