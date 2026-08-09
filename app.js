@@ -371,6 +371,7 @@ function removeBox(){
 =================================================== */
 const IMG_MAX   = 400 * 1024;   // 1枚の上限（データURLの長さ）
 const IMG_SIDE  = 1600;         // 長辺の上限
+const IMG_LIMIT = 8;            // 保存できる枚数（localStorage の容量に収まる数）
 
 /* 400KB 以下になるまで、画質 → 寸法の順に落とす */
 function compressImage(file){
@@ -410,8 +411,9 @@ function compressImage(file){
     fr.readAsDataURL(file);
   });
 }
-/* 追加できたら true。容量オーバーなら元に戻して false */
+/* 追加できたら true。枚数オーバー・容量オーバーなら元に戻して false */
 function addImage(dataUrl){
+  if(S.images.length >= IMG_LIMIT) return false;
   const prev = S.images.slice();
   S.images.push({ id: uid(), data: dataUrl, at: Date.now() });
   if(!trySave()){
@@ -1489,27 +1491,37 @@ $("imgInput").onchange = async e => {
   const files = [...e.target.files];
   e.target.value = "";
   if(!files.length) return;
-  let added = 0, full = false, bad = 0;
+  if(S.images.length >= IMG_LIMIT){
+    toast("画像は" + IMG_LIMIT + "枚まで。どれかを消してから追加してください");
+    return;
+  }
+  let added = 0, full = false, over = false, bad = 0;
   toast("画像を取り込んでいます…");
   for(const f of files){
+    if(S.images.length >= IMG_LIMIT){ over = true; break; }   // 8枚に達した
     let data;
     try{ data = await compressImage(f); }
     catch(err){ bad++; continue; }
-    if(data.length > IMG_MAX){ bad++; continue; }      // どう縮めても入らなかった
+    if(data.length > IMG_MAX){ bad++; continue; }             // どう縮めても入らなかった
     if(!addImage(data)){ full = true; break; }
     added++;
   }
   renderAll();
   if(added) toast(added + "枚を保存しました（各 400KB 以下に圧縮）");
-  if(full)  toast("保存できる容量がいっぱいです。古い画像を消してください");
+  if(over)  toast("画像は" + IMG_LIMIT + "枚まで。ここまでを保存しました");
+  else if(full) toast("保存できる容量がいっぱいです。古い画像を消してください");
   else if(!added && bad) toast("画像として読み込めませんでした");
 };
 function renderImages(){
   const el = $("imgList");
   const todayId = S.images.length ? (getDay().img || "") : "";
+  const atLimit = S.images.length >= IMG_LIMIT;
   $("imgNote").textContent = S.images.length
-    ? S.images.length + "枚 ・ 保存量 約" + usedKB() + "KB"
-    : "まだありません";
+    ? S.images.length + " / " + IMG_LIMIT + "枚 ・ 保存量 約" + usedKB() + "KB" +
+      (atLimit ? "（いっぱいです）" : "")
+    : "まだありません（" + IMG_LIMIT + "枚まで）";
+  $("btnAddImg").disabled = atLimit;
+  $("btnAddImg").style.opacity = atLimit ? ".45" : "";
   if(!S.images.length){
     el.innerHTML = '<div class="empty-note">画像を入れると、箱を終えるたびに少しずつ見えてきます。</div>';
     return;
