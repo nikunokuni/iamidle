@@ -317,6 +317,66 @@ kbd{
   font-size:14px;font-family:inherit;cursor:pointer;padding:0 0 0 14px;
 }
 
+/* ---------- ごほうびの画像 ----------
+   箱が画像を隠し、終わった箱から透けて見えてくる
+   ------------------------------------ */
+.boxarea.has-img{
+  background-size:cover;background-position:center;
+  border-radius:16px;padding:10px;margin-top:4px;
+  box-shadow:inset 0 0 0 1px var(--line);
+}
+/* 見出しが画像に埋もれないよう、下地を敷く */
+.boxarea.has-img h2{
+  display:inline-block;margin:2px 0 8px;padding:5px 11px;
+  background:rgba(15,17,21,.9);border-radius:8px;
+}
+/* まだの箱：中を見せない */
+.boxarea.has-img .boxrow{background:var(--card);border-color:var(--line)}
+.boxarea.has-img .boxrow.empty{background:rgba(27,32,42,.94)}
+.boxarea.has-img .boxrow.current{background:#1d2534}
+/* 終わった箱：透けて画像が出る */
+.boxarea.has-img .boxrow.done{
+  background:transparent;border-color:rgba(255,255,255,.3);opacity:1;
+  text-shadow:0 1px 8px rgba(0,0,0,.95), 0 0 20px rgba(0,0,0,.8);
+}
+.boxarea.has-img .boxrow.done .bt{color:#fff}
+.boxarea.has-img .boxrow.done .bs,
+.boxarea.has-img .boxrow.done .bi{color:rgba(255,255,255,.8)}
+.boxarea.has-img .boxrow.done .check.on{box-shadow:0 0 12px rgba(0,0,0,.6)}
+
+/* やり切ったら「いま、これ」に移動して、はっきり出る */
+.now.reward{
+  background-size:cover;background-position:center;
+  min-height:320px;display:flex;flex-direction:column;justify-content:flex-end;
+  border-color:rgba(255,255,255,.25);position:relative;overflow:hidden;
+}
+.now.reward::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(0,0,0,.82) 0%,rgba(0,0,0,.35) 38%,rgba(0,0,0,0) 68%);
+}
+.now.reward > *{position:relative;z-index:1}
+.now.reward .label{color:var(--accent2)}
+.now.reward .label,.now.reward .empty{text-shadow:0 2px 14px rgba(0,0,0,.95)}
+.now.reward .empty{color:#fff;font-size:19px;font-weight:600}
+
+/* 設定の画像一覧 */
+.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px}
+.imgs .cell{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);aspect-ratio:4/3}
+.imgs .cell img{width:100%;height:100%;object-fit:cover;display:block}
+.imgs .cell .rm{
+  position:absolute;top:5px;right:5px;
+  background:rgba(0,0,0,.65);border:none;color:#fff;border-radius:8px;
+  width:26px;height:26px;font-size:13px;font-family:inherit;cursor:pointer;
+}
+.imgs .cell .rm:hover{background:var(--danger)}
+.imgs .cell .sz{
+  position:absolute;left:5px;bottom:5px;
+  background:rgba(0,0,0,.65);color:#fff;font-size:10px;
+  padding:2px 6px;border-radius:6px;
+}
+.imgs .cell.today{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(255,209,102,.35)}
+.imgs .cell.today .sz{background:var(--accent2);color:#241c00;font-weight:700}
+
 /* ---------- 完了したときの一言（ドーン） ---------- */
 .cheer{
   position:fixed;inset:0;z-index:150;display:none;

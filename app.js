@@ -14,8 +14,9 @@ const SEED_CHEERS = ["やったぜ！", "よくやった", "えらい", "その�
 const SLEEP_LINE = "あとは寝るだけ。";
 
 const DEFAULTS = {
-  v: 4,
+  v: 5,
   tasks: [],
+  images: [],         // { id, data:dataURL, at } ごほうびの画像
   philos: [],
   philoIdx: 0,
   // { id, text } 完了したときに1つ出る一言
@@ -83,6 +84,8 @@ function migrate(d){
     });
     d.v = 4;
   }
+  // v4 → v5 : ごほうびの画像（増えるのは器だけ。移すものは無い）
+  if(!(d.v >= 5)) d.v = 5;
   // 取りこぼしの保険（壊れた値で描画が止まらないように）
   d.tasks = Array.isArray(d.tasks) ? d.tasks : [];
   d.tasks.forEach(t => {
@@ -95,6 +98,7 @@ function migrate(d){
   });
   d.philos    = Array.isArray(d.philos) ? d.philos : [];
   d.cheers    = Array.isArray(d.cheers) ? d.cheers : [];
+  d.images    = Array.isArray(d.images) ? d.images.filter(x => x && typeof x.data === "string") : [];
   d.routines  = Array.isArray(d.routines) ? d.routines : [];
   d.routineDone = (d.routineDone && typeof d.routineDone === "object") ? d.routineDone : {};
   d.days      = (d.days && typeof d.days === "object") ? d.days : {};
@@ -102,9 +106,17 @@ function migrate(d){
   delete d.links;   // v2 までの未使用フィールド
   return d;
 }
+/* 書けたら true。画像を足すときは、これで先に試して駄目なら戻す */
+function trySave(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); return true; }
+  catch(e){ return false; }
+}
 function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
-  catch(e){ toast("保存に失敗しました"); }
+  if(!trySave()) toast("保存に失敗しました。設定から画像を減らしてください");
+}
+/* いま保存に使っているおおよその量（KB） */
+function usedKB(){
+  try{ return Math.round(JSON.stringify(S).length / 1024); }catch(e){ return 0; }
 }
 let S = load();
 
@@ -349,6 +361,83 @@ function removeBox(){
       if(cut.label) toast("「" + cut.label + "」として記録した");
     }
   });
+}
+
+/* ================= ごほうびの画像 =================
+   localStorage に入れるので、1枚 400KB 以下に落としてから持つ。
+   容量は他のデータと同じ引き出しを使う。**画像のせいでタスクが
+   保存できなくなってはいけない**ので、追加は trySave() で試して
+   駄目なら必ず元に戻すこと
+=================================================== */
+const IMG_MAX   = 400 * 1024;   // 1枚の上限（データURLの長さ）
+const IMG_SIDE  = 1600;         // 長辺の上限
+
+/* 400KB 以下になるまで、画質 → 寸法の順に落とす */
+function compressImage(file){
+  return new Promise((resolve, reject) => {
+    if(!/^image\//.test(file.type)) return reject(new Error("画像ではありません"));
+    const fr = new FileReader();
+    fr.onerror = ()=> reject(new Error("読み込めませんでした"));
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error("画像として開けませんでした"));
+      img.onload = ()=>{
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if(!w || !h) return reject(new Error("画像として開けませんでした"));
+        if(Math.max(w,h) > IMG_SIDE){
+          const r = IMG_SIDE / Math.max(w,h);
+          w = Math.round(w*r); h = Math.round(h*r);
+        }
+        let out = "";
+        for(let round = 0; round < 7; round++){
+          const c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#0f1115";                 // 透過PNGが黒く沈まないように
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          for(const q of [0.85, 0.75, 0.65, 0.55, 0.45, 0.35]){
+            out = c.toDataURL("image/jpeg", q);
+            if(out.length <= IMG_MAX) return resolve(out);
+          }
+          if(w < 320 || h < 320) break;
+          w = Math.round(w*0.8); h = Math.round(h*0.8);
+        }
+        resolve(out);   // ここまで縮めても超えるなら、いちばん小さい版を返す（呼び出し側で断る）
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+/* 追加できたら true。容量オーバーなら元に戻して false */
+function addImage(dataUrl){
+  const prev = S.images.slice();
+  S.images.push({ id: uid(), data: dataUrl, at: Date.now() });
+  if(!trySave()){
+    S.images = prev;
+    trySave();
+    return false;
+  }
+  return true;
+}
+function removeImage(id){
+  const i = S.images.findIndex(x => x.id === id);
+  if(i < 0) return;
+  S.images.splice(i, 1);
+  // その画像を今日のぶんに選んでいたら選び直す
+  Object.keys(S.days).forEach(k => { if(S.days[k].img === id) delete S.days[k].img; });
+  save(); renderAll(); toast("画像を削除しました");
+}
+/* その日の1枚。いちど選んだら日付が変わるまで変えない */
+function dayImage(){
+  if(!S.images.length) return null;
+  const d = getDay();
+  if(!d.img || !S.images.some(x => x.id === d.img)){
+    d.img = S.images[Math.floor(Math.random() * S.images.length)].id;
+    save();
+  }
+  return S.images.find(x => x.id === d.img) || null;
 }
 
 /* ================= 頻度モデル =================
@@ -615,6 +704,15 @@ function renderNow(){
   const el = $("nowCard");
   const d = getDay();
   const g = currentGroup();
+  const img = dayImage();
+
+  // やり切ったら、箱の背景にあった画像がここへ移ってはっきり出る
+  el.className = "now";
+  el.style.backgroundImage = "";
+  if(img && !g && dayFinished(d)){
+    el.classList.add("reward");
+    el.style.backgroundImage = 'url("' + img.data + '")';
+  }
 
   if(!g){
     let msg;
@@ -666,8 +764,16 @@ function renderNow(){
 function renderBoxes(){
   const d = getDay();
   const cur = currentGroup();
+  const el = $("boxList");
+
+  // 画像は箱に隠れていて、終わった箱から透けてくる。やり切ったら「いま、これ」へ移る
+  const img = dayImage();
+  const showHere = img && !dayFinished(d) && d.count > 0;
+  el.className = "boxarea" + (showHere ? " has-img" : "");
+  el.style.backgroundImage = showHere ? 'url("' + img.data + '")' : "";
+
   if(d.count === 0){
-    $("boxList").innerHTML = '<div class="allclear"><span class="big">📦</span>今日は箱がありません。</div>';
+    el.innerHTML = '<div class="allclear"><span class="big">📦</span>今日は箱がありません。</div>';
     return;
   }
   const rows = boxGroups(d).map(g => {
@@ -696,8 +802,10 @@ function renderBoxes(){
     '</div>';
   }).join("");
 
-  $("boxList").innerHTML =
-    '<h2>今日の箱（1箱 ＝ 30分）</h2>' + rows +
+  el.innerHTML =
+    '<h2>今日の箱（1箱 ＝ 30分）' +
+      (showHere ? '　<span style="letter-spacing:0">終わった箱から見えてきます</span>' : '') +
+    '</h2>' + rows +
     (dayFinished(d)
       ? '<div class="allclear"><span class="big">🌙</span>箱を使い切りました。今日は終了。<br>' +
         esc(SLEEP_LINE) + '<br>まだやるなら、上の ＋ で箱を足してください。</div>'
@@ -1375,6 +1483,52 @@ function onBaseChange(){
 $("baseWeekday").addEventListener("change", onBaseChange);
 $("baseHoliday").addEventListener("change", onBaseChange);
 
+/* ================= 設定：お気に入りの画像 ================= */
+$("btnAddImg").onclick = ()=> $("imgInput").click();
+$("imgInput").onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  if(!files.length) return;
+  let added = 0, full = false, bad = 0;
+  toast("画像を取り込んでいます…");
+  for(const f of files){
+    let data;
+    try{ data = await compressImage(f); }
+    catch(err){ bad++; continue; }
+    if(data.length > IMG_MAX){ bad++; continue; }      // どう縮めても入らなかった
+    if(!addImage(data)){ full = true; break; }
+    added++;
+  }
+  renderAll();
+  if(added) toast(added + "枚を保存しました（各 400KB 以下に圧縮）");
+  if(full)  toast("保存できる容量がいっぱいです。古い画像を消してください");
+  else if(!added && bad) toast("画像として読み込めませんでした");
+};
+function renderImages(){
+  const el = $("imgList");
+  const todayId = S.images.length ? (getDay().img || "") : "";
+  $("imgNote").textContent = S.images.length
+    ? S.images.length + "枚 ・ 保存量 約" + usedKB() + "KB"
+    : "まだありません";
+  if(!S.images.length){
+    el.innerHTML = '<div class="empty-note">画像を入れると、箱を終えるたびに少しずつ見えてきます。</div>';
+    return;
+  }
+  el.innerHTML = '<div class="imgs">' + S.images.map(x =>
+    '<div class="cell' + (x.id === todayId ? " today" : "") + '" data-id="' + x.id + '">' +
+      '<img src="' + x.data + '" alt="">' +
+      '<button class="rm" data-act="imgdel" title="削除">✕</button>' +
+      '<span class="sz">' + (x.id === todayId ? "今日の1枚" : Math.round(x.data.length/1024) + "KB") + '</span>' +
+    '</div>').join("") + '</div>';
+}
+$("imgList").addEventListener("click", async e => {
+  const btn = e.target.closest('[data-act="imgdel"]'); if(!btn) return;
+  const id = e.target.closest(".cell").dataset.id;
+  const ok = await askConfirm("この画像を削除しますか？", "削除");
+  if(!ok) return;
+  removeImage(id);
+});
+
 /* 今月、何で箱が潰れたか */
 function renderCutStats(){
   const d = dayStart(dayKey());
@@ -1400,6 +1554,7 @@ function renderCutStats(){
     '<div class="kv"><span>合計</span><span><b>' + total + '</b> 箱 ・ ' + boxTime(total) + '</span></div>';
 }
 function renderStats(){
+  renderImages();
   renderCutStats();
   const once = S.tasks.filter(t => t.freq.unit === "once");
   const rep  = S.tasks.filter(t => t.freq.unit !== "once");
@@ -1416,7 +1571,9 @@ function renderStats(){
     '<div class="kv"><span>くり返しタスク</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
     '<div class="kv"><span>ルーティーン</span><span>' + S.routines.length + '件</span></div>' +
     '<div class="kv"><span>リンク付きタスク</span><span>' + S.tasks.filter(t => t.url).length + '件</span></div>' +
-    '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>';
+    '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>' +
+    '<div class="kv"><span>画像</span><span>' + S.images.length + '枚</span></div>' +
+    '<div class="kv"><span>保存量のめやす</span><span>約 ' + usedKB() + ' KB</span></div>';
 }
 $("btnExport").onclick = ()=>{
   const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });

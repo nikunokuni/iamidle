@@ -152,6 +152,19 @@
       </div>
     </div>
 
+    <h2>お気に入りの画像</h2>
+    <div class="empty-note" style="padding-top:0">
+      「今日の箱」の背景になります。最初はタスクの箱に隠れていて、<br>
+      終わった箱から透けて見え、やり切ると「いま、これ」に大きく出ます。<br>
+      その日に出る1枚は、保存した中から毎日ランダムに選ばれます。
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="btnAddImg">画像を追加</button>
+      <span class="fnote" id="imgNote"></span>
+    </div>
+    <input type="file" id="imgInput" accept="image/*" multiple style="display:none">
+    <div id="imgList"></div>
+
     <h2>減らした箱（今月）</h2>
     <div id="cutStats"></div>
 
