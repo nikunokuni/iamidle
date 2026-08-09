@@ -13,6 +13,22 @@ const APP_VERSION = "2026-08-09.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
+
+/* ▼ ここの2つは「リンクとアプリ」の道具だが、わざと上に置いてある。
+   migrate() が normLink() を呼び、normLink() がこの2つを見るため。
+   migrate() は load() の途中＝この下のどの const よりも先に動くので、
+   下に置くと TDZ で落ちる。落ちると catch が初期状態を返し、
+   本人のデータを空で上書きしてしまう。動かさないこと */
+function lid(){ return "lk" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+/* 起動ファイルから呼べるブラウザ。cmd は Windows の App Paths に登録される名前 */
+const BROWSERS = [
+  { key:"",        label:"既定のブラウザ", cmd:"" },
+  { key:"chrome",  label:"Chrome",  cmd:"chrome" },
+  { key:"brave",   label:"Brave",   cmd:"brave" },
+  { key:"edge",    label:"Edge",    cmd:"msedge" },
+  { key:"firefox", label:"Firefox", cmd:"firefox" }
+];
+
 /* 最初から入れておく一言。消したぶんは保存側が空配列で上書きするので復活しない */
 const SEED_CHEERS = ["やったぜ！", "よくやった", "えらい", "その調子", "ひとつ片づいた"];
 /* 箱を使い切ったときに出す一言（仮。差し替えたければここ） */
@@ -36,12 +52,24 @@ const DEFAULTS = {
   foldSkip: false
 };
 
+/* 読み込みに失敗したときの理由。起動時に知らせるために持っておく */
+let loadFailed = "";
 function load(){
+  let raw = null;
   try{
-    const raw = localStorage.getItem(KEY);
+    raw = localStorage.getItem(KEY);
     if(!raw) return structuredClone(DEFAULTS);
     return migrate(Object.assign(structuredClone(DEFAULTS), JSON.parse(raw)));
   }catch(e){
+    /* ここに来たら初期状態を返すことになり、起動時の save() が
+       読めたはずのデータを空で上書きしてしまう。
+       消える前に必ず横へ退避して、黙って無かったことにしない。
+       （実際に v6 の移行で踏んだ。migrate() の中で、あとから const 宣言される
+         ものに触れると TDZ で落ちてここへ来る） */
+    if(raw){
+      try{ localStorage.setItem(KEY + "-broken", raw); }catch(_){}
+      loadFailed = String((e && e.message) || e);
+    }
     return structuredClone(DEFAULTS);
   }
 }
@@ -672,16 +700,7 @@ function moveCursor(n){
    exe を直に叩けないのはブラウザの決まりごとで、迂回する方法は無い。
    そのぶんを「起動ファイル(.bat)の書き出し」で埋めている
 ============================================================ */
-function lid(){ return "lk" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-
-/* 起動ファイルから呼べるブラウザ。cmd は Windows の App Paths に登録される名前 */
-const BROWSERS = [
-  { key:"",        label:"既定のブラウザ", cmd:"" },
-  { key:"chrome",  label:"Chrome",  cmd:"chrome" },
-  { key:"brave",   label:"Brave",   cmd:"brave" },
-  { key:"edge",    label:"Edge",    cmd:"msedge" },
-  { key:"firefox", label:"Firefox", cmd:"firefox" }
-];
+/* lid() と BROWSERS は storage の節の頭にある（migrate() から使うため） */
 function browserOf(key){ return BROWSERS.find(b => b.key === key) || BROWSERS[0]; }
 
 function normalizeUrl(u){
@@ -2125,6 +2144,12 @@ $("taskSize").dispatchEvent(new Event("input"));
 renderAll();
 save();
 checkForUpdate();
+
+/* 読み込みに失敗していたら、必ず気づけるようにする（退避先は KEY + "-broken"） */
+if(loadFailed){
+  toast("前のデータを読めませんでした（" + loadFailed + "）。中身は消さずに退避してあります");
+  console.error("load failed:", loadFailed, "→ 退避先 localStorage:", KEY + "-broken");
+}
 
 /* タブを開きっぱなしでも、午前2時／午後の切り替わりで表示が変わること */
 let lastKey = dayKey(), lastSlot = nowSlot();
