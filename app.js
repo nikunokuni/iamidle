@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-09.1";
+const APP_VERSION = "2026-08-09.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -19,7 +19,7 @@ const SEED_CHEERS = ["やったぜ！", "よくやった", "えらい", "その�
 const SLEEP_LINE = "あとは寝るだけ。";
 
 const DEFAULTS = {
-  v: 5,
+  v: 6,
   tasks: [],
   images: [],         // { id, data:dataURL, at } ごほうびの画像
   philos: [],
@@ -91,6 +91,18 @@ function migrate(d){
   }
   // v4 → v5 : ごほうびの画像（増えるのは器だけ。移すものは無い）
   if(!(d.v >= 5)) d.v = 5;
+  // v5 → v6 : リンクは1本 → 複数本（アプリの起動も持てる links[] に移す）
+  if(!(d.v >= 6)){
+    // ここは load() の途中で動く。あとで宣言される uid には触れないこと（lid は関数宣言なので使える）
+    (d.tasks || []).forEach(t => {
+      if(!Array.isArray(t.links)){
+        t.links = [];
+        if(t.url) t.links.push({ id: lid(), kind: "url", url: t.url, browser: "" });
+      }
+      delete t.url;
+    });
+    d.v = 6;
+  }
   // 取りこぼしの保険（壊れた値で描画が止まらないように）
   d.tasks = Array.isArray(d.tasks) ? d.tasks : [];
   d.tasks.forEach(t => {
@@ -100,6 +112,8 @@ function migrate(d){
     if(typeof t.size !== "number" || !(t.size >= 1)) t.size = 1;
     t.size = Math.min(16, Math.round(t.size));
     if(t.when !== "am" && t.when !== "pm") t.when = "any";
+    // 壊れた行は黙って捨てる。ここで形を揃えておけば、あとは links[] だけを見ればよい
+    t.links = Array.isArray(t.links) ? t.links.map(normLink).filter(Boolean) : [];
   });
   d.philos    = Array.isArray(d.philos) ? d.philos : [];
   d.cheers    = Array.isArray(d.cheers) ? d.cheers : [];
@@ -195,9 +209,14 @@ function openModal(opt){
   inp.style.display = opt.input ? "" : "none";
   inp.value = opt.value || "";
   inp.placeholder = opt.placeholder || "";
+  // 自由に中身を差し込める枠（開けなかったリンクの一覧など）
+  const ex = $("mExtra");
+  ex.innerHTML = opt.html || "";
+  ex.style.display = opt.html ? "" : "none";
   $("mOk").textContent = opt.ok || "OK";
   $("mOk").className = "btn" + (opt.danger ? " danger" : "");
   $("mCancel").textContent = opt.cancel || "やめる";
+  $("mCancel").style.display = opt.hideCancel ? "none" : "";
   m.classList.add("on");
   if(opt.input) setTimeout(()=>{ inp.focus(); inp.select(); }, 30);
   return new Promise(res => { modalDone = res; });
@@ -643,7 +662,28 @@ function moveCursor(n){
   renderNow(); renderBoxes();
 }
 
-/* ================= URL ================= */
+/* ================= リンクとアプリ =================
+   1つのタスクに何本でも持たせる。タスク名を押すと全部まとめて開く。
+     kind:"url" … ふつうのリンク。browser を指定できるが、
+                  ブラウザの中からは既定のブラウザでしか開けない（.bat 側でだけ効く）
+     kind:"app" … PCのアプリ。中身は2通り
+                  ・独自スキーム（steam:// discord:// obs:// など）… その場で起動できる
+                  ・exe のパス（C:\...\obs64.exe）… ブラウザからは起動できない。.bat でだけ動く
+   exe を直に叩けないのはブラウザの決まりごとで、迂回する方法は無い。
+   そのぶんを「起動ファイル(.bat)の書き出し」で埋めている
+============================================================ */
+function lid(){ return "lk" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+/* 起動ファイルから呼べるブラウザ。cmd は Windows の App Paths に登録される名前 */
+const BROWSERS = [
+  { key:"",        label:"既定のブラウザ", cmd:"" },
+  { key:"chrome",  label:"Chrome",  cmd:"chrome" },
+  { key:"brave",   label:"Brave",   cmd:"brave" },
+  { key:"edge",    label:"Edge",    cmd:"msedge" },
+  { key:"firefox", label:"Firefox", cmd:"firefox" }
+];
+function browserOf(key){ return BROWSERS.find(b => b.key === key) || BROWSERS[0]; }
+
 function normalizeUrl(u){
   u = (u || "").trim();
   if(!u) return "";
@@ -655,11 +695,181 @@ function normalizeUrl(u){
 function hostOf(url){
   try{ return new URL(url).hostname.replace(/^www\./,""); }catch(e){ return ""; }
 }
-function taskTitle(t){
-  if(!t.url) return '<div class="t">' + esc(t.text) + '</div>';
-  return '<div class="t"><a class="tasklink" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">' +
-    '<span>' + esc(t.text) + '</span><span class="ico">🔗</span></a></div>';
+/* アプリを呼び出す独自スキームか（steam:// obs:// discord:// …）。
+   http と、危ないもの・意味の無いものは弾く。
+   ▼ 頭を2文字以上にしているのは Windows のドライブレター（C:\...）を
+     スキームと見なさないため。1文字だけのスキームは無いものとして扱う */
+function isScheme(s){
+  s = String(s || "").trim();
+  return /^[a-z][a-z0-9+.\-]+:/i.test(s) &&
+        !/^(https?|file|javascript|data|vbscript|about|blob):/i.test(s);
 }
+/* 1行ぶんの形を整える。駄目なら null（呼び出し側で捨てる）。
+   migrate() から呼ぶので、あとで const 宣言されるものに触れないこと */
+function normLink(x){
+  if(!x || typeof x !== "object") return null;
+  const id = typeof x.id === "string" && x.id ? x.id : lid();
+  const raw = String(x.kind === "app" ? (x.path || x.url || "") : (x.url || x.path || "")).trim();
+  if(!raw) return null;
+  // 種類を間違えて入れていても、中身を見て正しい方へ寄せる
+  if(x.kind !== "app" && isScheme(raw)) return { id, kind:"app", path: raw, args: String(x.args || "").trim() };
+  if(x.kind === "app") return { id, kind:"app", path: raw, args: String(x.args || "").trim() };
+  const u = normalizeUrl(raw);
+  if(!u) return null;
+  const b = BROWSERS.some(bb => bb.key === x.browser) ? x.browser : "";
+  return { id, kind:"url", url: u, browser: b };
+}
+const linksOf = t => (t && Array.isArray(t.links)) ? t.links : [];
+/* exe のパス。ブラウザからは起動できない行 */
+const isExeLink  = l => l.kind === "app" && !isScheme(l.path);
+/* 起動ファイル(.bat)でないと言うとおりに開かない行があるか */
+function needsBat(t){
+  return linksOf(t).some(l => isExeLink(l) || (l.kind === "url" && l.browser));
+}
+function linkLabel(l){
+  if(l.kind === "url"){
+    const h = hostOf(l.url) || l.url;
+    return h + (l.browser ? "（" + browserOf(l.browser).label + "）" : "");
+  }
+  if(isScheme(l.path)) return l.path.length > 30 ? l.path.slice(0,29) + "…" : l.path;
+  return l.path.split(/[\\/]/).filter(Boolean).pop() || l.path;
+}
+/* 一覧の小さい行に出す要約 */
+function linkSummary(t){
+  const ls = linksOf(t);
+  if(!ls.length) return "";
+  return linkLabel(ls[0]) + (ls.length > 1 ? " 他" + (ls.length - 1) + "件" : "");
+}
+function taskTitle(t){
+  const ls = linksOf(t);
+  if(!ls.length) return '<div class="t">' + esc(t.text) + '</div>';
+  const href = (ls.find(l => l.kind === "url") || {}).url || "#";
+  return '<div class="t"><a class="tasklink" href="' + esc(href) + '" data-act="openall"' +
+    ' title="' + esc(ls.map(linkLabel).join(" / ")) + '" rel="noopener noreferrer">' +
+    '<span>' + esc(t.text) + '</span><span class="ico">🔗</span>' +
+    (ls.length > 1 ? '<span class="lc">' + ls.length + '</span>' : '') + '</a></div>';
+}
+
+/* ---------- 開く ----------
+   ここは押した瞬間（ユーザー操作の中）で開き切ること。
+   await をはさむと、その後の window.open はポップアップとして止められる */
+function launchScheme(p){
+  // 独自スキームは iframe に流し込む。ページから離れずに「◯◯を開きますか？」が出る
+  const f = document.createElement("iframe");
+  f.style.display = "none";
+  document.body.appendChild(f);
+  try{ f.contentWindow.location.href = p; }catch(e){}
+  setTimeout(()=>{ try{ f.remove(); }catch(e){} }, 2000);
+}
+function openTask(id){
+  const t = taskById(id); if(!t) return;
+  const ls = linksOf(t);
+  if(!ls.length) return;
+
+  const blocked = [];   // ポップアップとして止められたリンク
+  const manual  = [];   // exe。ブラウザからは起動できない
+  ls.forEach(l => {
+    if(l.kind === "url"){
+      let w = null;
+      // noopener を付けると Chrome は常に null を返すので、開けたかを見分けられない。
+      // 代わりに開いたあとで opener を切る
+      try{ w = window.open(l.url, "_blank"); }catch(e){}
+      if(w){ try{ w.opener = null; }catch(e){} }
+      else blocked.push(l);
+    }else if(isScheme(l.path)){
+      launchScheme(l.path);
+    }else{
+      manual.push(l);
+    }
+  });
+
+  const n = ls.length - blocked.length - manual.length;
+  if(!blocked.length && !manual.length){
+    toast(n > 1 ? n + "件ひらきました" : "ひらきました");
+    return;
+  }
+  openFallback(t, blocked, manual);
+}
+/* 開けなかったぶんの受け皿。ここのリンクは1つずつ押せば確実に開く */
+function openFallback(t, blocked, manual){
+  const rows = [];
+  blocked.forEach(l => {
+    rows.push('<a class="fbrow" href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">' +
+      '<span class="fbi">🔗</span><span class="fbt">' + esc(l.url) + '</span></a>');
+  });
+  manual.forEach(l => {
+    rows.push('<div class="fbrow off"><span class="fbi">🖥</span><span class="fbt">' +
+      esc(l.path + (l.args ? " " + l.args : "")) + '</span></div>');
+  });
+  const desc = [];
+  if(blocked.length) desc.push("ポップアップとして止められたものがあります。ブラウザの設定でこのページのポップアップを許可すると、次からは1クリックで全部開きます。");
+  if(manual.length)  desc.push("PCのアプリは、ブラウザからは起動できません。下の「起動ファイル」を書き出して実行してください。");
+  openModal({
+    title: "開けなかったもの（" + (blocked.length + manual.length) + "件）",
+    desc: desc.join("\n"),
+    html: rows.join("") +
+      (needsBat(t) ? '<div class="row mt10"><button class="btn ghost" id="fbBat">起動ファイル(.bat)を書き出す</button></div>' : ""),
+    ok: "閉じる", hideCancel: true
+  });
+  if($("fbBat")) $("fbBat").onclick = ()=> exportBat(t);
+}
+
+/* ---------- 起動ファイル(.bat) ----------
+   ブラウザには「Chromeで開く」「exeを起動する」ができない。
+   その2つだけは Windows のバッチにして本人に実行してもらう */
+function batStr(s){
+  // " は消す（引数の切れ目になる）。% はバッチが変数として食うので %% にする
+  return String(s).replace(/"/g, "").replace(/%/g, "%%");
+}
+function batFor(t){
+  const ls = linksOf(t);
+  const out = [
+    "@echo off",
+    "chcp 65001 > nul",
+    "rem 自己管理アプリが書き出した起動ファイル",
+    "rem タスク: " + batStr(t.text).replace(/[\r\n]+/g, " "),
+    ""
+  ];
+  let i = 0;
+  while(i < ls.length){
+    const l = ls[i];
+    if(l.kind === "app"){
+      out.push('start "" "' + batStr(l.path) + '"' + (l.args ? " " + batStr(l.args) : ""));
+      i++;
+      continue;
+    }
+    // 同じブラウザが続くぶんは1回のコマンドにまとめる（1つの窓にタブで並ぶ）
+    const b = browserOf(l.browser);
+    const urls = [];
+    while(i < ls.length && ls[i].kind === "url" && ls[i].browser === l.browser){
+      urls.push(ls[i].url); i++;
+    }
+    if(!b.cmd) urls.forEach(u => out.push('start "" "' + batStr(u) + '"'));
+    else out.push('start "" ' + b.cmd + " " + urls.map(u => '"' + batStr(u) + '"').join(" "));
+  }
+  out.push("");
+  return out.join("\r\n");
+}
+function exportBat(t){
+  // BOM は付けない。cmd は chcp 65001 のあとの行を UTF-8 として読める
+  const blob = new Blob([batFor(t)], { type: "application/octet-stream" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "起動_" + String(t.text).replace(/[\\/:*?"<>|\r\n]+/g, "_").slice(0, 40) + ".bat";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  toast("書き出しました。実行すると全部まとめて起動します");
+}
+
+/* タスク名（🔗つき）を押したら、そのタスクのリンクを全部開く。
+   どの一覧から押されても効くように document で拾う */
+document.addEventListener("click", e => {
+  const a = e.target.closest('[data-act="openall"]'); if(!a) return;
+  e.preventDefault();
+  const row = a.closest("[data-id]");
+  const id = a.dataset.taskId || (row ? row.dataset.id : "");
+  if(id) openTask(id);
+});
 
 /* ================= 描画：ヘッダーと箱バー ================= */
 function renderHeader(){
@@ -744,10 +954,12 @@ function renderNow(){
     ? "単発タスク"
     : freqLabel(t.freq) + ' ・ ' + st.period.label + ' ' + st.actual + '/' + st.count +
       (st.remainDays ? '（残り' + st.remainDays + '日）' : ''));
-  if(t.url) parts.push(hostOf(t.url));
+  const ls = linksOf(t);
+  if(ls.length) parts.push(linkSummary(t));
 
-  const title = t.url
-    ? '<a href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">' + esc(t.text) + ' <span style="font-size:18px">🔗</span></a>'
+  const title = ls.length
+    ? '<a href="' + esc((ls.find(l => l.kind === "url") || {}).url || "#") + '" data-act="openall" data-task-id="' +
+      esc(t.id) + '" rel="noopener noreferrer">' + esc(t.text) + ' <span style="font-size:18px">🔗</span></a>'
     : esc(t.text);
 
   el.innerHTML =
@@ -756,7 +968,8 @@ function renderNow(){
     '<div class="sub">' + esc(parts.join(" ・ ")) + '</div>' +
     '<div class="btnrow">' +
       '<button id="nowDone">' + (t.freq.unit === "once" ? "できた" : "やった") + '</button>' +
-      (t.url ? '<a class="open" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">開く</a>' : '') +
+      (ls.length ? '<button class="open" id="nowOpen">' + (ls.length > 1 ? ls.length + "件ひらく" : "開く") + '</button>' : '') +
+      (needsBat(t) ? '<button class="open" id="nowBat" title="Chrome指定やPCのアプリは、この起動ファイルからでないと開けません">起動ファイル</button>' : '') +
       '<button class="skip" id="nowNext">次の箱へ</button>' +
       (canSkip(t) ? '<button class="skip" id="nowSkip">今日はやらない</button>' : '') +
     '</div>' +
@@ -764,6 +977,8 @@ function renderNow(){
 
   $("nowDone").onclick = ()=> doTask(t.id);
   $("nowNext").onclick = ()=> moveCursor(1);
+  if($("nowOpen")) $("nowOpen").onclick = ()=> openTask(t.id);
+  if($("nowBat"))  $("nowBat").onclick  = ()=> exportBat(t);
   if($("nowSkip")) $("nowSkip").onclick = ()=> skipToday(t.id);
 }
 
@@ -803,6 +1018,10 @@ function renderBoxes(){
       '<span class="bi">' + no + '</span>' +
       '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
       '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
+      (linksOf(t).length
+        ? '<button class="iconbtn" data-act="openall" title="' + esc(linksOf(t).map(linkLabel).join(" / ")) + '">🔗' +
+          (linksOf(t).length > 1 ? '<span class="badge">' + linksOf(t).length + '</span>' : '') + '</button>'
+        : '') +
       (done
         ? '<button class="iconbtn" data-act="boxundo" title="取り消す">↩</button>'
         : '<button class="iconbtn" data-act="boxout" title="箱から出す">✕</button>') +
@@ -1181,8 +1400,10 @@ function addTask(){
     if(freqUnit === "days") freq.n = n;
   }
   const size = Math.min(16, Math.max(1, parseInt($("taskSize").value, 10) || 1));
+  // ここでは1本だけ。2本目からは一覧の🔗ボタンで足す
+  const first = normLink({ kind: "url", url: $("taskUrl").value });
   S.tasks.push({
-    id: uid(), text: v, url: normalizeUrl($("taskUrl").value),
+    id: uid(), text: v, links: first ? [first] : [],
     when: taskWhen, freq, size, done: false, log: [], actuals: [], createdAt: Date.now()
   });
   $("taskInput").value = ""; $("taskUrl").value = "";
@@ -1237,7 +1458,8 @@ function onceRow(t){
   return '<div class="item' + (t.done ? " done" : "") + '" data-id="' + t.id + '">' +
     '<button class="check' + (t.done ? " on" : "") + '" data-act="toggle">✓</button>' +
     '<div class="grow">' + taskTitle(t) +
-      '<div class="s">' + boxTime(t.size) + esc(actualHint(t)) + (t.url ? ' ・ ' + esc(hostOf(t.url)) : '') + '</div>' +
+      '<div class="s">' + boxTime(t.size) + esc(actualHint(t)) +
+        (linksOf(t).length ? ' ・ ' + esc(linkSummary(t)) : '') + '</div>' +
     '</div>' +
     sizeBox(t) +
     (t.done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>') +
@@ -1272,21 +1494,126 @@ function repeatRow(t){
   '</div>';
 }
 function linkBtn(t){
-  return '<button class="iconbtn' + (t.url ? "" : " faint") + '" data-act="link" title="リンクを設定">🔗</button>';
+  const n = linksOf(t).length;
+  return '<button class="iconbtn' + (n ? "" : " faint") + '" data-act="link" title="リンクとアプリ">🔗' +
+    (n > 1 ? '<span class="badge">' + n + '</span>' : '') + '</button>';
 }
-async function editUrl(id){
+
+/* ================= リンクとアプリの編集 =================
+   1タスクに何本でも。並び順がそのまま開く順・.bat の実行順になる
+====================================================== */
+let lkTaskId = "";
+let lkDraft = [];       // 編集中の行（保存を押すまで本体には触らない）
+
+function openLinkEditor(id){
   const t = taskById(id); if(!t) return;
-  const v = await openModal({
-    title: "「" + t.text + "」を開くリンク",
-    desc: "空にすると解除します",
-    input: true, value: t.url || "", placeholder: "https://...", ok: "決定"
-  });
-  if(v === null) return;
-  if(!v.trim()){ t.url = ""; save(); renderAll(); toast("リンクを外しました"); return; }
-  const u = normalizeUrl(v);
-  if(!u){ toast("URLを確認してください"); return; }
-  t.url = u; save(); renderAll(); toast("リンクを設定しました");
+  lkTaskId = id;
+  lkDraft = linksOf(t).map(l => Object.assign({}, l));
+  $("lkTitle").textContent = "「" + t.text + "」を開くもの";
+  renderLkRows();
+  $("linkModal").classList.add("on");
+  setTimeout(()=>{ const f = $("lkRows").querySelector("input"); if(f) f.focus(); }, 30);
 }
+function closeLinkEditor(){
+  $("linkModal").classList.remove("on");
+  lkTaskId = ""; lkDraft = [];
+}
+/* 画面の入力値を lkDraft に取り込む（行を足す・動かす前に必ず通すこと） */
+function syncLkDraft(){
+  $("lkRows").querySelectorAll(".lkrow").forEach(row => {
+    const i = parseInt(row.dataset.i, 10);
+    const d = lkDraft[i]; if(!d) return;
+    const main = row.querySelector(".lkmain");
+    if(d.kind === "url"){
+      d.url = main.value;
+      const sel = row.querySelector(".lkbrowser");
+      if(sel) d.browser = sel.value;
+    }else{
+      d.path = main.value;
+      const ar = row.querySelector(".lkargs");
+      if(ar) d.args = ar.value;
+    }
+  });
+}
+function renderLkRows(){
+  const el = $("lkRows");
+  if(!lkDraft.length){
+    el.innerHTML = '<div class="empty-note">まだ何も登録されていません。下のボタンで足してください。</div>';
+    $("lkNote").innerHTML = lkHint();
+    return;
+  }
+  el.innerHTML = lkDraft.map((d, i) => {
+    const head = '<span class="lkno">' + (i+1) + '</span>' +
+      '<span class="lkkind ' + d.kind + '">' + (d.kind === "url" ? "リンク" : "アプリ") + '</span>';
+    const tail =
+      '<button class="iconbtn" data-act="up" title="上へ">↑</button>' +
+      '<button class="iconbtn" data-act="down" title="下へ">↓</button>' +
+      '<button class="iconbtn del" data-act="del" title="この行を消す">✕</button>';
+    if(d.kind === "url"){
+      return '<div class="lkrow" data-i="' + i + '">' + head +
+        '<input class="lkmain" value="' + esc(d.url || "") + '" placeholder="https://..." spellcheck="false">' +
+        '<select class="lkbrowser" title="どのブラウザで開くか（起動ファイルからのときだけ効きます）">' +
+          BROWSERS.map(b => '<option value="' + b.key + '"' + (b.key === (d.browser||"") ? " selected" : "") + '>' +
+            esc(b.label) + '</option>').join("") +
+        '</select>' + tail + '</div>';
+    }
+    return '<div class="lkrow" data-i="' + i + '">' + head +
+      '<input class="lkmain" value="' + esc(d.path || "") + '" spellcheck="false" ' +
+        'placeholder="C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe">' +
+      '<input class="lkargs" value="' + esc(d.args || "") + '" placeholder="引数（任意）" spellcheck="false">' +
+      tail + '</div>';
+  }).join("");
+  $("lkNote").innerHTML = lkHint();
+}
+function lkHint(){
+  const bat = lkDraft.some(d => d.kind === "app" && !isScheme(String(d.path||"").trim())) ||
+              lkDraft.some(d => d.kind === "url" && d.browser);
+  return '上から順に開きます。' +
+    (bat ? '<br><b>この組み合わせは「起動ファイル(.bat)」からでないと言ったとおりに開きません。</b>' +
+           'ブラウザには exe を起動する手段も、開くブラウザを選ぶ手段もありません。' : '') +
+    '<br>アプリ欄には <b>exe のパス</b>のほか、<b>steam://rungameid/…</b> や <b>discord://</b> のような' +
+    '独自スキームも書けます。スキームならブラウザからそのまま起動できます。';
+}
+$("lkRows").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const row = e.target.closest(".lkrow"); if(!row) return;
+  const i = parseInt(row.dataset.i, 10);
+  syncLkDraft();
+  const act = btn.dataset.act;
+  if(act === "del")  lkDraft.splice(i, 1);
+  if(act === "up"   && i > 0)                { const [x] = lkDraft.splice(i,1); lkDraft.splice(i-1, 0, x); }
+  if(act === "down" && i < lkDraft.length-1) { const [x] = lkDraft.splice(i,1); lkDraft.splice(i+1, 0, x); }
+  renderLkRows();
+});
+/* ブラウザ指定を変えたら、注意書きも変える */
+$("lkRows").addEventListener("change", ()=>{ syncLkDraft(); $("lkNote").innerHTML = lkHint(); });
+
+$("lkAddUrl").onclick = ()=>{ syncLkDraft(); lkDraft.push({ id: lid(), kind:"url", url:"", browser:"" }); renderLkRows();
+  const rs = $("lkRows").querySelectorAll(".lkrow input.lkmain"); if(rs.length) rs[rs.length-1].focus(); };
+$("lkAddApp").onclick = ()=>{ syncLkDraft(); lkDraft.push({ id: lid(), kind:"app", path:"", args:"" }); renderLkRows();
+  const rs = $("lkRows").querySelectorAll(".lkrow input.lkmain"); if(rs.length) rs[rs.length-1].focus(); };
+$("lkBat").onclick = ()=>{
+  syncLkDraft();
+  const t = taskById(lkTaskId); if(!t) return;
+  const ls = lkDraft.map(normLink).filter(Boolean);
+  if(!ls.length){ toast("先に開くものを入れてください"); return; }
+  exportBat({ text: t.text, links: ls });
+};
+$("lkCancel").onclick = closeLinkEditor;
+$("linkModal").onclick = e => { if(e.target === $("linkModal")) closeLinkEditor(); };
+$("lkOk").onclick = ()=>{
+  syncLkDraft();
+  const t = taskById(lkTaskId);
+  if(!t){ closeLinkEditor(); return; }
+  const before = lkDraft.length;
+  const ls = lkDraft.map(normLink).filter(Boolean);
+  t.links = ls;
+  const dropped = before - ls.length;
+  closeLinkEditor();
+  save(); renderAll();
+  toast(ls.length ? ls.length + "件を設定しました" + (dropped ? "（空欄" + dropped + "件は捨てました）" : "")
+                  : "リンクを外しました");
+};
 async function taskClick(e){
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   if(btn.dataset.act === "size") return;           // 数値入力は change で扱う
@@ -1302,7 +1629,7 @@ async function taskClick(e){
   }
   if(act === "do")   { doTask(id); return; }
   if(act === "undo") { undoDo(id); return; }
-  if(act === "link") { editUrl(id); return; }
+  if(act === "link") { openLinkEditor(id); return; }
   if(act === "when") { cycleWhen(id); return; }
   if(act === "up" && i > 0){ const [x] = S.tasks.splice(i,1); S.tasks.unshift(x); save(); renderAll(); return; }
   if(act === "del"){
@@ -1587,7 +1914,9 @@ function renderStats(){
     '<div class="kv"><span>単発タスク</span><span>' + once.length + '件（完了 ' + once.filter(t=>t.done).length + '）</span></div>' +
     '<div class="kv"><span>くり返しタスク</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
     '<div class="kv"><span>ルーティーン</span><span>' + S.routines.length + '件</span></div>' +
-    '<div class="kv"><span>リンク付きタスク</span><span>' + S.tasks.filter(t => t.url).length + '件</span></div>' +
+    '<div class="kv"><span>リンク付きタスク</span><span>' + S.tasks.filter(t => linksOf(t).length).length + '件' +
+      (S.tasks.some(t => needsBat(t)) ? '（起動ファイルが要るもの ' + S.tasks.filter(needsBat).length + '）' : '') +
+      '</span></div>' +
     '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>' +
     '<div class="kv"><span>画像</span><span>' + S.images.length + '枚</span></div>' +
     '<div class="kv"><span>保存量のめやす</span><span>約 ' + usedKB() + ' KB</span></div>';
@@ -1722,8 +2051,9 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = ()=> switchTab(
 
 /* ================= キーボード ================= */
 document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && $("linkModal").classList.contains("on")){ closeLinkEditor(); return; }
   if(e.key === "Escape" && modalDone){ closeModal(null); return; }
-  if($("modal").classList.contains("on")) return;
+  if($("modal").classList.contains("on") || $("linkModal").classList.contains("on")) return;
   if(e.ctrlKey || e.metaKey || e.altKey) return;
   const tag = (e.target.tagName || "").toLowerCase();
   if(tag === "input" || tag === "textarea" || tag === "select") return;
@@ -1750,9 +2080,10 @@ function renderAll(){
   renderDoneToday();
   renderTasks();
   renderRoutineList();
-  // リンク欄の候補は、いま使っているタスクのURLから作る
-  $("taskUrlList").innerHTML = [...new Set(S.tasks.map(t => t.url).filter(Boolean))]
-    .map(u => '<option value="' + esc(u) + '"></option>').join("");
+  // リンク欄の候補は、いま使っているタスクのリンクから作る
+  $("taskUrlList").innerHTML = [...new Set(
+      S.tasks.flatMap(t => linksOf(t).filter(l => l.kind === "url").map(l => l.url))
+    )].map(u => '<option value="' + esc(u) + '"></option>').join("");
   renderPhilos();
   renderCheers();
   renderSettings();

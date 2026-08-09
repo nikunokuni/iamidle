@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-09.1">
+<meta name="app-version" content="2026-08-09.2">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-09.1">
+<link rel="stylesheet" href="style.css?v=2026-08-09.2">
 </head>
 <body>
 
@@ -67,6 +67,10 @@
       <input id="taskInput" placeholder="やることを入力" autocomplete="off">
       <input class="mt8" id="taskUrl" placeholder="リンク（任意） https://..." autocomplete="off" inputmode="url" list="taskUrlList">
       <datalist id="taskUrlList"></datalist>
+      <div class="empty-note" style="padding:6px 2px 0">
+        リンクは<b>何本でも</b>持てます。2本目からは、下の一覧の🔗ボタンから。
+        タスク名の🔗を押すと<b>全部まとめて開きます</b>。PCのアプリも登録できます。
+      </div>
       <div class="row mt10">
         <span class="flabel">必要な箱</span>
         <input type="number" id="taskSize" min="1" max="16" value="1">
@@ -218,6 +222,7 @@
     <div class="mtitle" id="mTitle"></div>
     <div class="mdesc" id="mDesc"></div>
     <input id="mInput" style="display:none" autocomplete="off">
+    <div class="mextra" id="mExtra" style="display:none"></div>
     <div class="mbtns">
       <button class="btn ghost" id="mCancel">やめる</button>
       <button class="btn" id="mOk">OK</button>
@@ -225,6 +230,27 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-09.1"></script>
+<!-- タスクに紐づくリンク・アプリの編集 -->
+<div class="modal" id="linkModal">
+  <div class="sheet wide">
+    <div class="mtitle" id="lkTitle"></div>
+    <div class="mdesc">
+      タスク名の🔗を押すと、ここに並べたものが上から順にまとめて開きます。
+    </div>
+    <div id="lkRows"></div>
+    <div class="row mt10 lkadd">
+      <button class="btn ghost" id="lkAddUrl">＋ リンク</button>
+      <button class="btn ghost" id="lkAddApp">＋ アプリ</button>
+      <button class="btn ghost" id="lkBat">起動ファイル(.bat)を書き出す</button>
+    </div>
+    <div class="empty-note" id="lkNote"></div>
+    <div class="mbtns">
+      <button class="btn ghost" id="lkCancel">やめる</button>
+      <button class="btn" id="lkOk">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=2026-08-09.2"></script>
 </body>
 </html>
