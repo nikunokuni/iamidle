@@ -847,13 +847,22 @@ function batFor(t){
     "chcp 65001 > nul",
     "rem 自己管理アプリが書き出した起動ファイル",
     "rem タスク: " + batStr(t.text).replace(/[\r\n]+/g, " "),
+    // リンクを変えても、書き出しずみのバッチは古いまま。いつのものか分かるようにしておく
+    "rem 書き出し: " + dayKey() + "（アプリ側でリンクを変えたら、書き出し直すこと）",
     ""
   ];
   let i = 0;
   while(i < ls.length){
     const l = ls[i];
     if(l.kind === "app"){
-      out.push('start "" "' + batStr(l.path) + '"' + (l.args ? " " + batStr(l.args) : ""));
+      /* ▼ /d で「そのアプリが入っているフォルダ」を作業フォルダにして起動する。
+         これが無いと、バッチを置いた場所が作業フォルダになる。
+         OBS のように自分のフォルダから起動される前提のアプリは、
+         そのままだと設定やロケールを見つけられずに落ちる。
+         スキーム（steam:// など）にはフォルダが無いので付けない */
+      const dir = isScheme(l.path) ? "" : l.path.replace(/[\\/][^\\/]*$/, "");
+      out.push('start ""' + (dir && dir !== l.path ? ' /d "' + batStr(dir) + '"' : "") +
+        ' "' + batStr(l.path) + '"' + (l.args ? " " + batStr(l.args) : ""));
       i++;
       continue;
     }
