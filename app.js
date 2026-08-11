@@ -1,7 +1,7 @@
 "use strict";
 /* ============================================================
    自己管理アプリ（箱モデル）
-   - 1箱 = 30分。箱は時間そのもの。1箱に入るタスクは1つ
+   - 1箱 = 30分。箱は時間そのもの。1箱に入るやりたいことは1つ
    - 日付の切り替えは午前2時。午前 2:00-14:00 / 午後 14:00-翌2:00
    - 仕様は SPEC.md。勝手に広げないこと
    ============================================================ */
@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-09.2";
+const APP_VERSION = "2026-08-11.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -94,7 +94,7 @@ function load(){
     return structuredClone(DEFAULTS);
   }
 }
-/* v1（単発＋習慣） → v2（頻度つきタスク） → v3（箱モデル） */
+/* v1（単発＋習慣） → v2（頻度つきのやりたいこと） → v3（箱モデル） */
 function migrate(d){
   // v1 → v2
   if(d.habits){
@@ -303,7 +303,7 @@ function getDay(key){
   if(typeof d.count !== "number") d.count = d.slots.length;
   while(d.slots.length < d.count) d.slots.push(null);
   if(d.slots.length > d.count) d.slots.length = d.count;
-  // 消えたタスクが箱やルーレットに残っていたら片付ける
+  // 消えたやりたいことが箱やルーレットに残っていたら片付ける
   for(let i = 0; i < d.slots.length; i++){
     if(d.slots[i] && !taskById(d.slots[i])) d.slots[i] = null;
   }
@@ -335,7 +335,7 @@ function doneOn(t, key){
   if(t.freq.unit === "once") return !!t.done && t.doneAt >= from && t.doneAt < to;
   return (t.log || []).some(ts => ts >= from && ts < to);
 }
-/* 箱の列を「連続した同じタスク」でまとめる */
+/* 箱の列を「連続した同じやりたいこと」でまとめる */
 function boxGroups(d){
   const g = [];
   for(let i = 0; i < d.slots.length; i++){
@@ -439,7 +439,7 @@ function removeBox(){
 
 /* ================= ごほうびの画像 =================
    localStorage に入れるので、1枚 400KB 以下に落としてから持つ。
-   容量は他のデータと同じ引き出しを使う。**画像のせいでタスクが
+   容量は他のデータと同じ引き出しを使う。**画像のせいでやりたいことが
    保存できなくなってはいけない**ので、追加は trySave() で試して
    駄目なら必ず元に戻すこと
 =================================================== */
@@ -563,7 +563,7 @@ function statOf(t){
     ratio: Math.min(1, actual / count)
   };
 }
-/* 連続日数（毎日タスクのみ） */
+/* 連続日数（毎日のやりたいことのみ） */
 function streakOf(t){
   if(t.freq.unit !== "day") return 0;
   const need = Math.max(1, t.freq.count || 1);
@@ -579,7 +579,7 @@ function streakOf(t){
   return n;
 }
 
-/* ================= 「今日やること」の判定 ================= */
+/* ================= 「今日のやりたいこと」の判定 ================= */
 const canSkip = t => t.freq.unit !== "day";
 const whenOf  = t => (t.when === "am" || t.when === "pm") ? t.when : "any";
 function slotBonus(t){
@@ -661,7 +661,7 @@ function undoToday(id){
   if(j !== undefined) t.actuals.splice(j, 1);
   save(); renderAll(); toast("1回ぶん取り消しました");
 }
-/* いまの期間の記録を1つ減らす（タスクタブの − ） */
+/* いまの期間の記録を1つ減らす（「やりたいこと」タブの − ） */
 function undoDo(id){
   const t = taskById(id); if(!t || !t.log || !t.log.length) return;
   const st = statOf(t);
@@ -713,7 +713,7 @@ function moveCursor(n){
 }
 
 /* ================= リンクとアプリ =================
-   1つのタスクに何本でも持たせる。タスク名を押すと全部まとめて開く。
+   1つのやりたいことに何本でも持たせる。やりたいことの名前を押すと全部まとめて開く。
      kind:"url" … ふつうのリンク。browser を指定できるが、
                   ブラウザの中からは既定のブラウザでしか開けない（.bat 側でだけ効く）
      kind:"app" … PCのアプリ。中身は2通り
@@ -888,7 +888,7 @@ function batFor(t){
     "@echo off",
     "chcp 65001 > nul",
     "rem 自己管理アプリが書き出した起動ファイル",
-    "rem タスク: " + batStr(t.text).replace(/[\r\n]+/g, " "),
+    "rem やりたいこと: " + batStr(t.text).replace(/[\r\n]+/g, " "),
     // リンクを変えても、書き出しずみのバッチは古いまま。いつのものか分かるようにしておく
     "rem 書き出し: " + dayKey() + "（アプリ側でリンクを変えたら、書き出し直すこと）",
     "rem ブラウザが見つからないと言われたら、アプリの設定タブ「ブラウザの場所」に入れて書き出し直してください",
@@ -934,7 +934,7 @@ function exportBat(t){
   toast("書き出しました。実行すると全部まとめて起動します");
 }
 
-/* タスク名（🔗つき）を押したら、そのタスクのリンクを全部開く。
+/* やりたいことの名前（🔗つき）を押したら、そのやりたいことのリンクを全部開く。
    どの一覧から押されても効くように document で拾う */
 document.addEventListener("click", e => {
   const a = e.target.closest('[data-act="openall"]'); if(!a) return;
@@ -1008,7 +1008,7 @@ function renderNow(){
     let msg;
     if(d.count === 0)              msg = "今日は箱がありません。\n右上の ＋ で足せます。";
     else if(dayFinished(d))        msg = "箱を使い切りました。今日は終了。\n" + SLEEP_LINE;
-    else if(emptyBoxes(d) === d.count) msg = "箱にタスクを入れてください。\n右の一覧からクリックで入ります。";
+    else if(emptyBoxes(d) === d.count) msg = "箱にやりたいことを入れてください。\n右の一覧からクリックで入ります。";
     else                           msg = "入れたぶんは終わりました。\n空き箱にまだ入れられます。";
     el.innerHTML =
       '<div class="label">いま、これ</div>' +
@@ -1024,7 +1024,7 @@ function renderNow(){
   parts.push("箱 " + (g.from+1) + (size > 1 ? "–" + (g.to+1) : "") + "（" + boxTime(size) + "）");
   if(w !== "any") parts.push(SLOT[w].icon + SLOT[w].label);
   parts.push(t.freq.unit === "once"
-    ? "単発タスク"
+    ? "単発のやりたいこと"
     : freqLabel(t.freq) + ' ・ ' + st.period.label + ' ' + st.actual + '/' + st.count +
       (st.remainDays ? '（残り' + st.remainDays + '日）' : ''));
   const ls = linksOf(t);
@@ -1161,18 +1161,18 @@ $("boxList").addEventListener("drop", e => {
   placeTaskAt(id, parseInt(row.dataset.i, 10) || 0);
 });
 
-/* ================= 描画：箱に入れていないタスク ================= */
+/* ================= 描画：箱に入れていないやりたいこと ================= */
 function renderUnplaced(){
   const list = unplacedTasks();
   const d = getDay();
   if(!S.tasks.length){
     $("unplaced").innerHTML =
-      '<div class="panel"><div class="ph"><span>箱に入れていないタスク</span></div>' +
-      '<div class="empty-note">まだタスクがありません。「タスク」タブから追加してください。</div></div>';
+      '<div class="panel"><div class="ph"><span>箱に入れていないやりたいこと</span></div>' +
+      '<div class="empty-note">まだやりたいことがありません。「やりたいこと」タブから追加してください。</div></div>';
     return;
   }
   const body = !list.length
-    ? '<div class="empty-note">今日やることは、全部箱に入っています。</div>'
+    ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
     : list.map(o => {
         const t = o.t, st = o.st;
         const late = o.urgency >= 4;
@@ -1192,7 +1192,7 @@ function renderUnplaced(){
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
-      '<div class="ph"><span>箱に入れていないタスク</span><span class="cnt">' +
+      '<div class="ph"><span>箱に入れていないやりたいこと</span><span class="cnt">' +
         list.length + ' 件 ・ 空き ' + emptyBoxes(d) + ' 箱</span></div>' +
       body +
       (list.length ? '<div class="empty-note" style="padding:10px 2px 0">左の箱か、下のルーレットへドラッグ。</div>' : '') +
@@ -1224,7 +1224,7 @@ function renderRoutines(){
   if(!list.length){
     $("routineBox").innerHTML =
       '<div class="panel"><div class="ph"><span>' + SLOT[s].icon + ' ' + SLOT[s].label + 'のルーティーン</span></div>' +
-      '<div class="empty-note">「タスク」タブの下から登録できます。箱は消費しません。</div></div>';
+      '<div class="empty-note">「やりたいこと」タブの下から登録できます。箱は消費しません。</div></div>';
     return;
   }
   const done = routineDoneIds();
@@ -1251,7 +1251,7 @@ $("routineBox").addEventListener("click", e => {
    決めるのが面倒なとき用。ドラッグで候補を入れて、回して1つ選ぶ
 ============================================================ */
 let spinning = false;
-let winner = null;      // 選ばれたタスクid（保存しない。その場かぎり）
+let winner = null;      // 選ばれたやりたいことのid（保存しない。その場かぎり）
 
 function addToRoulette(id){
   const d = getDay();
@@ -1313,7 +1313,7 @@ function renderRoulette(){
     '<div class="panel roulette">' +
       '<div class="ph"><span>🎲 ルーレット</span><span class="cnt">' + ids.length + ' 件</span></div>' +
       '<div class="drop" id="rouDrop">' +
-        (ids.length ? 'ここにドラッグして候補を足す' : '決められないときは、ここにタスクをドラッグ') +
+        (ids.length ? 'ここにドラッグして候補を足す' : '決められないときは、ここにやりたいことをドラッグ') +
       '</div>' +
       cands + face +
       (ids.length >= 2
@@ -1436,7 +1436,7 @@ $("skippedList").addEventListener("click", e => {
   unskip(e.target.closest(".item").dataset.id);
 });
 
-/* ================= タスク追加フォーム ================= */
+/* ================= やりたいこと追加フォーム ================= */
 let taskWhen = "any";
 $("whenChips").addEventListener("click", e => {
   const c = e.target.closest(".chip"); if(!c) return;
@@ -1486,7 +1486,7 @@ $("taskAdd").onclick = addTask;
 $("taskInput").addEventListener("keydown", e => { if(e.key === "Enter") addTask(); });
 $("taskUrl").addEventListener("keydown", e => { if(e.key === "Enter") addTask(); });
 
-/* ================= タスク一覧（タスクタブ） ================= */
+/* ================= やりたいこと一覧（「やりたいこと」タブ） ================= */
 function whenBtn(t){
   const w = whenOf(t);
   return '<button class="iconbtn' + (w === "any" ? " faint" : "") + '" data-act="when" title="午前／午後の切り替え">' +
@@ -1509,7 +1509,7 @@ function actualHint(t){
   return ' ・実績 平均' + (Math.round(avg*10)/10) + '箱';
 }
 const GROUPS = [
-  { key:"once",  title:"単発タスク" },
+  { key:"once",  title:"単発のやりたいこと" },
   { key:"day",   title:"毎日" },
   { key:"week",  title:"今週" },
   { key:"month", title:"今月" },
@@ -1517,7 +1517,7 @@ const GROUPS = [
 ];
 function renderTasks(){
   const el = $("taskList");
-  if(!S.tasks.length){ el.innerHTML = '<div class="empty-note">タスクはまだありません。</div>'; return; }
+  if(!S.tasks.length){ el.innerHTML = '<div class="empty-note">やりたいことはまだありません。</div>'; return; }
   let html = "";
   GROUPS.forEach(g => {
     let list = S.tasks.filter(t => t.freq.unit === g.key);
@@ -1573,7 +1573,7 @@ function linkBtn(t){
 }
 
 /* ================= リンクとアプリの編集 =================
-   1タスクに何本でも。並び順がそのまま開く順・.bat の実行順になる
+   1つのやりたいことに何本でも。並び順がそのまま開く順・.bat の実行順になる
 ====================================================== */
 let lkTaskId = "";
 let lkDraft = [];       // 編集中の行（保存を押すまで本体には触らない）
@@ -1732,7 +1732,7 @@ $("taskList").addEventListener("change", e => {
   toast(t.text + " は " + t.size + "箱（" + boxTime(t.size) + "）");
 });
 
-/* ================= ルーティーン管理（タスクタブ） ================= */
+/* ================= ルーティーン管理（「やりたいこと」タブ） ================= */
 let routineSlot = "am";
 $("routineSlotChips").addEventListener("click", e => {
   const c = e.target.closest(".chip"); if(!c) return;
@@ -2000,7 +2000,7 @@ function renderStats(){
   renderCutStats();
   const once = S.tasks.filter(t => t.freq.unit === "once");
   const rep  = S.tasks.filter(t => t.freq.unit !== "once");
-  // 「遅れ」の数え方は一覧と揃える（毎日タスクは未実行なだけなので数えない）
+  // 「遅れ」の数え方は一覧と揃える（毎日のやりたいことは未実行なだけなので数えない）
   const late = rep.filter(t => {
     if(t.freq.unit === "day") return false;
     const s = statOf(t);
@@ -2009,10 +2009,10 @@ function renderStats(){
   const d = getDay();
   $("stats").innerHTML =
     '<div class="kv"><span>今日の箱</span><span>全 ' + d.count + ' 箱 ・ 残り <b>' + remainBoxes(d) + '</b> 箱</span></div>' +
-    '<div class="kv"><span>単発タスク</span><span>' + once.length + '件（完了 ' + once.filter(t=>t.done).length + '）</span></div>' +
-    '<div class="kv"><span>くり返しタスク</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
+    '<div class="kv"><span>単発のやりたいこと</span><span>' + once.length + '件（完了 ' + once.filter(t=>t.done).length + '）</span></div>' +
+    '<div class="kv"><span>くり返しのやりたいこと</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
     '<div class="kv"><span>ルーティーン</span><span>' + S.routines.length + '件</span></div>' +
-    '<div class="kv"><span>リンク付きタスク</span><span>' + S.tasks.filter(t => linksOf(t).length).length + '件' +
+    '<div class="kv"><span>リンク付きのやりたいこと</span><span>' + S.tasks.filter(t => linksOf(t).length).length + '件' +
       (S.tasks.some(t => needsBat(t)) ? '（起動ファイルが要るもの ' + S.tasks.filter(needsBat).length + '）' : '') +
       '</span></div>' +
     '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>' +
@@ -2038,7 +2038,7 @@ $("fileInput").onchange = e => {
       if(typeof d !== "object" || d === null) throw 0;
     }catch(err){ toast("読み込めませんでした"); return; }
     const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
-      "いまのタスク・ルーティーン・箱・哲学はすべて消えます");
+      "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます");
     if(!ok) return;
     S = migrate(Object.assign(structuredClone(DEFAULTS), d));
     save(); renderAll(); toast("読み込みました");
@@ -2048,7 +2048,7 @@ $("fileInput").onchange = e => {
 };
 $("btnClearDone").onclick = async ()=>{
   const gone = S.tasks.filter(t => t.freq.unit === "once" && t.done);
-  if(!gone.length){ toast("完了タスクはありません"); return; }
+  if(!gone.length){ toast("完了したやりたいことはありません"); return; }
   const ok = await askConfirm("完了した " + gone.length + " 件を削除しますか？", "削除",
     gone.map(t => t.text).join("、"));
   if(!ok) return;
@@ -2132,7 +2132,7 @@ function renderVersion(){
     '<div class="empty-note">' +
       'GitHub Pages では、更新しても10分ほど古い版が表示されることがあります。<br>' +
       '新しくしたのに変わらないときは、これを押してください。<br>' +
-      '<b>タスク・画像・哲学などのデータは消えません。</b>' +
+      '<b>やりたいこと・画像・哲学などのデータは消えません。</b>' +
     '</div>';
   $("btnUpdate").onclick = hardReload;
   $("updateBar").classList.toggle("on", stale);
@@ -2178,7 +2178,7 @@ function renderAll(){
   renderDoneToday();
   renderTasks();
   renderRoutineList();
-  // リンク欄の候補は、いま使っているタスクのリンクから作る
+  // リンク欄の候補は、いま使っているやりたいことのリンクから作る
   $("taskUrlList").innerHTML = [...new Set(
       S.tasks.flatMap(t => linksOf(t).filter(l => l.kind === "url").map(l => l.url))
     )].map(u => '<option value="' + esc(u) + '"></option>').join("");

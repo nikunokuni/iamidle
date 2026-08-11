@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-09.2">
+<meta name="app-version" content="2026-08-11.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-09.2">
+<link rel="stylesheet" href="style.css?v=2026-08-11.1">
 </head>
 <body>
 
@@ -16,7 +16,7 @@
 <div class="updatebar" id="updateBar">
   <span>新しい版があります。読み込み直してください。</span>
   <button id="updateNow">最新に更新</button>
-  <span class="note">タスクや画像は消えません</span>
+  <span class="note">やりたいことや画像は消えません</span>
 </div>
 
 <div class="wrap">
@@ -60,16 +60,16 @@
     </div>
   </section>
 
-  <!-- ============ タスク管理 ============ -->
+  <!-- ============ やりたいこと管理 ============ -->
   <section id="sec-tasks">
-    <h2>タスクを追加</h2>
+    <h2>やりたいことを追加</h2>
     <div class="form">
-      <input id="taskInput" placeholder="やることを入力" autocomplete="off">
+      <input id="taskInput" placeholder="やりたいことを入力" autocomplete="off">
       <input class="mt8" id="taskUrl" placeholder="リンク（任意） https://..." autocomplete="off" inputmode="url" list="taskUrlList">
       <datalist id="taskUrlList"></datalist>
       <div class="empty-note" style="padding:6px 2px 0">
         リンクは<b>何本でも</b>持てます。2本目からは、下の一覧の🔗ボタンから。
-        タスク名の🔗を押すと<b>全部まとめて開きます</b>。PCのアプリも登録できます。
+        やりたいことの名前の🔗を押すと<b>全部まとめて開きます</b>。PCのアプリも登録できます。
       </div>
       <div class="row mt10">
         <span class="flabel">必要な箱</span>
@@ -133,7 +133,7 @@
 
     <h2>やったときの一言</h2>
     <div class="empty-note" style="padding-top:0">
-      タスクを終えたとき、この中から1つがドーンと出ます。
+      やりたいことを終えたとき、この中から1つがドーンと出ます。
     </div>
     <button class="addtoggle" data-form="cheerForm">＋ 一言を追加</button>
     <div class="form" id="cheerForm" style="display:none">
@@ -177,7 +177,7 @@
 
     <h2>お気に入りの画像</h2>
     <div class="empty-note" style="padding-top:0">
-      「今日の箱」の背景になります。最初はタスクの箱に隠れていて、<br>
+      「今日の箱」の背景になります。最初はやりたいことの箱に隠れていて、<br>
       終わった箱から透けて見え、やり切ると「いま、これ」に大きく出ます。<br>
       その日に出る1枚は、保存した中から毎日ランダムに選ばれます。<br>
       保存できるのは<b>8枚まで</b>（各400KB以下に自動で圧縮されます）。
@@ -204,7 +204,7 @@
     <div id="verBox"></div>
 
     <h2>リセット</h2>
-    <button class="btn ghost" id="btnClearDone">完了した単発タスクを消す</button>
+    <button class="btn ghost" id="btnClearDone">完了した単発のやりたいことを消す</button>
     <div class="empty-note">
       データはこの端末のブラウザ内にのみ保存されます。<br>
       ブラウザのデータ削除に備えて、ときどき書き出しておくと安全です。
@@ -215,7 +215,7 @@
 <nav>
   <div class="inner">
     <button data-tab="now" class="on"><span class="ic">🎯</span>今日</button>
-    <button data-tab="tasks"><span class="ic">📋</span>タスク</button>
+    <button data-tab="tasks"><span class="ic">📋</span>やりたいこと</button>
     <button data-tab="philo"><span class="ic">🧭</span>哲学</button>
     <button data-tab="set"><span class="ic">⚙️</span>設定</button>
   </div>
@@ -240,12 +240,12 @@
   </div>
 </div>
 
-<!-- タスクに紐づくリンク・アプリの編集 -->
+<!-- やりたいことに紐づくリンク・アプリの編集 -->
 <div class="modal" id="linkModal">
   <div class="sheet wide">
     <div class="mtitle" id="lkTitle"></div>
     <div class="mdesc">
-      タスク名の🔗を押すと、ここに並べたものが上から順にまとめて開きます。
+      やりたいことの名前の🔗を押すと、ここに並べたものが上から順にまとめて開きます。
     </div>
     <div id="lkRows"></div>
     <div class="row mt10 lkadd">
@@ -261,6 +261,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-09.2"></script>
+<script src="app.js?v=2026-08-11.1"></script>
 </body>
 </html>
