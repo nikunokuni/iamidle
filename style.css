@@ -482,6 +482,30 @@ kbd{
 .fbrow .fbi{flex:none}
 .fbrow .fbt{flex:1;min-width:0;word-break:break-all}
 
+/* ---------- やりたいことの編集 ---------- */
+#edBody{margin-top:14px}
+.edrow{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:9px 0;border-bottom:1px solid var(--line);
+}
+.edrow:last-child{border-bottom:none}
+.edrow > span:first-child{
+  font-size:12px;color:var(--fg-faint);flex:none;width:104px;letter-spacing:.04em;
+}
+.edrow input,.edrow select{margin-top:0;padding:8px 10px;font-size:13px;min-width:0}
+.edrow input[type=number]{width:76px;flex:none}
+.edrow input[type=time],.edrow input[type=date]{flex:none;width:auto}
+.edrow #edText{flex:1}
+.edrow select{flex:none;width:auto}
+.edrow .chips{flex:1}
+.edchk{
+  display:inline-flex;align-items:center;gap:6px;flex:none;
+  font-size:13px;color:var(--fg-dim);cursor:pointer;
+}
+.edchk input{width:auto;margin:0}
+/* まだ先の予定は、ふだんのリストに出ないので控えめに見せる */
+.item.far{opacity:.72}
+
 /* ---------- リンクとアプリの編集 ---------- */
 #lkRows{margin-top:14px}
 .lkrow{

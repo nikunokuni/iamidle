@@ -54,7 +54,7 @@ const SEED_CHEERS = ["やったぜ！", "よくやった", "えらい", "その�
 const SLEEP_LINE = "あとは寝るだけ。";
 
 const DEFAULTS = {
-  v: 6,
+  v: 7,
   tasks: [],
   images: [],         // { id, data:dataURL, at } ごほうびの画像
   philos: [],
@@ -66,6 +66,10 @@ const DEFAULTS = {
   // { "2026-08-09": { count, holiday, slots:[taskId|null], cuts:[{at,label}], roulette:[taskId] } }
   days: {},
   base: { weekday: 8, holiday: 12 },
+  // 1箱目の開始時刻。箱は時刻を持たないが、何番目が何時かの見当をつけるために使う
+  boxStart: { weekday: "18:00", holiday: "10:00" },
+  // 今週だけの回数の上書き { "2026-W33": { taskId: 3 } }。週が変われば prune で消える
+  weekOverrides: {},
   // 起動ファイル用。自動で見つからないブラウザだけ、設定タブで場所を教えてもらう
   browserPaths: {},   // { chrome:"C:\\...\\chrome.exe", brave:"", edge:"", firefox:"" }
   lastOpen: "",
@@ -152,6 +156,19 @@ function migrate(d){
     });
     d.v = 6;
   }
+  // v6 → v7 : 単発も log で数える（回数を持てるようにする）＋ 曜日/時刻/遠い日程
+  if(!(d.v >= 7)){
+    // ここは load() の途中で動く。あとで宣言される const には触れないこと
+    (d.tasks || []).forEach(t => {
+      if(!Array.isArray(t.log)) t.log = [];
+      // これまでの単発は done フラグだけだった。1回やったものとして log に移す
+      if(t.freq && t.freq.unit === "once" && t.done && !t.log.length){
+        t.log.push(typeof t.doneAt === "number" ? t.doneAt : Date.now());
+      }
+      delete t.done; delete t.doneAt;
+    });
+    d.v = 7;
+  }
   // 取りこぼしの保険（壊れた値で描画が止まらないように）
   d.tasks = Array.isArray(d.tasks) ? d.tasks : [];
   d.tasks.forEach(t => {
@@ -161,6 +178,20 @@ function migrate(d){
     if(typeof t.size !== "number" || !(t.size >= 1)) t.size = 1;
     t.size = Math.min(16, Math.round(t.size));
     if(t.when !== "am" && t.when !== "pm") t.when = "any";
+    // 単発の総回数。期限は無い。やり切ったら「達成したもの」へ移る
+    if(typeof t.goal !== "number" || !(t.goal >= 1)) t.goal = 1;
+    t.goal = Math.min(999, Math.round(t.goal));
+    // 曜日と時刻。決まっているものだけ持つ（無ければ null）
+    if(!t.fixed || typeof t.fixed !== "object") t.fixed = null;
+    else{
+      const dow = t.fixed.dow;
+      t.fixed = {
+        dow: (typeof dow === "number" && dow >= 0 && dow <= 6) ? dow : null,   // null は毎日
+        time: /^\d{1,2}:\d{2}$/.test(t.fixed.time) ? t.fixed.time : "18:00"
+      };
+    }
+    // 遠い予定。この日までは、ふだんのリストに出さない
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(t.remindAt || "")) t.remindAt = "";
     // 壊れた行は黙って捨てる。ここで形を揃えておけば、あとは links[] だけを見ればよい
     t.links = Array.isArray(t.links) ? t.links.map(normLink).filter(Boolean) : [];
   });
@@ -171,6 +202,8 @@ function migrate(d){
   d.routineDone = (d.routineDone && typeof d.routineDone === "object") ? d.routineDone : {};
   d.days      = (d.days && typeof d.days === "object") ? d.days : {};
   d.base      = Object.assign({ weekday: 8, holiday: 12 }, d.base || {});
+  d.boxStart  = Object.assign({ weekday: "18:00", holiday: "10:00" }, d.boxStart || {});
+  d.weekOverrides = (d.weekOverrides && typeof d.weekOverrides === "object") ? d.weekOverrides : {};
   d.browserPaths = (d.browserPaths && typeof d.browserPaths === "object") ? d.browserPaths : {};
   delete d.links;   // v2 までの未使用フィールド
   return d;
@@ -225,6 +258,62 @@ function nowSlot(){
   return (h >= CUT && h < PM_FROM) ? "am" : "pm";
 }
 const SLOT = { am:{label:"午前", icon:"☀"}, pm:{label:"午後", icon:"🌙"}, any:{label:"いつでも", icon:"・"} };
+const WD = ["日","月","火","水","木","金","土"];
+
+/* ================= 週（日曜はじまり） =================
+   アプリ全体で週は日曜はじまりにそろえる。1週間ページも「週に何回」の集計も同じ。
+   起点がそろうので、ページに並ぶ7日と「今週ぶん」が常に一致する
+====================================================== */
+/* その日が属する週の、日曜の dayKey */
+function weekStartKey(key){
+  const d = dayStart(key || dayKey());
+  d.setDate(d.getDate() - d.getDay());     // 日曜はじまり
+  return ymd(d);
+}
+/* 週の識別子。今週だけの上書きを持つときのキーにする */
+const weekId = key => "W" + weekStartKey(key);
+/* 週の7日ぶんの dayKey を、日曜から土曜の順で返す */
+function weekDays(key){
+  const d = dayStart(weekStartKey(key));
+  const out = [];
+  for(let i = 0; i < 7; i++){ out.push(ymd(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+const nextWeekKey = key => ymd(new Date(dayStart(weekStartKey(key)).getTime() + 7*DAY));
+
+/* ================= 達成の数え方（行動ベース） =================
+   達成は「その日に達成ボタンを押したとき」に数える。箱に置いただけでは達成にならない。
+   単発もくり返しも log[] に積む。単発は goal 回ぶん積んだら達成
+========================================================== */
+const goalOf    = t => Math.max(1, t.goal || 1);
+const doneCount = t => (t.log || []).length;
+/* 単発をやり切ったか（＝「達成したもの」に移るか） */
+const isDone    = t => t.freq.unit === "once" && doneCount(t) >= goalOf(t);
+
+/* いまの期間に必要な回数。今週だけの上書きがあればそれを使う */
+function countFor(t, key){
+  if(t.freq.unit === "once") return goalOf(t);
+  const base = Math.max(1, t.freq.count || 1);
+  if(t.freq.unit !== "week") return base;
+  const ov = S.weekOverrides[weekId(key)];
+  const v = ov && ov[t.id];
+  return (typeof v === "number" && v >= 0) ? v : base;
+}
+/* 今週だけ回数を変える。もとの回数に戻したら上書きを消す */
+function setWeekOverride(id, key, n){
+  const t = taskById(id); if(!t || t.freq.unit !== "week") return;
+  const w = weekId(key);
+  const base = Math.max(1, t.freq.count || 1);
+  n = Math.max(0, Math.min(99, n));
+  if(n === base){ if(S.weekOverrides[w]) delete S.weekOverrides[w][t.id]; }
+  else { S.weekOverrides[w] = S.weekOverrides[w] || {}; S.weekOverrides[w][t.id] = n; }
+  if(S.weekOverrides[w] && !Object.keys(S.weekOverrides[w]).length) delete S.weekOverrides[w];
+  save();
+}
+const hasOverride = (t, key) => {
+  const ov = S.weekOverrides[weekId(key)];
+  return !!(ov && typeof ov[t.id] === "number");
+};
 
 let toastTimer;
 /* action を渡すとボタン付きで出る。関数なら「取り消す」扱い */
@@ -332,7 +421,6 @@ const taskById = id => S.tasks.find(t => t.id === id) || null;
 /* その日のうちに完了したか（単発は done、くり返しは log） */
 function doneOn(t, key){
   const from = dayStartTs(key || dayKey()), to = from + DAY;
-  if(t.freq.unit === "once") return !!t.done && t.doneAt >= from && t.doneAt < to;
   return (t.log || []).some(ts => ts >= from && ts < to);
 }
 /* 箱の列を「連続した同じやりたいこと」でまとめる */
@@ -520,13 +608,14 @@ function dayImage(){
    freq = { unit: "once" | "day" | "week" | "month" | "days", count, n }
    期間の区切りも午前2時に合わせる
 ================================================ */
-function periodOf(f){
-  const k = dayKey(), s0 = dayStartTs(k);
+function periodOf(f, key){
+  const k = key || dayKey(), s0 = dayStartTs(k);
+  // 単発は期限が無い。通算で goal 回ぶんやったら達成
+  if(f.unit === "once") return { start: 0, end: Infinity, label: "通算" };
   if(f.unit === "day") return { start: s0, end: s0 + DAY, label: "今日" };
   if(f.unit === "week"){
-    const d = dayStart(k);
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));   // 月曜はじまり
-    return { start: d.getTime(), end: d.getTime() + 7*DAY, label: "今週" };
+    const s = dayStartTs(weekStartKey(k));            // 日曜はじまり
+    return { start: s, end: s + 7*DAY, label: "今週" };
   }
   if(f.unit === "month"){
     const d = dayStart(k);
@@ -544,9 +633,9 @@ function freqLabel(f){
   if(f.unit === "month") return "月" + f.count + "回";
   return f.n + "日に" + f.count + "回";
 }
-function statOf(t){
-  const f = t.freq, p = periodOf(f);
-  const count = Math.max(1, f.count || 1);
+function statOf(t, key){
+  const f = t.freq, p = periodOf(f, key);
+  const count = countFor(t, key);
   const actual = (t.log || []).filter(ts => ts >= p.start && ts < Math.max(p.end, Date.now()+1)).length;
   let expected = count, remainDays = 0;
   if(f.unit === "week" || f.unit === "month"){
@@ -557,7 +646,7 @@ function statOf(t){
   }
   return {
     period: p, count, actual, expected,
-    met: actual >= count,
+    met: count > 0 && actual >= count,
     deficit: Math.max(0, expected - actual),
     remainDays,
     ratio: Math.min(1, actual / count)
@@ -587,18 +676,43 @@ function slotBonus(t){
   if(w === "any") return 0;
   return w === nowSlot() ? 10 : -10;
 }
+/* これから来る箱に置いてある数（今日以降・その期間のうち）。
+   過ぎた日の未実行の箱はここに入らないので、**サボった分は勝手にリストへ戻ってくる** */
+function plannedAhead(t, key){
+  const k0 = key || dayKey();
+  const p = periodOf(t.freq, k0);
+  const from = dayStartTs(k0);
+  // 「直近N日」は期間が後ろへ転がるので、今日からN日先までを置ける枠として見る
+  const to = p.rolling ? from + Math.max(1, t.freq.n || 1) * DAY : p.end;
+  let n = 0;
+  Object.keys(S.days).forEach(dk => {
+    const ts = dayStartTs(dk);
+    if(ts < from || ts >= to) return;
+    if((S.days[dk].slots || []).includes(t.id)) n++;
+  });
+  return n;
+}
+/* まだ箱に置いていない残り。これが 0 より大きいものだけリストに出す
+   残り ＝ 回数 － その期間にやった数 － これから来る箱に置いてある数 */
+function remainingToPlan(t, key){
+  return countFor(t, key) - statOf(t, key).actual - plannedAhead(t, key);
+}
 function todayNeed(t){
-  if(canSkip(t) && t.skipDay === dayKey()) return null;       // 今日は見送り
-  if(t.freq.unit === "once") return t.done ? null : { urgency: 2, st: null };
+  const k = dayKey();
+  if(t.remindAt && t.remindAt > k) return null;               // 遠い予定。まだ隠しておく
+  if(canSkip(t) && t.skipDay === k) return null;              // 今日は見送り
+  if(isDone(t)) return null;                                  // 単発をやり切った
   const st = statOf(t);
   if(st.met) return null;
+  if(remainingToPlan(t) <= 0) return null;                    // 置ききった（「入れきったら、もう終わり」）
+  if(t.freq.unit === "once") return { urgency: 2, st };
   if(t.freq.unit === "day")  return { urgency: 1, st };
   if(t.freq.unit === "days") return { urgency: 3, st };
   const needed = st.count - st.actual;
   const daysLeft = Math.max(1, st.remainDays);
   if(needed >= daysLeft) return { urgency: 5, st };            // 残り全日やらないと間に合わない
   if(st.deficit >= 1)    return { urgency: 4, st };            // ペースから1回分以上の遅れ
-  return null;
+  return { urgency: 3, st };                                   // ペース内でも、まだ置いていないなら出す
 }
 function todayTasks(){
   return S.tasks
@@ -617,12 +731,10 @@ function doTask(id){
   const t = taskById(id); if(!t) return;
   const d = getDay();
   const stamp = Date.now();
-  if(t.freq.unit === "once"){ t.done = true; t.doneAt = stamp; }
-  else {
-    t.log = t.log || [];
-    t.log.push(stamp);
-    if(t.log.length > 1000) t.log = t.log.slice(-1000);
-  }
+  // 単発もくり返しも同じ log に積む。単発は goal 回ぶんで達成
+  t.log = t.log || [];
+  t.log.push(stamp);
+  if(t.log.length > 1000) t.log = t.log.slice(-1000);
   // 箱に入れてやったものだけ、実績の器を用意する（入力は任意）
   const planned = d.slots.filter(x => x === id).length;
   if(planned > 0){
@@ -632,15 +744,14 @@ function doTask(id){
   if(d.roulette.includes(id)) removeFromRoulette(id);   // 済んだものは候補から外す
   save(); renderAll();
   cheer();
-  toast(t.freq.unit === "once" ? "できた" : "記録した", ()=> undoStamp(id, stamp));
+  const msg = t.freq.unit !== "once" ? "記録した"
+    : (isDone(t) ? "やり切った！" : "できた（" + doneCount(t) + "/" + goalOf(t) + "）");
+  toast(msg, ()=> undoStamp(id, stamp));
 }
 function undoStamp(id, stamp){
   const t = taskById(id); if(!t) return;
-  if(t.freq.unit === "once"){ t.done = false; delete t.doneAt; }
-  else {
-    const i = (t.log || []).lastIndexOf(stamp);
-    if(i >= 0) t.log.splice(i, 1);
-  }
+  const i = (t.log || []).lastIndexOf(stamp);
+  if(i >= 0) t.log.splice(i, 1);
   const j = (t.actuals || []).findIndex(a => a.ts === stamp);
   if(j >= 0) t.actuals.splice(j, 1);
   save(); renderAll(); toast("戻しました");
@@ -649,14 +760,9 @@ function undoStamp(id, stamp){
 function undoToday(id){
   const t = taskById(id); if(!t) return;
   const from = dayStartTs();
-  if(t.freq.unit === "once"){
-    if(!t.done){ toast("今日の記録はありません"); return; }
-    t.done = false; delete t.doneAt;
-  } else {
-    const idx = (t.log || []).map((ts,i) => ({ts,i})).filter(o => o.ts >= from).map(o => o.i).pop();
-    if(idx === undefined){ toast("今日の記録はありません"); return; }
-    t.log.splice(idx, 1);
-  }
+  const idx = (t.log || []).map((ts,i) => ({ts,i})).filter(o => o.ts >= from).map(o => o.i).pop();
+  if(idx === undefined){ toast("今日の記録はありません"); return; }
+  t.log.splice(idx, 1);
   const j = (t.actuals || []).map((a,i) => ({a,i})).filter(o => o.a.ts >= from).map(o => o.i).pop();
   if(j !== undefined) t.actuals.splice(j, 1);
   save(); renderAll(); toast("1回ぶん取り消しました");
@@ -681,6 +787,15 @@ function unplaceSilent(id){
   const d = getDay();
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
 }
+/* 今日以降の箱から全部どける（箱数が変わったとき・消したとき） */
+function unplaceEverywhere(id){
+  const k0 = dayKey();
+  Object.keys(S.days).forEach(dk => {
+    if(dk < k0) return;                       // 過ぎた日は記録なので触らない
+    const sl = S.days[dk].slots || [];
+    for(let i = 0; i < sl.length; i++) if(sl[i] === id) sl[i] = null;
+  });
+}
 function unskip(id){
   const t = taskById(id); if(!t) return;
   delete t.skipDay;
@@ -688,7 +803,7 @@ function unskip(id){
 }
 function skippedToday(){
   const k = dayKey();
-  return S.tasks.filter(t => canSkip(t) && t.skipDay === k && !(t.freq.unit === "once" && t.done));
+  return S.tasks.filter(t => canSkip(t) && t.skipDay === k && !isDone(t));
 }
 
 /* ================= 「いま、これ」のカーソル ================= */
@@ -1452,9 +1567,9 @@ $("freqChips").addEventListener("click", e => {
 });
 function syncFreqLine(){
   const line = $("freqLine");
-  if(freqUnit === "once"){ line.style.display = "none"; return; }
   line.style.display = "flex";
-  $("freqPre").textContent = { day:"1日に", week:"1週間に", month:"1か月に", days:"" }[freqUnit];
+  // 単発も回数を持てる（期限なしの総回数。やり切ったら「達成したもの」へ）
+  $("freqPre").textContent = { once:"全部で", day:"1日に", week:"1週間に", month:"1か月に", days:"" }[freqUnit];
   $("freqN").style.display   = freqUnit === "days" ? "" : "none";
   $("freqMid").style.display = freqUnit === "days" ? "" : "none";
 }
@@ -1465,9 +1580,11 @@ $("taskSize").addEventListener("input", ()=>{
 function addTask(){
   const v = $("taskInput").value.trim();
   if(!v) return;
-  let freq = { unit: "once" };
-  if(freqUnit !== "once"){
-    const count = Math.min(99, Math.max(1, parseInt($("freqCount").value, 10) || 1));
+  const count = Math.min(99, Math.max(1, parseInt($("freqCount").value, 10) || 1));
+  let freq = { unit: "once" }, goal = 1;
+  if(freqUnit === "once"){
+    goal = count;                                        // 単発の総回数（期限なし）
+  }else{
     const n = Math.min(365, Math.max(1, parseInt($("freqN").value, 10) || 1));
     freq = { unit: freqUnit, count };
     if(freqUnit === "days") freq.n = n;
@@ -1477,7 +1594,8 @@ function addTask(){
   const first = normLink({ kind: "url", url: $("taskUrl").value });
   S.tasks.push({
     id: uid(), text: v, links: first ? [first] : [],
-    when: taskWhen, freq, size, done: false, log: [], actuals: [], createdAt: Date.now()
+    when: taskWhen, freq, size, goal, fixed: null, remindAt: "",
+    log: [], actuals: [], createdAt: Date.now()
   });
   $("taskInput").value = ""; $("taskUrl").value = "";
   save(); renderAll(); toast("追加しました（" + size + "箱）");
@@ -1518,25 +1636,61 @@ const GROUPS = [
 function renderTasks(){
   const el = $("taskList");
   if(!S.tasks.length){ el.innerHTML = '<div class="empty-note">やりたいことはまだありません。</div>'; return; }
+  const k = dayKey();
+  const isFar = t => !!t.remindAt && t.remindAt > k;
+  const far  = S.tasks.filter(t => isFar(t) && !isDone(t));
+  const done = S.tasks.filter(isDone);
+  const live = S.tasks.filter(t => !isDone(t) && !isFar(t));
   let html = "";
   GROUPS.forEach(g => {
-    let list = S.tasks.filter(t => t.freq.unit === g.key);
+    const list = live.filter(t => t.freq.unit === g.key);
     if(!list.length) return;
-    if(g.key === "once") list = list.slice().sort((a,b) => (a.done?1:0) - (b.done?1:0));
     html += '<h2>' + g.title + '</h2>' + list.map(t => g.key === "once" ? onceRow(t) : repeatRow(t)).join("");
   });
-  el.innerHTML = html;
+  // 遠い予定。その日が近づくまで、ふだんのリストには出さない
+  if(far.length){
+    html += '<h2>まだ先の予定（' + far.length + '）</h2>' +
+      '<div class="empty-note" style="padding-top:0">その日が来るまで「やることリスト」には出ません。</div>' +
+      far.map(farRow).join("");
+  }
+  if(done.length){
+    html += '<h2>達成したもの（' + done.length + '）</h2>' + done.map(onceRow).join("");
+  }
+  el.innerHTML = html || '<div class="empty-note">やりたいことはまだありません。</div>';
 }
 function onceRow(t){
-  return '<div class="item' + (t.done ? " done" : "") + '" data-id="' + t.id + '">' +
-    '<button class="check' + (t.done ? " on" : "") + '" data-act="toggle">✓</button>' +
-    '<div class="grow">' + taskTitle(t) +
-      '<div class="s">' + boxTime(t.size) + esc(actualHint(t)) +
+  const done = isDone(t);
+  const goal = goalOf(t), n = doneCount(t);
+  const prog = goal > 1
+    ? '<div class="prog">' +
+        '<div class="bar"><i class="' + (done ? "met" : "") + '" style="width:' +
+          Math.round(Math.min(1, n/goal)*100) + '%"></i></div>' +
+        '<span class="pmeta"><b>' + n + '/' + goal + '</b></span>' +
+        (done ? '<span class="tag ok">達成</span>' : '') +
+      '</div>'
+    : "";
+  return '<div class="item' + (done ? " done" : "") + '" data-id="' + t.id + '">' +
+    '<button class="check' + (done ? " on" : (n > 0 ? " part" : "")) + '" data-act="toggle" title="' +
+      (done ? "1回ぶん戻す" : "1回ぶん記録する") + '">' + (done ? "✓" : (goal > 1 && n > 0 ? n : "✓")) + '</button>' +
+    '<div class="grow">' + taskTitle(t) + prog +
+      '<div class="s">' + boxTime(t.size) + (goal > 1 ? ' ・ 全' + goal + '回' : '') + esc(actualHint(t)) +
         (linksOf(t).length ? ' ・ ' + esc(linkSummary(t)) : '') + '</div>' +
     '</div>' +
     sizeBox(t) +
-    (t.done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>') +
-    whenBtn(t) + linkBtn(t) +
+    (done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>') +
+    (!done && n > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
+    whenBtn(t) + editBtn(t) + linkBtn(t) +
+    '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
+  '</div>';
+}
+/* まだ先の予定。リマインドの日が来るまでここに隠れている */
+function farRow(t){
+  return '<div class="item far" data-id="' + t.id + '">' +
+    '<span class="grip" title="まだ先の予定">🕰</span>' +
+    '<div class="grow">' + taskTitle(t) +
+      '<div class="s">' + esc(t.remindAt) + ' から出てきます ・ ' + boxTime(t.size) + '</div>' +
+    '</div>' +
+    editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -1558,11 +1712,12 @@ function repeatRow(t){
         '<span class="pmeta">' + meta + '</span>' +
         (late ? '<span class="tag late">遅れ</span>' : (st.met ? '<span class="tag ok">達成</span>' : '')) +
       '</div>' +
-      '<div class="s">' + esc(freqLabel(t.freq)) + ' ・ ' + esc(st.period.label) + ' ・ ' + boxTime(t.size) + esc(actualHint(t)) + '</div>' +
+      '<div class="s">' + esc(freqLabel(t.freq)) + ' ・ ' + esc(st.period.label) + ' ・ ' + boxTime(t.size) +
+      (t.fixed ? ' ・ ' + esc(fixedLabel(t)) : '') + esc(actualHint(t)) + '</div>' +
     '</div>' +
     sizeBox(t) +
     (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
-    whenBtn(t) + linkBtn(t) +
+    whenBtn(t) + editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -1571,6 +1726,122 @@ function linkBtn(t){
   return '<button class="iconbtn' + (n ? "" : " faint") + '" data-act="link" title="リンクとアプリ">🔗' +
     (n > 1 ? '<span class="badge">' + n + '</span>' : '') + '</button>';
 }
+const editBtn = t => '<button class="iconbtn" data-act="edit" title="編集">✎</button>';
+/* 曜日と時刻の見出し。dow が null なら毎日 */
+function fixedLabel(t){
+  if(!t.fixed) return "";
+  return (t.fixed.dow === null ? "毎日" : "毎週" + WD[t.fixed.dow]) + " " + t.fixed.time;
+}
+
+/* ================= やりたいことの編集 =================
+   名前・頻度・回数・箱数・午前午後・曜日と時刻・遠い予定を、あとから直せる。
+   他の機能がどれも「後から直せること」を前提にしているので、これが全部の前提になる
+====================================================== */
+let edTaskId = "";
+function openTaskEditor(id){
+  const t = taskById(id); if(!t) return;
+  edTaskId = id;
+  const f = t.freq;
+  const units = [
+    ["once","単発"], ["day","毎日"], ["week","週に"], ["month","月に"], ["days","N日に"]
+  ];
+  const cnt = f.unit === "once" ? goalOf(t) : Math.max(1, f.count || 1);
+  $("edBody").innerHTML =
+    '<label class="edrow"><span>名前</span>' +
+      '<input id="edText" autocomplete="off" value="' + esc(t.text) + '"></label>' +
+    '<div class="edrow"><span>くり返し</span><div class="chips" id="edUnit">' +
+      units.map(([u,l]) => '<button class="chip' + (f.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
+        l + '</button>').join("") + '</div></div>' +
+    '<div class="edrow" id="edCountRow"><span id="edCountPre">回数</span>' +
+      '<input type="number" id="edN" min="1" max="365" value="' + (f.n || 3) + '">' +
+      '<span id="edMid">日に</span>' +
+      '<input type="number" id="edCount" min="1" max="99" value="' + cnt + '"><span>回</span></div>' +
+    '<label class="edrow"><span>必要な箱</span>' +
+      '<input type="number" id="edSize" min="1" max="16" value="' + t.size + '">' +
+      '<span class="fnote" id="edSizeNote">' + boxTime(t.size) + '</span></label>' +
+    '<div class="edrow"><span>いつ</span><div class="chips" id="edWhen">' +
+      [["any","いつでも"],["am","☀ 午前"],["pm","🌙 午後"]].map(([w,l]) =>
+        '<button class="chip' + (whenOf(t) === w ? " on" : "") + '" data-when="' + w + '">' + l + '</button>'
+      ).join("") + '</div></div>' +
+    '<div class="edrow"><span>決まった時間</span>' +
+      '<label class="edchk"><input type="checkbox" id="edFixOn"' + (t.fixed ? " checked" : "") + '> 決める</label>' +
+      '<select id="edDow">' +
+        '<option value="">毎日</option>' +
+        WD.map((w,i) => '<option value="' + i + '">毎週' + w + '曜</option>').join("") +
+      '</select>' +
+      '<input type="time" id="edTime" value="' + esc((t.fixed && t.fixed.time) || "18:00") + '"></div>' +
+    '<div class="empty-note" style="padding:0 2px 6px">' +
+      '決めておくと、1週間ページでその日が作られたときに<b>自動で箱に入ります</b>。' +
+      '入ったあとは自由に動かせます（アプリは置き直しません）。</div>' +
+    '<label class="edrow"><span>まだ先の予定</span>' +
+      '<input type="date" id="edRemind" value="' + esc(t.remindAt || "") + '">' +
+      '<span class="fnote">この日まで隠す</span></label>';
+
+  if(t.fixed && t.fixed.dow !== null) $("edDow").value = String(t.fixed.dow);
+  $("edUnit").onclick = e => {
+    const c = e.target.closest(".chip"); if(!c) return;
+    $("edUnit").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
+    syncEdCount();
+  };
+  $("edWhen").onclick = e => {
+    const c = e.target.closest(".chip"); if(!c) return;
+    $("edWhen").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
+  };
+  $("edSize").oninput = ()=>{
+    const n = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
+    $("edSizeNote").textContent = boxTime(n);
+  };
+  syncEdCount();
+  $("edTitle").textContent = "「" + t.text + "」を直す";
+  $("editModal").classList.add("on");
+  setTimeout(()=> $("edText").focus(), 30);
+}
+function edUnitNow(){
+  const on = $("edUnit").querySelector(".chip.on");
+  return on ? on.dataset.unit : "once";
+}
+function syncEdCount(){
+  const u = edUnitNow();
+  $("edCountPre").textContent = { once:"全部で", day:"1日に", week:"1週間に", month:"1か月に", days:"" }[u];
+  $("edN").style.display   = u === "days" ? "" : "none";
+  $("edMid").style.display = u === "days" ? "" : "none";
+}
+function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; }
+function saveTaskEditor(){
+  const t = taskById(edTaskId); if(!t){ closeTaskEditor(); return; }
+  const text = $("edText").value.trim();
+  if(!text){ toast("名前を入れてください"); return; }
+  const u = edUnitNow();
+  const count = Math.min(99, Math.max(1, parseInt($("edCount").value, 10) || 1));
+  const n     = Math.min(365, Math.max(1, parseInt($("edN").value, 10) || 1));
+  const size  = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
+  const sizeChanged = size !== t.size;
+
+  t.text = text;
+  t.size = size;
+  t.when = ($("edWhen").querySelector(".chip.on") || {}).dataset?.when || "any";
+  if(u === "once"){ t.freq = { unit: "once" }; t.goal = count; }
+  else{
+    t.freq = { unit: u, count };
+    if(u === "days") t.freq.n = n;
+    t.goal = 1;
+  }
+  if($("edFixOn").checked){
+    const dow = $("edDow").value;
+    t.fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
+  }else t.fixed = null;
+  const rm = $("edRemind").value;
+  t.remindAt = /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "";
+
+  // 箱の占有が変わったら入れ直してもらう
+  if(sizeChanged) unplaceEverywhere(t.id);
+  closeTaskEditor();
+  save(); renderAll();
+  toast("直しました" + (sizeChanged ? "／箱数が変わったので入れ直してください" : ""));
+}
+$("edOk").onclick     = saveTaskEditor;
+$("edCancel").onclick = closeTaskEditor;
+$("editModal").onclick = e => { if(e.target === $("editModal")) closeTaskEditor(); };
 
 /* ================= リンクとアプリの編集 =================
    1つのやりたいことに何本でも。並び順がそのまま開く順・.bat の実行順になる
@@ -1695,14 +1966,12 @@ async function taskClick(e){
   const i = S.tasks.findIndex(t => t.id === id); if(i < 0) return;
   const act = btn.dataset.act, t = S.tasks[i];
 
-  if(act === "toggle"){
-    t.done = !t.done;
-    if(t.done) t.doneAt = Date.now(); else delete t.doneAt;
-    save(); renderAll(); return;
-  }
+  // 単発も log に積む。やり切っていれば1回ぶん戻す
+  if(act === "toggle"){ isDone(t) ? undoDo(id) : doTask(id); return; }
   if(act === "do")   { doTask(id); return; }
   if(act === "undo") { undoDo(id); return; }
   if(act === "link") { openLinkEditor(id); return; }
+  if(act === "edit") { openTaskEditor(id); return; }
   if(act === "when") { cycleWhen(id); return; }
   if(act === "up" && i > 0){ const [x] = S.tasks.splice(i,1); S.tasks.unshift(x); save(); renderAll(); return; }
   if(act === "del"){
@@ -2009,7 +2278,7 @@ function renderStats(){
   const d = getDay();
   $("stats").innerHTML =
     '<div class="kv"><span>今日の箱</span><span>全 ' + d.count + ' 箱 ・ 残り <b>' + remainBoxes(d) + '</b> 箱</span></div>' +
-    '<div class="kv"><span>単発のやりたいこと</span><span>' + once.length + '件（完了 ' + once.filter(t=>t.done).length + '）</span></div>' +
+    '<div class="kv"><span>単発のやりたいこと</span><span>' + once.length + '件（完了 ' + once.filter(isDone).length + '）</span></div>' +
     '<div class="kv"><span>くり返しのやりたいこと</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
     '<div class="kv"><span>ルーティーン</span><span>' + S.routines.length + '件</span></div>' +
     '<div class="kv"><span>リンク付きのやりたいこと</span><span>' + S.tasks.filter(t => linksOf(t).length).length + '件' +
@@ -2047,13 +2316,13 @@ $("fileInput").onchange = e => {
   e.target.value = "";
 };
 $("btnClearDone").onclick = async ()=>{
-  const gone = S.tasks.filter(t => t.freq.unit === "once" && t.done);
+  const gone = S.tasks.filter(isDone);
   if(!gone.length){ toast("完了したやりたいことはありません"); return; }
   const ok = await askConfirm("完了した " + gone.length + " 件を削除しますか？", "削除",
     gone.map(t => t.text).join("、"));
   if(!ok) return;
   const before = S.tasks.slice();
-  S.tasks = S.tasks.filter(t => !(t.freq.unit === "once" && t.done));
+  S.tasks = S.tasks.filter(t => !isDone(t));
   gone.forEach(t => unplaceSilent(t.id));
   save(); renderAll();
   toast("削除しました", ()=>{ S.tasks = before; save(); renderAll(); toast("戻しました"); });
@@ -2149,9 +2418,11 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = ()=> switchTab(
 
 /* ================= キーボード ================= */
 document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && $("editModal").classList.contains("on")){ closeTaskEditor(); return; }
   if(e.key === "Escape" && $("linkModal").classList.contains("on")){ closeLinkEditor(); return; }
   if(e.key === "Escape" && modalDone){ closeModal(null); return; }
-  if($("modal").classList.contains("on") || $("linkModal").classList.contains("on")) return;
+  if($("modal").classList.contains("on") || $("linkModal").classList.contains("on") ||
+     $("editModal").classList.contains("on")) return;
   if(e.ctrlKey || e.metaKey || e.altKey) return;
   const tag = (e.target.tagName || "").toLowerCase();
   if(tag === "input" || tag === "textarea" || tag === "select") return;
