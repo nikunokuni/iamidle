@@ -151,9 +151,16 @@ h2{font-size:12px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;mar
 
 /* ---------- 箱の列 ---------- */
 .boxrow{
+  position:relative;
   display:flex;align-items:center;gap:12px;
   background:var(--card);border:1px solid var(--line);border-radius:12px;
   padding:11px 13px;margin-bottom:6px;
+}
+/* 時刻の線。ちょうど◯時のところだけに出す目安 */
+.boxrow .bclock{
+  position:absolute;left:13px;top:-8px;
+  font-size:10px;color:var(--accent2);background:var(--bg);
+  padding:0 5px;border-radius:99px;letter-spacing:.04em;pointer-events:none;
 }
 .boxrow .bi{
   flex:none;min-width:44px;text-align:center;
@@ -481,6 +488,80 @@ kbd{
 .fbrow.off:hover{border-color:var(--line)}
 .fbrow .fbi{flex:none}
 .fbrow .fbt{flex:1;min-width:0;word-break:break-all}
+
+/* ---------- 1週間ページ ---------- */
+.wkhead{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.wktabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px}
+.wktab{
+  background:none;border:none;color:var(--fg-faint);font-family:inherit;font-size:13px;
+  padding:6px 18px;border-radius:999px;cursor:pointer;
+}
+.wktab.on{background:var(--accent);color:#0b1017;font-weight:700}
+.wkrange{font-size:12px;color:var(--fg-faint);letter-spacing:.06em}
+
+.wkgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:start}
+.wkcol{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px 6px;min-width:0}
+.wkcol.today{border-color:var(--accent);background:rgba(91,156,255,.06)}
+.wkcol.past{opacity:.5}
+.wkday{display:flex;align-items:baseline;gap:5px;justify-content:center;flex-wrap:wrap;margin-bottom:6px}
+.wkday .wkdn{font-size:13px;font-weight:700;color:var(--fg)}
+.wkday .wkdd{font-size:11px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
+.wkday .wktoday{font-size:10px;background:var(--accent);color:#0b1017;border-radius:99px;padding:1px 6px;font-weight:700}
+.wkbtns{display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:7px}
+.wkbtns button{
+  background:var(--card2);border:1px solid var(--line);color:var(--fg-dim);
+  font-family:inherit;font-size:11px;line-height:1;padding:4px 6px;border-radius:6px;cursor:pointer;
+}
+.wkbtns button:hover{color:var(--fg);border-color:var(--fg-faint)}
+.wkbtns .wktype{font-size:10px;padding:4px 6px;white-space:nowrap;color:var(--accent);border-color:rgba(91,156,255,.4)}
+.wkbtns .wktype.off{color:var(--accent2);border-color:rgba(255,209,102,.4)}
+.wkcnt{font-size:11px;color:var(--fg-faint);min-width:15px;text-align:center;font-variant-numeric:tabular-nums}
+
+.wkboxes{display:flex;flex-direction:column;gap:2px}
+.wkbox{
+  position:relative;display:flex;align-items:center;gap:4px;min-height:26px;
+  padding:3px 4px 3px 5px;border-radius:6px;font-size:11px;
+  background:var(--card);border:1px solid transparent;
+}
+.wkbox.empty{border:1px dashed var(--line);background:none}
+.wkbox.done{opacity:.45}
+.wkbox.done .wktxt{text-decoration:line-through}
+.wkbox.over{border-color:var(--accent);background:rgba(91,156,255,.16)}
+.wkbox[draggable=true]{cursor:grab}
+.wkbox .wkno{color:var(--fg-faint);font-size:10px;flex:none;font-variant-numeric:tabular-nums}
+.wkbox .wktxt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.wkbox .wkx{
+  background:none;border:none;color:var(--fg-faint);cursor:pointer;
+  font-size:10px;padding:0 2px;flex:none;opacity:0;
+}
+.wkbox:hover .wkx{opacity:1}
+/* 時刻の線。全部の箱には出さず、ちょうど◯時のところだけ */
+.wkclock{
+  position:absolute;left:0;right:0;top:-1px;height:0;
+  border-top:1px solid rgba(255,209,102,.35);
+  font-size:9px;color:var(--accent2);letter-spacing:.02em;
+  text-align:right;padding-right:2px;line-height:1;pointer-events:none;
+}
+.wknone{font-size:11px;color:var(--fg-faint);text-align:center;padding:8px 0}
+
+.wkalert{
+  background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.45);
+  border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.8;
+}
+.wkalert b{color:var(--accent2)}
+.wkalert .btn{margin-top:8px;font-size:12px;padding:6px 14px}
+/* 今週だけの回数の上書き */
+.wkov{display:inline-flex;align-items:center;gap:3px;flex:none}
+.wkov button{
+  background:var(--card2);border:1px solid var(--line);color:var(--fg-dim);
+  font-family:inherit;font-size:11px;line-height:1;padding:3px 6px;border-radius:6px;cursor:pointer;
+}
+.wkov b{font-size:12px;min-width:14px;text-align:center;color:var(--fg)}
+.wkov.on b{color:var(--accent2)}
+
+@media (max-width:900px){
+  .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 
 /* ---------- やりたいことの編集 ---------- */
 #edBody{margin-top:14px}

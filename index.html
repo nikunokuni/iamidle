@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-11.1">
+<meta name="app-version" content="2026-08-11.2">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-11.1">
+<link rel="stylesheet" href="style.css?v=2026-08-11.2">
 </head>
 <body>
 
@@ -57,6 +57,14 @@
           <div><kbd>+</kbd> 箱を増やす　<kbd>-</kbd> 箱を減らす</div>
         </div>
       </aside>
+    </div>
+  </section>
+
+  <!-- ============ 1週間の予定（日曜はじまり。今週／来週の切り替え） ============ -->
+  <section id="sec-week">
+    <div class="home">
+      <div class="col main"><div id="weekWrap"></div></div>
+      <aside class="col side"><div id="weekSide"></div></aside>
     </div>
   </section>
 
@@ -165,6 +173,26 @@
       </div>
     </div>
 
+    <h2>箱が始まる時刻（目安）</h2>
+    <div class="empty-note" style="padding-top:0">
+      箱は<b>順番だけ</b>を持ちます。ここで決めるのは「何番目がだいたい何時か」の見当だけです。<br>
+      1週間ページと今日の箱に、ちょうど◯時のところだけ線が出ます。<br>
+      休憩を挟めば実際の時間はずれていきます。<b>あくまで目安</b>として使ってください。
+    </div>
+    <div class="form">
+      <div class="row">
+        <span class="flabel">平日</span>
+        <input type="time" id="startWeekday">
+        <span class="fnote">から</span>
+      </div>
+      <div class="row mt8">
+        <span class="flabel">休みの日</span>
+        <input type="time" id="startHoliday">
+        <span class="fnote">から</span>
+      </div>
+      <div class="empty-note" id="startNote"></div>
+    </div>
+
     <h2>ブラウザの場所（起動ファイル用）</h2>
     <div class="empty-note" style="padding-top:0">
       「Chromeで開く」のようなリンクは、起動ファイル(.bat)から
@@ -215,6 +243,7 @@
 <nav>
   <div class="inner">
     <button data-tab="now" class="on"><span class="ic">🎯</span>今日</button>
+    <button data-tab="week"><span class="ic">🗓</span>1週間</button>
     <button data-tab="tasks"><span class="ic">📋</span>やりたいこと</button>
     <button data-tab="philo"><span class="ic">🧭</span>哲学</button>
     <button data-tab="set"><span class="ic">⚙️</span>設定</button>
@@ -273,6 +302,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-11.1"></script>
+<script src="app.js?v=2026-08-11.2"></script>
 </body>
 </html>

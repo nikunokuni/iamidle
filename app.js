@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-11.1";
+const APP_VERSION = "2026-08-11.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -400,8 +400,8 @@ function getDay(key){
   return d;
 }
 /* 平日 ⇄ 休み。箱数をその区分の基本値に合わせ直す */
-function setDayType(holiday){
-  const d = getDay();
+function setDayType(holiday, key){
+  const d = getDay(key);
   d.holiday = !!holiday;
   const target = baseFor(d.holiday);
   while(d.count < target){ d.count++; d.slots.push(null); }
@@ -413,10 +413,56 @@ function setDayType(holiday){
     d.slots.splice(i, 1); d.count--;
   }
   save(); renderAll();
-  toast((d.holiday ? "休み" : "平日") + "にした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）" +
+  toast(dayLabel(key) + "を" + (d.holiday ? "休み" : "平日") + "にした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）" +
     (stuck ? "／埋まっている箱があるのでここまで" : ""));
 }
 const taskById = id => S.tasks.find(t => t.id === id) || null;
+
+/* ================= 箱と時刻 =================
+   箱はこれまでどおり順番だけを持つ。時刻は持たない。
+   ここで出すのは「何番目がだいたい何時か」の見当だけ。
+   休憩を挟めば実時間はずれていく。あくまで目安
+============================================ */
+const HHMM = /^(\d{1,2}):(\d{2})$/;
+/* 1箱目の開始時刻を「その日の始まりからの分」に。読めなければ 18:00 とみなす */
+function startMin(key){
+  const holiday = key === "__h" ? true : key === "__w" ? false : isHoliday(key);
+  const s = S.boxStart[holiday ? "holiday" : "weekday"] || "18:00";
+  const m = HHMM.exec(s);
+  const h = m ? Math.min(23, Math.max(0, +m[1])) : 18;
+  const mi = m ? Math.min(59, Math.max(0, +m[2])) : 0;
+  return h*60 + mi;
+}
+/* i 番目（0はじまり）の箱が始まるおおよその時刻 */
+function boxClock(key, i){
+  const t = startMin(key) + i*30;
+  const h = Math.floor(t / 60) % 24, m = t % 60;
+  return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
+}
+/* 線を引く箱の位置。ちょうど「◯時00分」になる境目だけに出す */
+function isClockMark(key, i){
+  if(i === 0) return true;
+  return (startMin(key) + i*30) % 60 === 0;
+}
+/* 「19:00」から、その日の何番目の箱かを逆算する（範囲外は端に寄せる） */
+function boxIndexForTime(key, hhmm){
+  const m = HHMM.exec(hhmm || "");
+  if(!m) return 0;
+  const want = Math.min(23, Math.max(0, +m[1]))*60 + Math.min(59, Math.max(0, +m[2]));
+  let diff = want - startMin(key);
+  if(diff < 0) diff += 24*60;                 // 開始より前の時刻は翌日まわりとみなす
+  return Math.max(0, Math.round(diff / 30));
+}
+
+/* 日付の呼び名。今日・明日はそう呼ぶ。それ以外は「8/14（木）」 */
+function dayLabel(key){
+  const k = key || dayKey();
+  const today = dayKey();
+  if(k === today) return "今日";
+  if(k === ymd(new Date(dayStartTs(today) + DAY))) return "明日";
+  const d = dayStart(k);
+  return (d.getMonth()+1) + "/" + d.getDate() + "（" + WD[d.getDay()] + "）";
+}
 
 /* その日のうちに完了したか（単発は done、くり返しは log） */
 function doneOn(t, key){
@@ -470,9 +516,9 @@ function placeTask(id){
   toast("箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
 }
 /* 落とした位置に入れる（すでに箱にあるものは、そこへ動かす） */
-function placeTaskAt(id, at){
+function placeTaskAt(id, at, key){
   const t = taskById(id); if(!t) return false;
-  const d = getDay();
+  const d = getDay(key);
   const size = Math.max(1, t.size || 1);
   const prev = d.slots.slice();
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;  // 動かす前にどける
@@ -486,24 +532,24 @@ function placeTaskAt(id, at){
   }
   for(let k = 0; k < size; k++) d.slots[at+k] = id;
   save(); renderAll();
-  toast("箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
+  toast(dayLabel(key) + "の箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
   return true;
 }
-function unplace(id){
-  const d = getDay();
+function unplace(id, key){
+  const d = getDay(key);
   if(!d.slots.includes(id)) return;
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
   save(); renderAll(); toast("箱から出した");
 }
-function addBox(){
-  const d = getDay();
+function addBox(key){
+  const d = getDay(key);
   if(d.count >= 48){ toast("これ以上は増やせません"); return; }
   d.count++; d.slots.push(null);
   save(); renderAll();
-  toast("箱を増やした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）");
+  toast(dayLabel(key) + "の箱を増やした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）");
 }
-function removeBox(){
-  const d = getDay();
+function removeBox(key){
+  const d = getDay(key);
   if(d.count <= 0){ toast("箱がありません"); return; }
   let i = d.slots.length - 1;
   while(i >= 0 && d.slots[i] !== null) i--;
@@ -513,7 +559,7 @@ function removeBox(){
   const cut = { at: Date.now(), label: "" };   // 理由はあとから任意でつける
   d.cuts.push(cut);
   save(); renderAll();
-  toast("箱を減らした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）", {
+  toast(dayLabel(key) + "の箱を減らした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）", {
     label: "理由をつける",
     run: async ()=>{
       const v = await askInput("この箱は何で潰れた？", "", "例：家庭教師");
@@ -523,6 +569,99 @@ function removeBox(){
       if(cut.label) toast("「" + cut.label + "」として記録した");
     }
   });
+}
+
+/* ================= 自動配置（曜日・時刻つきの予定） =================
+   **自動で入るのは、その日が作られたときの1回だけ。**
+   それ以降アプリは箱に手を出さない。移動も削除もユーザーの自由で、
+   一度外したものを置き直すことはしない。
+   置けなかったものは、勝手にずらしたり消したりせず、衝突として知らせる
+================================================================ */
+/* その日に自動で入るべきもの（曜日が合う・まだ達成していない・遠い予定でない） */
+function fixedFor(key){
+  const ts = dayStartTs(key);
+  const dow = dayStart(key).getDay();
+  return S.tasks.filter(t => {
+    if(!t.fixed) return false;
+    if(t.fixed.dow !== null && t.fixed.dow !== dow) return false;
+    if(isDone(t)) return false;
+    if(t.remindAt && t.remindAt > key) return false;
+    // その期間ぶんの回数を、もう置ききっているなら足さない
+    if(t.freq.unit !== "day" && remainingToPlan(t, key) <= 0) return false;
+    return true;
+  }).sort((a,b) => boxIndexForTime(key, a.fixed.time) - boxIndexForTime(key, b.fixed.time));
+}
+/* 新しく作られた日にだけ走らせる。置けなかったものは d.conflicts に残す */
+function autoPlace(key){
+  const d = S.days[key]; if(!d) return;
+  const bad = [];
+  fixedFor(key).forEach(t => {
+    if(d.slots.includes(t.id)) return;
+    const size = Math.max(1, t.size || 1);
+    const at = boxIndexForTime(key, t.fixed.time);
+    let ok = at >= 0 && at + size <= d.slots.length;
+    if(ok) for(let k = 0; k < size; k++) if(d.slots[at+k] !== null){ ok = false; break; }
+    if(!ok){
+      // ずらさない。本人に直してもらう
+      bad.push({ id: t.id, text: t.text, time: t.fixed.time,
+        why: at + size > d.slots.length ? "箱が足りません" : "その時間の箱がふさがっています" });
+      return;
+    }
+    for(let k = 0; k < size; k++) d.slots[at+k] = t.id;
+  });
+  if(bad.length) d.conflicts = bad;
+}
+/* 決まった時間を設定・変更したときに、すでに作られている先の日へも入れる。
+   「日が作られたときだけ」に任せると、いま見えている週には二度と入らないため。
+   これは**本人が時間を決めた操作の続き**であって、アプリが勝手に動かすのとは別 */
+function autoPlaceAhead(id){
+  const t = taskById(id); if(!t || !t.fixed) return 0;
+  const k0 = dayKey();
+  let n = 0;
+  Object.keys(S.days).sort().forEach(k => {
+    if(k < k0) return;
+    const d = S.days[k];
+    if(!Array.isArray(d.slots) || d.slots.includes(t.id)) return;
+    if(t.fixed.dow !== null && dayStart(k).getDay() !== t.fixed.dow) return;
+    if(isDone(t) || (t.remindAt && t.remindAt > k)) return;
+    if(t.freq.unit !== "day" && remainingToPlan(t, k) <= 0) return;
+    const size = Math.max(1, t.size || 1);
+    const at = boxIndexForTime(k, t.fixed.time);
+    let ok = at + size <= d.slots.length;
+    if(ok) for(let j = 0; j < size; j++) if(d.slots[at+j] !== null){ ok = false; break; }
+    if(!ok) return;                                  // ずらさない。置けなければ置かない
+    for(let j = 0; j < size; j++) d.slots[at+j] = t.id;
+    n++;
+  });
+  return n;
+}
+/* その日を用意する。まだ無ければ作って、そのときだけ自動配置を走らせる */
+function ensureDay(key){
+  key = key || dayKey();
+  const isNew = !S.days[key];
+  getDay(key);
+  if(isNew) autoPlace(key);
+  return isNew;
+}
+/* 週の7日ぶんをまとめて用意する（1週間ページを開いたとき）。
+   作ったぶんは必ず保存する。保存し損ねると、開くたびに作り直しになる */
+function ensureWeek(key){
+  let made = false;
+  weekDays(key).forEach(k => { if(ensureDay(k)) made = true; });
+  if(made) save();
+}
+/* まだ知らせていない衝突を集める */
+function pendingConflicts(keys){
+  const out = [];
+  keys.forEach(k => {
+    const d = S.days[k];
+    if(d && d.conflicts && d.conflicts.length) out.push({ key: k, list: d.conflicts });
+  });
+  return out;
+}
+function clearConflicts(keys){
+  keys.forEach(k => { if(S.days[k]) delete S.days[k].conflicts; });
+  save();
 }
 
 /* ================= ごほうびの画像 =================
@@ -688,7 +827,11 @@ function plannedAhead(t, key){
   Object.keys(S.days).forEach(dk => {
     const ts = dayStartTs(dk);
     if(ts < from || ts >= to) return;
-    if((S.days[dk].slots || []).includes(t.id)) n++;
+    if(!(S.days[dk].slots || []).includes(t.id)) return;
+    // すでにやった日の箱は「これから来る箱」ではない。
+    // ここを数えると、やった数と二重に引いて残りが負になる
+    if(doneOn(t, dk)) return;
+    n++;
   });
   return n;
 }
@@ -1139,7 +1282,7 @@ function renderNow(){
   parts.push("箱 " + (g.from+1) + (size > 1 ? "–" + (g.to+1) : "") + "（" + boxTime(size) + "）");
   if(w !== "any") parts.push(SLOT[w].icon + SLOT[w].label);
   parts.push(t.freq.unit === "once"
-    ? "単発のやりたいこと"
+    ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発のやりたいこと")
     : freqLabel(t.freq) + ' ・ ' + st.period.label + ' ' + st.actual + '/' + st.count +
       (st.remainDays ? '（残り' + st.remainDays + '日）' : ''));
   const ls = linksOf(t);
@@ -1186,10 +1329,13 @@ function renderBoxes(){
     el.innerHTML = '<div class="allclear"><span class="big">📦</span>今日は箱がありません。</div>';
     return;
   }
+  const key = dayKey();
   const rows = boxGroups(d).map(g => {
     const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
+    // 時刻はちょうど◯時のところだけ。箱は順番だけを持つので、これは目安
+    const clock = isClockMark(key, g.from) ? '<span class="bclock">' + boxClock(key, g.from) + '</span>' : '';
     if(!g.id){
-      return '<div class="boxrow empty" data-i="' + g.from + '">' +
+      return '<div class="boxrow empty" data-i="' + g.from + '">' + clock +
         '<span class="bi">' + no + '</span>' +
         '<div class="bt">空き　（右からドラッグして入れる）</div>' +
       '</div>';
@@ -1202,7 +1348,7 @@ function renderBoxes(){
     if(whenOf(t) !== "any") sub.unshift(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
     return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
         (size > 1 ? " span2" : "") + '" data-id="' + t.id + '" data-i="' + g.from + '"' +
-        (done ? "" : ' draggable="true"') + '>' +
+        (done ? "" : ' draggable="true"') + '>' + clock +
       '<span class="bi">' + no + '</span>' +
       '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
       '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
@@ -1276,6 +1422,180 @@ $("boxList").addEventListener("drop", e => {
   placeTaskAt(id, parseInt(row.dataset.i, 10) || 0);
 });
 
+/* ================= 1週間ページ =================
+   週は日曜はじまり。今週と来週を切り替えて見る。
+   やりたいことリストからドラッグして、どの日の箱にも入れられる
+============================================== */
+let weekAnchor = "";     // 見ている週の中の1日。空なら今週
+const weekKeyNow = () => weekAnchor || dayKey();
+const isNextWeek = () => weekStartKey(weekKeyNow()) !== weekStartKey(dayKey());
+
+function renderWeek(){
+  const el = $("weekWrap"); if(!el) return;
+  const key = weekKeyNow();
+  ensureWeek(key);
+  const days = weekDays(key);
+  const today = dayKey();
+
+  // 衝突は勝手に直さない。何が置けなかったかを知らせて、本人に直してもらう
+  const conf = pendingConflicts(days);
+  const alertHtml = !conf.length ? "" :
+    '<div class="wkalert"><b>置けなかった予定があります。</b>箱を増やすか、時間をずらしてください。' +
+      conf.map(c => '<div>' + esc(dayLabel(c.key)) + '：' +
+        esc(c.list.map(x => x.text + "（" + x.time + "・" + x.why + "）").join(" / ")) + '</div>').join("") +
+      '<button class="btn ghost" id="wkAlertOk">わかった</button></div>';
+
+  const head =
+    '<div class="wkhead">' +
+      '<div class="wktabs">' +
+        '<button class="wktab' + (isNextWeek() ? "" : " on") + '" data-week="this">今週</button>' +
+        '<button class="wktab' + (isNextWeek() ? " on" : "") + '" data-week="next">来週</button>' +
+      '</div>' +
+      '<div class="wkrange">' + esc(dayLabel(days[0]) + " 〜 " + dayLabel(days[6])) + '</div>' +
+    '</div>';
+
+  const cols = days.map(k => {
+    const d = getDay(k);
+    const past = k < today;
+    const isToday = k === today;
+    const ds = dayStart(k);
+    const rows = boxGroups(d).map(g => {
+      const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
+      const mark = isClockMark(k, g.from) ? '<span class="wkclock">' + boxClock(k, g.from) + '</span>' : '';
+      if(!g.id){
+        return '<div class="wkbox empty" data-i="' + g.from + '" data-day="' + k + '">' +
+          mark + '<span class="wkno">' + no + '</span></div>';
+      }
+      const t = taskById(g.id);
+      const done = doneOn(t, k);
+      return '<div class="wkbox' + (done ? " done" : "") + '" data-i="' + g.from + '" data-day="' + k +
+          '" data-id="' + t.id + '"' + (past || done ? "" : ' draggable="true"') + '>' +
+        mark + '<span class="wkno">' + no + '</span>' +
+        '<span class="wktxt">' + esc(t.text) + '</span>' +
+        (past || done ? '' : '<button class="wkx" data-act="wkout" title="箱から出す">✕</button>') +
+      '</div>';
+    }).join("");
+
+    return '<div class="wkcol' + (isToday ? " today" : "") + (past ? " past" : "") + '" data-day="' + k + '">' +
+      '<div class="wkday">' +
+        '<span class="wkdn">' + WD[ds.getDay()] + '</span>' +
+        '<span class="wkdd">' + (ds.getMonth()+1) + '/' + ds.getDate() + '</span>' +
+        (isToday ? '<span class="wktoday">今日</span>' : '') +
+      '</div>' +
+      '<div class="wkbtns">' +
+        '<button class="wktype' + (d.holiday ? " off" : "") + '" data-act="wktype" data-day="' + k + '">' +
+          (d.holiday ? "休み" : "仕事") + '</button>' +
+        '<button data-act="wkminus" data-day="' + k + '" title="箱を減らす">−</button>' +
+        '<span class="wkcnt">' + d.count + '</span>' +
+        '<button data-act="wkplus" data-day="' + k + '" title="箱を増やす">＋</button>' +
+      '</div>' +
+      '<div class="wkboxes">' + (d.count ? rows : '<div class="wknone">箱なし</div>') + '</div>' +
+    '</div>';
+  }).join("");
+
+  el.innerHTML = alertHtml + head + '<div class="wkgrid">' + cols + '</div>';
+  if($("wkAlertOk")) $("wkAlertOk").onclick = ()=>{ clearConflicts(days); renderWeek(); };
+  el.querySelectorAll(".wktab").forEach(b => b.onclick = ()=>{
+    weekAnchor = b.dataset.week === "next" ? nextWeekKey(dayKey()) : "";
+    renderWeek(); renderWeekSide();
+  });
+}
+/* 1週間ページの右側。ここからドラッグして、どの日の箱にも入れる */
+function renderWeekSide(){
+  const el = $("weekSide"); if(!el) return;
+  const key = weekKeyNow();
+  const list = S.tasks
+    .map(t => {
+      if(isDone(t)) return null;
+      if(t.remindAt && t.remindAt > dayKey()) return null;
+      const left = remainingToPlan(t, key);
+      return left > 0 ? { t, left } : null;
+    })
+    .filter(Boolean);
+
+  const body = !list.length
+    ? '<div class="empty-note">この週に置くものは、もうありません。</div>'
+    : list.map(o => {
+        const t = o.t;
+        const sub = [t.size > 1 ? t.size + "箱" : "1箱"];
+        sub.push(t.freq.unit === "once" ? "単発" : freqLabel(t.freq));
+        if(t.fixed) sub.push(fixedLabel(t));
+        const ovr = t.freq.unit === "week" && hasOverride(t, key);
+        return '<div class="item" data-id="' + t.id + '" draggable="true">' +
+          '<span class="grip" title="ドラッグして箱へ">⠿</span>' +
+          '<div class="grow">' + esc(t.text) +
+            '<div class="s">あと ' + o.left + ' 回 ・ ' + esc(sub.join(" ・ ")) + '</div>' +
+          '</div>' +
+          (t.freq.unit === "week"
+            ? '<span class="wkov' + (ovr ? " on" : "") + '">' +
+                '<button data-act="ovminus" title="今週だけ1回減らす">−</button>' +
+                '<b>' + countFor(t, key) + '</b>' +
+                '<button data-act="ovplus" title="今週だけ1回増やす">＋</button>' +
+              '</span>'
+            : '') +
+        '</div>';
+      }).join("");
+
+  el.innerHTML =
+    '<div class="panel">' +
+      '<div class="ph"><span>この週に置くもの</span><span class="cnt">' + list.length + ' 件</span></div>' +
+      body +
+      '<div class="empty-note" style="padding:10px 2px 0">' +
+        '左の箱へドラッグ。<b>週に何回</b>のものは ＋− で' +
+        (isNextWeek() ? "来週" : "今週") + 'だけ回数を変えられます（翌週はもとに戻ります）。</div>' +
+    '</div>';
+}
+
+/* 1週間ページの操作。日付は data-day で持ち回る */
+$("weekWrap").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const k = btn.dataset.day || (e.target.closest("[data-day]") || {}).dataset?.day;
+  if(!k) return;
+  const act = btn.dataset.act;
+  if(act === "wktype")  { setDayType(!getDay(k).holiday, k); return; }
+  if(act === "wkplus")  { addBox(k); return; }
+  if(act === "wkminus") { removeBox(k); return; }
+  if(act === "wkout"){
+    const row = e.target.closest(".wkbox");
+    if(row && row.dataset.id) unplace(row.dataset.id, k);
+  }
+});
+$("weekSide").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const row = e.target.closest(".item"); if(!row) return;
+  const id = row.dataset.id, t = taskById(id); if(!t) return;
+  const key = weekKeyNow();
+  const act = btn.dataset.act;
+  if(act === "ovplus" || act === "ovminus"){
+    setWeekOverride(id, key, countFor(t, key) + (act === "ovplus" ? 1 : -1));
+    renderAll();
+    toast((isNextWeek() ? "来週" : "今週") + "だけ " + countFor(t, key) + " 回にした");
+  }
+});
+$("weekSide").addEventListener("dragstart", dragStart);
+$("weekWrap").addEventListener("dragstart", dragStart);
+$("weekWrap").addEventListener("dragover", e => {
+  const b = e.target.closest(".wkbox"); if(!b) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  document.querySelectorAll(".wkbox.over").forEach(x => x.classList.remove("over"));
+  b.classList.add("over");
+});
+$("weekWrap").addEventListener("dragleave", e => {
+  const b = e.target.closest(".wkbox");
+  if(b && !b.contains(e.relatedTarget)) b.classList.remove("over");
+});
+$("weekWrap").addEventListener("drop", e => {
+  e.preventDefault();
+  const b = e.target.closest(".wkbox");
+  const id = draggedId(e);
+  dragEnd();
+  if(!b || !id || !taskById(id)) return;
+  const k = b.dataset.day;
+  if(k < dayKey()){ toast("過ぎた日には入れられません"); return; }
+  placeTaskAt(id, parseInt(b.dataset.i, 10) || 0, k);
+});
+
 /* ================= 描画：箱に入れていないやりたいこと ================= */
 function renderUnplaced(){
   const list = unplacedTasks();
@@ -1295,7 +1615,7 @@ function renderUnplaced(){
         if(whenOf(t) !== "any") sub.push(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
         sub.push(t.size > 1 ? t.size + "箱" : "1箱");
         sub.push(t.freq.unit === "once"
-          ? "単発"
+          ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
           : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
         return '<div class="item" data-id="' + t.id + '" draggable="true">' +
           '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
@@ -1826,18 +2146,23 @@ function saveTaskEditor(){
     if(u === "days") t.freq.n = n;
     t.goal = 1;
   }
+  const wasFixed = t.fixed ? fixedLabel(t) : "";
   if($("edFixOn").checked){
     const dow = $("edDow").value;
     t.fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
   }else t.fixed = null;
+  const fixChanged = (t.fixed ? fixedLabel(t) : "") !== wasFixed;
   const rm = $("edRemind").value;
   t.remindAt = /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "";
 
   // 箱の占有が変わったら入れ直してもらう
   if(sizeChanged) unplaceEverywhere(t.id);
+  // 時間を決めた（変えた）ぶんは、もう作られている先の日にも入れる
+  const put = (fixChanged && t.fixed) ? autoPlaceAhead(t.id) : 0;
   closeTaskEditor();
   save(); renderAll();
-  toast("直しました" + (sizeChanged ? "／箱数が変わったので入れ直してください" : ""));
+  toast("直しました" + (sizeChanged ? "／箱数が変わったので入れ直してください" : "") +
+    (put ? "／" + put + "日ぶん箱に入れました" : ""));
 }
 $("edOk").onclick     = saveTaskEditor;
 $("edCancel").onclick = closeTaskEditor;
@@ -2149,7 +2474,26 @@ function renderSettings(){
   const w = $("baseWeekday"), h = $("baseHoliday");
   if(document.activeElement !== w) w.value = S.base.weekday;
   if(document.activeElement !== h) h.value = S.base.holiday;
+  const sw = $("startWeekday"), sh = $("startHoliday");
+  if(document.activeElement !== sw) sw.value = S.boxStart.weekday;
+  if(document.activeElement !== sh) sh.value = S.boxStart.holiday;
+  $("startNote").textContent =
+    "平日は " + boxClock(dayKeyOfType(false), 0) + " から " + S.base.weekday + "箱で " +
+    endClock(false) + " まで。休みは " + boxClock(dayKeyOfType(true), 0) + " から " +
+    S.base.holiday + "箱で " + endClock(true) + " まで。";
   renderBrowserPaths();
+}
+/* 目安の計算に使う、その区分の代表日。いまの日で区分だけ差し替える */
+function dayKeyOfType(holiday){
+  const k = dayKey();
+  return (!!getDay(k).holiday === !!holiday) ? k : (holiday ? "__h" : "__w");
+}
+/* その区分で、箱を使い切ったときのおおよその終わり時刻 */
+function endClock(holiday){
+  const st = HHMM.exec(S.boxStart[holiday ? "holiday" : "weekday"] || "18:00");
+  const base = st ? (+st[1])*60 + (+st[2]) : 18*60;
+  const t = base + baseFor(holiday)*30;
+  return String(Math.floor(t/60) % 24).padStart(2,"0") + ":" + String(t%60).padStart(2,"0");
 }
 /* 起動ファイル用のブラウザの場所。空なら自動で探す */
 function renderBrowserPaths(){
@@ -2183,6 +2527,15 @@ function onBaseChange(){
 }
 $("baseWeekday").addEventListener("change", onBaseChange);
 $("baseHoliday").addEventListener("change", onBaseChange);
+function onStartChange(){
+  const ok = v => HHMM.test(v) ? v : "";
+  S.boxStart.weekday = ok($("startWeekday").value) || S.boxStart.weekday;
+  S.boxStart.holiday = ok($("startHoliday").value) || S.boxStart.holiday;
+  save(); renderAll();
+  toast("箱の始まりを変えました（目安の時刻だけが変わります）");
+}
+$("startWeekday").addEventListener("change", onStartChange);
+$("startHoliday").addEventListener("change", onStartChange);
 
 /* ================= 設定：お気に入りの画像 ================= */
 $("btnAddImg").onclick = ()=> $("imgInput").click();
@@ -2439,6 +2792,8 @@ document.addEventListener("keydown", e => {
 function renderAll(){
   renderHeader();
   renderBoxBar();
+  renderWeek();
+  renderWeekSide();
   renderPhiloBar();
   renderNow();
   renderBoxes();
@@ -2467,6 +2822,9 @@ function prune(){
   if(keys.length > keep) keys.slice(0, keys.length - keep).forEach(k => delete S.days[k]);
   const rk = Object.keys(S.routineDone).sort();
   if(rk.length > 60) rk.slice(0, rk.length - 60).forEach(k => delete S.routineDone[k]);
+  // 今週だけの上書きは、その週が過ぎたら捨てる（週が変われば元の回数に戻る）
+  const thisW = weekId();
+  Object.keys(S.weekOverrides).forEach(w => { if(w < thisW) delete S.weekOverrides[w]; });
 }
 /* 日付が変わったら哲学を1つ進める */
 function rollDay(){
@@ -2477,7 +2835,7 @@ function rollDay(){
     cursor = 0;
     winner = null;
     prune();
-    getDay(k);      // その日の箱を基本値から用意する
+    ensureDay(k);   // その日の箱を用意し、そのときだけ自動配置を走らせる
     save();
   }
 }
