@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-13.3";
+const APP_VERSION = "2026-08-13.4";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -214,7 +214,7 @@ function trySave(){
   catch(e){ return false; }
 }
 function save(){
-  if(!trySave()) toast("保存に失敗しました。設定から画像を減らしてください");
+  if(!trySave()) toast("保存に失敗しました。哲学タブから画像を減らしてください");
 }
 /* いま保存に使っているおおよその量（KB） */
 function usedKB(){
@@ -2494,7 +2494,7 @@ const DKEY = "jiko-kanri-diary-v1";
 const DIARY_FIELDS = [
   { key:"done",  id:"dDone",  label:"今日できたこと",             fold:false },
   { key:"mood",  id:"dMood",  label:"いま、もやもやしていること", fold:true  },
-  { key:"gripe", id:"dGripe", label:"吐き出したいグチ",           fold:true  }
+  { key:"gripe", id:"dGripe", label:"今日の気持ち",               fold:true  }
 ];
 
 let diaryFailed = "";
@@ -2519,7 +2519,7 @@ let D = loadDiary();
 
 function saveDiary(){
   try{ localStorage.setItem(DKEY, JSON.stringify(D)); return true; }
-  catch(e){ toast("日記を保存できませんでした。設定から画像を減らしてください"); return false; }
+  catch(e){ toast("日記を保存できませんでした。哲学タブから画像を減らしてください"); return false; }
 }
 function diaryKB(){
   try{ return Math.round(JSON.stringify(D).length / 1024); }catch(e){ return 0; }
@@ -2795,7 +2795,7 @@ function onStartChange(){
 $("startWeekday").addEventListener("change", onStartChange);
 $("startHoliday").addEventListener("change", onStartChange);
 
-/* ================= 設定：お気に入りの画像 ================= */
+/* ================= 哲学タブ：お気に入りの画像 ================= */
 $("btnAddImg").onclick = ()=> $("imgInput").click();
 $("imgInput").onchange = async e => {
   const files = [...e.target.files];

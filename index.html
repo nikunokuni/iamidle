@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-13.3">
+<meta name="app-version" content="2026-08-13.4">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-13.3">
+<link rel="stylesheet" href="style.css?v=2026-08-13.4">
 </head>
 <body>
 
@@ -142,12 +142,12 @@
         <textarea id="dMood" placeholder="言葉にすると、輪郭が出る"></textarea>
       </div>
       <div class="dfield" id="dGripeWrap" style="display:none">
-        <label for="dGripe">吐き出したいグチ</label>
+        <label for="dGripe">今日の気持ち</label>
         <textarea id="dGripe" placeholder="誰にも見せない。好きに書く"></textarea>
       </div>
       <div class="dmore" id="diaryMore">
         <button class="dtog" data-open="mood">＋ もやもや</button>
-        <button class="dtog" data-open="gripe">＋ グチ</button>
+        <button class="dtog" data-open="gripe">＋ 今日の気持ち</button>
       </div>
       <div class="dnote">
         書いた欄だけが残ります。全部埋める必要はありません。<br>
@@ -182,6 +182,20 @@
       </div>
     </div>
     <div id="cheerList"></div>
+
+    <h2>お気に入りの画像</h2>
+    <div class="empty-note" style="padding-top:0">
+      「今日の箱」の背景になります。最初はやりたいことの箱に隠れていて、<br>
+      終わった箱から透けて見え、やり切ると「いま、これ」に大きく出ます。<br>
+      その日に出る1枚は、保存した中から毎日ランダムに選ばれます。<br>
+      保存できるのは<b>8枚まで</b>（各400KB以下に自動で圧縮されます）。
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="btnAddImg">画像を追加</button>
+      <span class="fnote" id="imgNote"></span>
+    </div>
+    <input type="file" id="imgInput" accept="image/*" multiple style="display:none">
+    <div id="imgList"></div>
   </section>
 
   <!-- ============ 設定 ============ -->
@@ -233,20 +247,6 @@
       調べ方：そのブラウザのショートカットを右クリック →「プロパティ」→「リンク先」。
     </div>
     <div class="form" id="browserPaths"></div>
-
-    <h2>お気に入りの画像</h2>
-    <div class="empty-note" style="padding-top:0">
-      「今日の箱」の背景になります。最初はやりたいことの箱に隠れていて、<br>
-      終わった箱から透けて見え、やり切ると「いま、これ」に大きく出ます。<br>
-      その日に出る1枚は、保存した中から毎日ランダムに選ばれます。<br>
-      保存できるのは<b>8枚まで</b>（各400KB以下に自動で圧縮されます）。
-    </div>
-    <div class="row">
-      <button class="btn ghost" id="btnAddImg">画像を追加</button>
-      <span class="fnote" id="imgNote"></span>
-    </div>
-    <input type="file" id="imgInput" accept="image/*" multiple style="display:none">
-    <div id="imgList"></div>
 
     <h2>減らした箱（今月）</h2>
     <div id="cutStats"></div>
@@ -334,6 +334,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-13.3"></script>
+<script src="app.js?v=2026-08-13.4"></script>
 </body>
 </html>
