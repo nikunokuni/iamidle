@@ -598,8 +598,33 @@ kbd{
 .wkov b{font-size:12px;min-width:14px;text-align:center;color:var(--fg)}
 .wkov.on b{color:var(--accent2)}
 
+/* 「この週に置くもの」。1週間ページの一番上で、スクロールしても貼り付く。
+   横に並べて、貼り付いたときの高さが出すぎないようにする */
+.weekside{
+  position:sticky;top:0;z-index:40;
+  padding:12px 0;
+  background:var(--bg);
+}
+.weekside .panel{
+  margin-bottom:0;padding:12px 14px;
+  background:rgba(22,26,33,.94);backdrop-filter:blur(10px);
+}
+.weekside .panel .ph{justify-content:flex-start;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.weekside .panel .ph .tip{
+  margin-left:auto;letter-spacing:0;font-size:11px;color:var(--fg-faint);
+}
+.weekside .panel .ph .tip b{color:var(--fg-dim);font-weight:700}
+.wksidelist{
+  display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
+  padding-bottom:4px;scrollbar-width:thin;
+}
+.wksidelist .item{
+  margin-bottom:0;flex:0 0 auto;max-width:300px;padding:9px 11px;
+}
+
 @media (max-width:900px){
   .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .weekside .panel .ph .tip{display:none}
 }
 
 /* ---------- やりたいことの編集 ---------- */

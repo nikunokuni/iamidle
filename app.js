@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-13.1";
+const APP_VERSION = "2026-08-13.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1500,7 +1500,8 @@ function renderWeek(){
     renderWeek(); renderWeekSide();
   });
 }
-/* 1週間ページの右側。ここからドラッグして、どの日の箱にも入れる */
+/* 1週間ページの一番上。ここからドラッグして、どの日の箱にも入れる。
+   画面をスクロールしても、この帯は上に貼り付いたままになる */
 function renderWeekSide(){
   const el = $("weekSide"); if(!el) return;
   const key = weekKeyNow();
@@ -1514,8 +1515,8 @@ function renderWeekSide(){
     .filter(Boolean);
 
   const body = !list.length
-    ? '<div class="empty-note">この週に置くものは、もうありません。</div>'
-    : list.map(o => {
+    ? '<div class="empty-note" style="padding:4px 2px">この週に置くものは、もうありません。</div>'
+    : '<div class="wksidelist">' + list.map(o => {
         const t = o.t;
         const sub = [t.size > 1 ? t.size + "箱" : "1箱"];
         sub.push(t.freq.unit === "once" ? "単発" : freqLabel(t.freq));
@@ -1534,15 +1535,17 @@ function renderWeekSide(){
               '</span>'
             : '') +
         '</div>';
-      }).join("");
+      }).join("") + '</div>';
 
   el.innerHTML =
     '<div class="panel">' +
-      '<div class="ph"><span>この週に置くもの</span><span class="cnt">' + list.length + ' 件</span></div>' +
+      '<div class="ph">' +
+        '<span>この週に置くもの</span>' +
+        '<span class="cnt">' + list.length + ' 件</span>' +
+        '<span class="tip">下の箱へドラッグ ・ <b>週に何回</b>のものは ＋− で' +
+          (isNextWeek() ? "来週" : "今週") + 'だけ回数を変えられます（翌週はもとに戻ります）</span>' +
+      '</div>' +
       body +
-      '<div class="empty-note" style="padding:10px 2px 0">' +
-        '左の箱へドラッグ。<b>週に何回</b>のものは ＋− で' +
-        (isNextWeek() ? "来週" : "今週") + 'だけ回数を変えられます（翌週はもとに戻ります）。</div>' +
     '</div>';
 }
 

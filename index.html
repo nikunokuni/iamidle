@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-13.1">
+<meta name="app-version" content="2026-08-13.2">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-13.1">
+<link rel="stylesheet" href="style.css?v=2026-08-13.2">
 </head>
 <body>
 
@@ -28,17 +28,17 @@
     <div class="clock" id="clock">--:--</div>
   </header>
 
-  <!-- 残り箱数。常に見えるように上に貼り付く -->
-  <div class="boxbar" id="boxBar"></div>
-
-  <div class="philo-bar" id="philoBar">
-    <div class="label">今日の指針</div>
-    <div class="text" id="philoText">哲学タブから、大事にしたい言葉を登録してください。</div>
-    <div class="hint">クリックで次の言葉へ</div>
-  </div>
-
   <!-- ============ 今日（1画面2カラム） ============ -->
   <section id="sec-now" class="on">
+    <!-- 残り箱数。今日タブの中で、スクロールしても上に貼り付く -->
+    <div class="boxbar" id="boxBar"></div>
+
+    <div class="philo-bar" id="philoBar">
+      <div class="label">今日の指針</div>
+      <div class="text" id="philoText">哲学タブから、大事にしたい言葉を登録してください。</div>
+      <div class="hint">クリックで次の言葉へ</div>
+    </div>
+
     <div class="home">
       <div class="col main">
         <div class="now" id="nowCard"></div>
@@ -62,10 +62,9 @@
 
   <!-- ============ 1週間の予定（日曜はじまり。今週／来週の切り替え） ============ -->
   <section id="sec-week">
-    <div class="home">
-      <div class="col main"><div id="weekWrap"></div></div>
-      <aside class="col side"><div id="weekSide"></div></aside>
-    </div>
+    <!-- この週に置くもの。一番上に置いて、スクロールしても貼り付く -->
+    <div class="side weekside" id="weekSide"></div>
+    <div id="weekWrap"></div>
   </section>
 
   <!-- ============ やりたいこと管理 ============ -->
@@ -335,6 +334,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-13.1"></script>
+<script src="app.js?v=2026-08-13.2"></script>
 </body>
 </html>
