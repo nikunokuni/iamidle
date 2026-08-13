@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-11.2">
+<meta name="app-version" content="2026-08-13.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-11.2">
+<link rel="stylesheet" href="style.css?v=2026-08-13.1">
 </head>
 <body>
 
@@ -125,6 +125,38 @@
       </div>
     </div>
     <div id="routineList"></div>
+  </section>
+
+  <!-- ============ 日記 ============ -->
+  <section id="sec-diary">
+    <div class="diary-today">
+      <div class="dhead">
+        <div class="dtitle" id="diaryTitle"></div>
+        <div class="dstate" id="diaryState"></div>
+      </div>
+      <div class="dfield" id="dDoneWrap">
+        <label for="dDone">今日できたこと</label>
+        <textarea id="dDone" placeholder="小さいことでいい。ひとつ書ければ十分"></textarea>
+      </div>
+      <div class="dfield" id="dMoodWrap" style="display:none">
+        <label for="dMood">いま、もやもやしていること</label>
+        <textarea id="dMood" placeholder="言葉にすると、輪郭が出る"></textarea>
+      </div>
+      <div class="dfield" id="dGripeWrap" style="display:none">
+        <label for="dGripe">吐き出したいグチ</label>
+        <textarea id="dGripe" placeholder="誰にも見せない。好きに書く"></textarea>
+      </div>
+      <div class="dmore" id="diaryMore">
+        <button class="dtog" data-open="mood">＋ もやもや</button>
+        <button class="dtog" data-open="gripe">＋ グチ</button>
+      </div>
+      <div class="dnote">
+        書いた欄だけが残ります。全部埋める必要はありません。<br>
+        打つそばから自動で保存されます。箱は使いません。
+      </div>
+    </div>
+
+    <div id="diaryPast"></div>
   </section>
 
   <!-- ============ 哲学 ============ -->
@@ -245,6 +277,7 @@
     <button data-tab="now" class="on"><span class="ic">🎯</span>今日</button>
     <button data-tab="week"><span class="ic">🗓</span>1週間</button>
     <button data-tab="tasks"><span class="ic">📋</span>やりたいこと</button>
+    <button data-tab="diary"><span class="ic">📔</span>日記</button>
     <button data-tab="philo"><span class="ic">🧭</span>哲学</button>
     <button data-tab="set"><span class="ic">⚙️</span>設定</button>
   </div>
@@ -302,6 +335,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-11.2"></script>
+<script src="app.js?v=2026-08-13.1"></script>
 </body>
 </html>

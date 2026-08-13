@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-11.2";
+const APP_VERSION = "2026-08-13.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2469,6 +2469,255 @@ document.querySelectorAll(".addtoggle").forEach(b => b.onclick = ()=>{
   setForm(b.dataset.form, $(b.dataset.form).style.display === "none");
 });
 
+/* ================= 日記 =================
+   ▼ 本体（S / KEY）とは別のキーに保存している。理由は3つあって、どれも大事：
+     1. days の 180日 prune() に巻き込まれない。日記は何年でも残すもの
+     2. migrate() を通らないので、日記を足すために本体のデータ版を上げなくていい
+        （v6 の移行で本体を丸ごと空にした事故があるので、その経路に日記を乗せない）
+     3. 本体JSONが壊れて KEY+"-broken" 送りになっても、日記だけは生き残る
+   ▼ ただし localStorage の容量はオリジン単位で共有なので、これで容量が増えるわけではない。
+     そこは画像の枚数で調整する（設定タブの「保存量のめやす」に日記ぶんも出している）
+   ▼ 書いた欄だけを持ち、全部空なら日付キーごと消す。
+     「書かなかった日」を残さないので、過去を出すときに素直に「あるものだけ」並ぶ
+========================================== */
+const DKEY = "jiko-kanri-diary-v1";
+/* 欄の定義。key が保存名、id が textarea、id+"Wrap" が包み。fold=false の欄は常に開いている */
+const DIARY_FIELDS = [
+  { key:"done",  id:"dDone",  label:"今日できたこと",             fold:false },
+  { key:"mood",  id:"dMood",  label:"いま、もやもやしていること", fold:true  },
+  { key:"gripe", id:"dGripe", label:"吐き出したいグチ",           fold:true  }
+];
+
+let diaryFailed = "";
+function loadDiary(){
+  let raw = null;
+  try{
+    raw = localStorage.getItem(DKEY);
+    if(!raw) return { v:1, entries:{} };
+    const d = JSON.parse(raw);
+    if(!d || typeof d !== "object" || !d.entries || typeof d.entries !== "object") throw new Error("形が違う");
+    return { v:1, entries: d.entries };
+  }catch(e){
+    /* 本体の load() と同じ考え方。消える前に必ず横へ退避する */
+    if(raw){
+      try{ localStorage.setItem(DKEY + "-broken", raw); }catch(_){}
+      diaryFailed = String((e && e.message) || e);
+    }
+    return { v:1, entries:{} };
+  }
+}
+let D = loadDiary();
+
+function saveDiary(){
+  try{ localStorage.setItem(DKEY, JSON.stringify(D)); return true; }
+  catch(e){ toast("日記を保存できませんでした。設定から画像を減らしてください"); return false; }
+}
+function diaryKB(){
+  try{ return Math.round(JSON.stringify(D).length / 1024); }catch(e){ return 0; }
+}
+const diaryDays = () => Object.keys(D.entries).length;
+
+/* 「2026年8月13日（木）」 */
+function diaryDateLabel(key){
+  const d = dayStart(key);
+  return d.getFullYear() + "年" + (d.getMonth()+1) + "月" + d.getDate() + "日（" + WD[d.getDay()] + "）";
+}
+function hhmm(ts){
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+
+/* ▼ いま入力欄に出している日。dayKey() ではなくこれを使って書き込む。
+   日付をまたいだ瞬間に打ちかけを確定すると、dayKey() では新しい日に書いてしまうため */
+let diaryKeyOpen = "";
+let diaryTimer = 0;
+let diaryOpened = {};      // その場で開いた欄（畳んである欄を開いたか）
+let diaryEditKey = "";     // 過去の日を書き直しているとき、その日付キー
+let diaryShow = 20;        // 「これまでの日記」を何件出すか
+
+/* 入力欄の中身。空白だけの欄は「書いていない」とみなす */
+function collectDiary(){
+  const e = {};
+  DIARY_FIELDS.forEach(f => {
+    const v = ($(f.id).value || "").replace(/\s+$/, "");
+    if(v.trim()) e[f.key] = v;
+  });
+  return e;
+}
+/* 入力欄の中身を保存に反映する。変わっていなければ何もしない */
+function commitDiary(){
+  if(diaryTimer){ clearTimeout(diaryTimer); diaryTimer = 0; }
+  const key = diaryKeyOpen || dayKey();
+  const cur = collectDiary();
+  const old = D.entries[key] || null;
+  const same = DIARY_FIELDS.every(f => (cur[f.key] || "") === ((old && old[f.key]) || ""));
+  if(same) return;
+  if(!Object.keys(cur).length) delete D.entries[key];    // 全部消したら、その日ごと消す
+  else D.entries[key] = Object.assign(cur, { at: Date.now() });
+  saveDiary();
+  renderDiaryState();
+}
+function scheduleDiary(){
+  if(diaryTimer) clearTimeout(diaryTimer);
+  diaryTimer = setTimeout(commitDiary, 700);
+  renderDiaryState();
+}
+
+function renderDiaryState(){
+  const el = $("diaryState"); if(!el) return;
+  const e = D.entries[diaryKeyOpen || dayKey()];
+  if(diaryTimer){ el.textContent = "…"; el.className = "dstate"; return; }
+  if(!e){ el.textContent = "まだ書いていません"; el.className = "dstate"; return; }
+  el.textContent = "保存しました " + hhmm(e.at || Date.now());
+  el.className = "dstate saved";
+}
+/* 中身のある欄と、その場で開いた欄だけを見せる */
+function syncDiaryFolds(){
+  DIARY_FIELDS.forEach(f => {
+    if(!f.fold) return;
+    const wrap = $(f.id + "Wrap");
+    const btn  = document.querySelector('.dtog[data-open="' + f.key + '"]');
+    const on   = !!diaryOpened[f.key] || !!($(f.id).value || "").trim();
+    wrap.style.display = on ? "" : "none";
+    if(btn) btn.style.display = on ? "none" : "";
+  });
+}
+function fillDiaryToday(){
+  const k = dayKey();
+  if(diaryKeyOpen && diaryKeyOpen !== k){
+    commitDiary();                 // 日付をまたいだ。まず前の日として確定させる
+    diaryOpened = {};
+    diaryEditKey = "";
+  }
+  diaryKeyOpen = k;
+  const e = D.entries[k] || {};
+  // 値が同じときに代入しない。打っている最中にカーソルが飛ぶのを防ぐ
+  DIARY_FIELDS.forEach(f => {
+    const el = $(f.id), v = e[f.key] || "";
+    if(el.value !== v) el.value = v;
+  });
+  $("diaryTitle").textContent = diaryDateLabel(k) + " の日記";
+  syncDiaryFolds();
+}
+
+function diaryBody(e){
+  return DIARY_FIELDS.filter(f => (e[f.key] || "").trim()).map(f =>
+    '<div class="dsec"><div class="dlab">' + f.label + '</div>' +
+    '<div class="dtxt">' + esc(e[f.key]) + '</div></div>'
+  ).join("");
+}
+/* 過去の1日。書き直し中はその場が入力欄に変わる */
+function diaryCard(key, agoYears){
+  const e = D.entries[key]; if(!e) return "";
+  const head = '<div class="dchead">' +
+    '<div class="dcdate">' + diaryDateLabel(key) + '</div>' +
+    (agoYears ? '<div class="dcago">' + agoYears + '年前</div>' : '') +
+    '<div class="sp"></div>';
+  if(diaryEditKey === key){
+    return '<article class="dcard editing' + (agoYears ? ' same' : '') + '" data-key="' + key + '">' +
+      head + '</div>' +
+      DIARY_FIELDS.map(f =>
+        '<div class="dfield"><label>' + f.label + '</label>' +
+        '<textarea data-fld="' + f.key + '">' + esc(e[f.key] || "") + '</textarea></div>'
+      ).join("") +
+      '<div class="row" style="justify-content:flex-end">' +
+        '<button class="btn ghost" data-act="dcancel">やめる</button>' +
+        '<button class="btn" data-act="dsave">保存</button>' +
+      '</div>' +
+    '</article>';
+  }
+  return '<article class="dcard' + (agoYears ? ' same' : '') + '" data-key="' + key + '">' +
+    head +
+    '<button class="iconbtn" data-act="dedit" title="書き直す">✎</button>' +
+    '<button class="iconbtn del" data-act="ddel" title="削除">✕</button>' +
+    '</div>' + diaryBody(e) +
+  '</article>';
+}
+
+function renderDiaryPast(){
+  const el = $("diaryPast"); if(!el) return;
+  const today = diaryKeyOpen || dayKey();
+  const md    = today.slice(5);                       // "08-13"
+  const thisY = Number(today.slice(0,4));
+  const all   = Object.keys(D.entries).filter(k => k !== today).sort().reverse();
+  // 同じ月日は上に出す。書いていない年はそもそも並ばない（キーが無いので）
+  const same  = all.filter(k => k.slice(5) === md);
+  const rest  = all.filter(k => k.slice(5) !== md);
+
+  let h = "";
+  if(same.length){
+    h += '<h2>同じ日に書いたもの</h2>' +
+         same.map(k => diaryCard(k, thisY - Number(k.slice(0,4)))).join("");
+  }
+  if(rest.length){
+    h += '<h2>これまでの日記</h2>' +
+         rest.slice(0, diaryShow).map(k => diaryCard(k, 0)).join("");
+    if(rest.length > diaryShow){
+      h += '<button class="fold" id="diaryMoreBtn">もっと見る（残り ' + (rest.length - diaryShow) + '日）</button>';
+    }
+  }
+  if(!h){
+    h = '<div class="empty-note">書いたものは、この下に新しい順で並びます。' +
+        '同じ月日に書いたものがあれば、いちばん上に出ます。</div>';
+  }
+  el.innerHTML = h;
+  const more = $("diaryMoreBtn");
+  if(more) more.onclick = ()=>{ diaryShow += 20; renderDiaryPast(); };
+}
+
+function renderDiary(){
+  if(diaryTimer) commitDiary();      // 打ちかけを取りこぼさない
+  fillDiaryToday();
+  renderDiaryPast();
+  renderDiaryState();
+}
+
+DIARY_FIELDS.forEach(f => {
+  $(f.id).addEventListener("input", scheduleDiary);
+  $(f.id).addEventListener("blur", commitDiary);
+});
+document.querySelectorAll(".dtog").forEach(b => b.onclick = ()=>{
+  diaryOpened[b.dataset.open] = true;
+  syncDiaryFolds();
+  const f = DIARY_FIELDS.find(x => x.key === b.dataset.open);
+  if(f) $(f.id).focus();
+});
+window.addEventListener("beforeunload", ()=>{ if(diaryTimer) commitDiary(); });
+
+$("diaryPast").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const card = e.target.closest(".dcard"); if(!card) return;
+  const key = card.dataset.key;
+  const act = btn.dataset.act;
+
+  if(act === "dedit"){ diaryEditKey = key; renderDiaryPast(); return; }
+  if(act === "dcancel"){ diaryEditKey = ""; renderDiaryPast(); return; }
+  if(act === "dsave"){
+    const next = {};
+    card.querySelectorAll("[data-fld]").forEach(t => {
+      const v = (t.value || "").replace(/\s+$/, "");
+      if(v.trim()) next[t.dataset.fld] = v;
+    });
+    diaryEditKey = "";
+    if(!Object.keys(next).length) delete D.entries[key];
+    else D.entries[key] = Object.assign(next, { at: Date.now() });
+    saveDiary(); renderDiaryPast(); renderStats();
+    toast("書き直しました");
+    return;
+  }
+  if(act === "ddel"){
+    const ok = await askConfirm(diaryDateLabel(key) + " の日記を削除しますか？", "削除", "元に戻せます（この画面にいる間だけ）");
+    if(!ok) return;
+    const removed = D.entries[key];
+    delete D.entries[key];
+    saveDiary(); renderDiaryPast(); renderStats();
+    toast("削除しました", ()=>{
+      D.entries[key] = removed;
+      saveDiary(); renderDiaryPast(); renderStats(); toast("戻しました");
+    });
+  }
+});
+
 /* ================= 設定 ================= */
 function renderSettings(){
   const w = $("baseWeekday"), h = $("baseHoliday");
@@ -2639,10 +2888,14 @@ function renderStats(){
       '</span></div>' +
     '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>' +
     '<div class="kv"><span>画像</span><span>' + S.images.length + '枚</span></div>' +
-    '<div class="kv"><span>保存量のめやす</span><span>約 ' + usedKB() + ' KB</span></div>';
+    '<div class="kv"><span>日記</span><span>' + diaryDays() + '日ぶん</span></div>' +
+    '<div class="kv"><span>保存量のめやす</span><span>約 ' + (usedKB() + diaryKB()) +
+      ' KB（うち日記 ' + diaryKB() + ' KB）</span></div>';
 }
 $("btnExport").onclick = ()=>{
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+  commitDiary();     // 打ちかけの日記も書き出しに含める
+  // 日記は別のキーに持っているので、書き出しのときだけ diary として同じファイルに入れる
+  const blob = new Blob([JSON.stringify(Object.assign({}, S, { diary: D }), null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "自己管理_" + dayKey() + ".json";
@@ -2659,10 +2912,22 @@ $("fileInput").onchange = e => {
       d = JSON.parse(r.result);
       if(typeof d !== "object" || d === null) throw 0;
     }catch(err){ toast("読み込めませんでした"); return; }
+    // 日記が入っていない古い書き出しで、いまの日記を消してしまわないこと
+    const inDiary = (d.diary && typeof d.diary === "object" && d.diary.entries &&
+                     typeof d.diary.entries === "object") ? { v:1, entries: d.diary.entries } : null;
     const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
-      "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます");
+      "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます。" +
+      (inDiary ? "日記も、読み込むほうに置き換わります（" + Object.keys(inDiary.entries).length + "日ぶん）"
+               : "このファイルに日記は入っていないので、いまの日記はそのまま残します"));
     if(!ok) return;
+    delete d.diary;      // 本体（S）に混ぜない。日記は別のキーで持つ
     S = migrate(Object.assign(structuredClone(DEFAULTS), d));
+    if(inDiary){
+      // 打ちかけを新しい日記に書き込んでしまわないよう、先に捨てる
+      if(diaryTimer){ clearTimeout(diaryTimer); diaryTimer = 0; }
+      D = inDiary; diaryKeyOpen = ""; diaryOpened = {}; diaryEditKey = ""; diaryShow = 20;
+      saveDiary();
+    }
     save(); renderAll(); toast("読み込みました");
   };
   r.readAsText(f);
@@ -2810,6 +3075,7 @@ function renderAll(){
     )].map(u => '<option value="' + esc(u) + '"></option>').join("");
   renderPhilos();
   renderCheers();
+  renderDiary();
   renderSettings();
   renderStats();
   renderVersion();
@@ -2857,6 +3123,10 @@ checkForUpdate();
 if(loadFailed){
   toast("前のデータを読めませんでした（" + loadFailed + "）。中身は消さずに退避してあります");
   console.error("load failed:", loadFailed, "→ 退避先 localStorage:", KEY + "-broken");
+}
+if(diaryFailed){
+  toast("日記を読めませんでした（" + diaryFailed + "）。中身は消さずに退避してあります");
+  console.error("diary load failed:", diaryFailed, "→ 退避先 localStorage:", DKEY + "-broken");
 }
 
 /* タブを開きっぱなしでも、午前2時／午後の切り替わりで表示が変わること */

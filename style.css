@@ -333,6 +333,45 @@ kbd{
 .kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;color:var(--fg-dim)}
 .kv b{color:var(--fg);font-weight:700}
 
+/* ---------- 日記 ----------
+   上が今日の入力欄、下に過去のもの。書いていない日はそもそも並ばない */
+.diary-today{
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;margin:14px 0 4px;
+}
+.dhead{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+.dtitle{font-size:17px;font-weight:700}
+.dstate{margin-left:auto;font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
+.dstate.saved{color:var(--ok)}
+.dfield{margin-bottom:12px}
+.dfield label{display:block;font-size:11px;letter-spacing:.1em;color:var(--accent2);margin-bottom:5px}
+.dfield textarea{min-height:104px}
+.dmore{display:flex;gap:8px;flex-wrap:wrap}
+.dtog{
+  background:none;border:1px dashed var(--line);color:var(--fg-dim);
+  border-radius:99px;padding:7px 16px;font-size:13px;font-family:inherit;cursor:pointer;
+}
+.dtog:hover{background:var(--card);border-color:var(--accent);color:var(--accent)}
+.dnote{color:var(--fg-faint);font-size:12px;line-height:1.7;padding:12px 2px 0}
+
+.dcard{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:14px;margin-bottom:8px;
+}
+.dcard.same{border-left:3px solid var(--accent2)}
+.dcard.editing{border-color:var(--accent)}
+.dchead{display:flex;align-items:center;gap:8px}
+.dcdate{font-size:13px;font-weight:700;color:var(--fg-dim);font-variant-numeric:tabular-nums}
+.dcago{
+  font-size:11px;font-weight:600;color:var(--accent2);
+  background:rgba(255,209,102,.14);border-radius:99px;padding:1px 9px;flex:none;
+}
+.dchead .sp{margin-left:auto}
+.dsec{margin-top:10px}
+.dlab{font-size:11px;letter-spacing:.08em;color:var(--fg-faint)}
+.dtxt{white-space:pre-wrap;line-height:1.75;margin-top:3px;word-break:break-word}
+.dcard.editing .dfield{margin-top:10px;margin-bottom:0}
+
 /* ---------- toast ---------- */
 .toast{
   position:fixed;left:50%;transform:translateX(-50%);bottom:80px;z-index:99;
