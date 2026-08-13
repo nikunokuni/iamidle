@@ -626,6 +626,13 @@ kbd{
   .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .weekside .panel .ph .tip{display:none}
 }
+/* 指で押す画面では、箱を増やす／減らすボタンが小さすぎて当たらない。大きくする */
+@media (max-width:900px), (hover:none){
+  .wkbtns{gap:6px}
+  .wkbtns button{min-height:34px;padding:8px 12px;font-size:13px}
+  .wkbtns .wktype{font-size:12px;padding:8px 10px}
+  .wkcnt{font-size:13px;min-width:18px}
+}
 
 /* ---------- やりたいことの編集 ---------- */
 #edBody{margin-top:14px}

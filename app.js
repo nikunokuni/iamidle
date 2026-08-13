@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-13.2";
+const APP_VERSION = "2026-08-13.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -247,8 +247,13 @@ function dayKey(at){
   x.setHours(x.getHours() - CUT);
   return ymd(x);
 }
+/* 日付キーは "2026-08-13" の形の文字列だけ。
+   ボタンの onclick にそのまま関数を渡すと、ここへイベントが流れ込んで
+   ありえないキーの日ができてしまう。受け取る側でも必ず直しておく */
+const DAYKEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const okKey = key => (typeof key === "string" && DAYKEY_RE.test(key)) ? key : dayKey();
 function dayStart(key){
-  const [y,m,d] = (key || dayKey()).split("-").map(Number);
+  const [y,m,d] = okKey(key).split("-").map(Number);
   return new Date(y, m-1, d, CUT, 0, 0, 0);
 }
 function dayStartTs(key){ return dayStart(key).getTime(); }
@@ -382,7 +387,7 @@ function baseFor(holiday){
 const isHoliday = key => !!getDay(key).holiday;
 /* その日の箱。無ければ平日の基本値から作る */
 function getDay(key){
-  key = key || dayKey();
+  key = okKey(key);
   let d = S.days[key];
   if(!d) d = S.days[key] = { count: baseFor(false), holiday: false, slots: [], cuts: [], roulette: [] };
   if(typeof d.holiday !== "boolean") d.holiday = false;
@@ -456,7 +461,7 @@ function boxIndexForTime(key, hhmm){
 
 /* 日付の呼び名。今日・明日はそう呼ぶ。それ以外は「8/14（木）」 */
 function dayLabel(key){
-  const k = key || dayKey();
+  const k = okKey(key);
   const today = dayKey();
   if(k === today) return "今日";
   if(k === ymd(new Date(dayStartTs(today) + DAY))) return "明日";
@@ -637,7 +642,7 @@ function autoPlaceAhead(id){
 }
 /* その日を用意する。まだ無ければ作って、そのときだけ自動配置を走らせる */
 function ensureDay(key){
-  key = key || dayKey();
+  key = okKey(key);
   const isNew = !S.days[key];
   getDay(key);
   if(isNew) autoPlace(key);
@@ -1227,8 +1232,9 @@ function renderBoxBar(){
       '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
       '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
     '</div>';
-  $("boxPlus").onclick  = addBox;
-  $("boxMinus").onclick = removeBox;
+  // 関数をそのまま渡すと click イベントが日付キーとして流れ込む。必ず包むこと
+  $("boxPlus").onclick  = ()=> addBox();
+  $("boxMinus").onclick = ()=> removeBox();
   $("dayType").onclick  = ()=> setDayType(!getDay().holiday);
 }
 
@@ -3087,6 +3093,8 @@ function renderAll(){
 /* 古い日のデータを捨てる（保存を太らせない） */
 function prune(){
   const keep = 180;
+  // 日付の形になっていない日は捨てる（＋−の不具合で作られてしまったぶんの後始末）
+  Object.keys(S.days).forEach(k => { if(!DAYKEY_RE.test(k)) delete S.days[k]; });
   const keys = Object.keys(S.days).sort();
   if(keys.length > keep) keys.slice(0, keys.length - keep).forEach(k => delete S.days[k]);
   const rk = Object.keys(S.routineDone).sort();
