@@ -67,7 +67,7 @@ SQL Editor に丸ごと貼って実行。何度実行してもよい。
 
 ```bash
 # 空で1回叩く。ok が返れば、鍵も権限も通っている
-curl -i -X POST https://<Vercelのアドレス>/api/sync \
+curl -i -X POST https://iamidol.vercel.app/api/sync \
   -H "content-type: application/json" \
   -H "x-sync-user: niku" \
   -H "x-sync-key: <入口用の値>" \
@@ -85,12 +85,12 @@ curl -i -X POST https://<Vercelのアドレス>/api/sync \
 
 ```bash
 # 置く
-curl -s -X POST https://<Vercelのアドレス>/api/sync \
+curl -s -X POST https://iamidol.vercel.app/api/sync \
   -H "content-type: application/json" -H "x-sync-user: niku" -H "x-sync-key: <値>" \
   -d '{"since":0,"items":[{"kind":"check","id":"test","body":"ためし","at":1}]}'
 
 # 取る（さっき置いたものが返ってくる）
-curl -s -X POST https://<Vercelのアドレス>/api/sync \
+curl -s -X POST https://iamidol.vercel.app/api/sync \
   -H "content-type: application/json" -H "x-sync-user: niku" -H "x-sync-key: <値>" \
   -d '{"since":0,"items":[]}'
 ```
@@ -106,7 +106,7 @@ delete from sync_items where kind = 'check' and item_id = 'test';
 アプリを開いた状態で、ブラウザの Console に貼る。
 
 ```js
-fetch("https://<Vercelのアドレス>/api/sync", {
+fetch("https://iamidol.vercel.app/api/sync", {
   method: "POST",
   headers: { "content-type":"application/json", "x-sync-user":"niku", "x-sync-key":"<値>" },
   body: JSON.stringify({ since:0, items:[] })

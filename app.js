@@ -3493,6 +3493,9 @@ function renderAll(){
    ▼ 消したものは行を消さずに「墓標」（body = null）にする。
      消してしまうと、まだ知らない端末が次に送ってきたときに生き返る
 ================================================================= */
+/* 置き場のアドレス。端末ごとに打ち直さなくていいよう、既定を入れてある。
+   入れ替えたいときは設定タブの欄を書き換えれば、そちらが使われる */
+const SYNC_URL_DEFAULT = "https://iamidol.vercel.app/api/sync";
 const SKEY_LS   = "jiko-kanri-sync-v1";     // この端末だけの控え。S にも書き出しにも混ぜない
 const SYNC_SALT = "iamidol.sync.v1:";       // ▼ sync/key.html と同じ。片方だけ変えると開けなくなる
 const SYNC_ROUNDS = 200000;
@@ -3798,7 +3801,8 @@ function renderSync(){
   ["syncUrl","syncName","syncPass"].forEach(id => {
     const f = $(id);
     if(f && document.activeElement !== f){
-      f.value = id === "syncUrl" ? SY.url : id === "syncName" ? SY.name : SY.pass;
+      // アドレスは、まだ決めていなければ既定を出しておく（そのまま「つなぐ」で使える）
+      f.value = id === "syncUrl" ? (SY.url || SYNC_URL_DEFAULT) : id === "syncName" ? SY.name : SY.pass;
     }
   });
   $("syncGo").disabled = !on;
