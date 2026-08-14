@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>合言葉から「入口用の値」を作る</title>
+<style>
+:root{--bg:#0f1115;--card:#1b202a;--line:#2c3342;--fg:#e8ecf3;--dim:#9aa5b8;--faint:#6b7688;--accent:#5b9cff;--warn:#ffa552}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-size:15px;line-height:1.75;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",sans-serif}
+.wrap{max-width:680px;margin:0 auto;padding:28px 20px 80px}
+h1{font-size:19px;margin:0 0 6px}
+.lead{color:var(--dim);font-size:14px;margin-bottom:22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+label{display:block;font-size:12px;letter-spacing:.08em;color:var(--accent);margin-bottom:6px}
+input{width:100%;padding:11px 12px;font-size:15px;font-family:inherit;border-radius:10px;
+ border:1px solid var(--line);background:#12161d;color:var(--fg)}
+input+label{margin-top:16px}
+button{margin-top:16px;background:var(--accent);color:#0b1017;border:none;border-radius:10px;
+ padding:12px 22px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.out{margin-top:16px;display:none}
+.val{background:#12161d;border:1px solid var(--line);border-radius:10px;padding:12px;
+ font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all;user-select:all}
+.note{color:var(--faint);font-size:13px;margin-top:10px}
+.warn{border-color:var(--warn);color:var(--warn)}
+b{color:var(--fg)}
+.big{background:rgba(255,165,82,.1);border:1px solid var(--warn);border-radius:12px;padding:14px 16px;font-size:14px}
+.big .t{color:var(--warn);font-weight:700;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>合言葉から「入口用の値」を作る</h1>
+  <div class="lead">
+    自己管理アプリの同期を始めるときに、1回だけ使う道具です。<br>
+    <b>合言葉はこのページから出ません。</b>計算はすべて、いま開いているブラウザの中だけで行われます。
+  </div>
+
+  <div class="card">
+    <label for="name">名前（管理者から言われたもの。例: niku / Haru）</label>
+    <input id="name" autocomplete="off" spellcheck="false" placeholder="Haru">
+
+    <label for="pass">合言葉（自分で決める。長いほど安全）</label>
+    <input id="pass" type="text" autocomplete="off" spellcheck="false" placeholder="12文字以上をおすすめします">
+
+    <button id="go">作る</button>
+
+    <div class="out" id="out">
+      <label style="margin-top:20px">入口用の値（これを管理者に渡す）</label>
+      <div class="val" id="val"></div>
+      <div class="note">
+        この値から、合言葉を逆に割り出すことはできません。渡しても、日記の中身は読まれません。
+      </div>
+    </div>
+  </div>
+
+  <div class="big">
+    <div class="t">合言葉は絶対に忘れないでください</div>
+    日記や、やりたいことの中身は、<b>この合言葉でしか開けません</b>。
+    管理者も、サーバーも、鍵を預かっていません。<br>
+    <b>忘れると、書いたものは二度と読めなくなります。</b>紙に書いて残しておいてください。
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ▼▼ この作り方は app.js 側にも同じものがある。片方だけ直さないこと ▼▼
+   合言葉から3つの値を作る。作り方を変えると、これまでのデータが開けなくなる。
+
+     入口用（auth） … サーバーに送る。「この人だ」の確認だけに使う
+     中身の鍵（enc） … 送らない。暗号化と復号にだけ使う
+     見出しの鍵（id）… 送らない。日付やIDを伏せるのに使う
+
+   auth は master を一方向に潰した値なので、これを渡しても enc は作れない。
+   だから「入口用の値を管理者に渡しても、中身は読まれない」が成り立つ。
+*/
+const SALT_PREFIX = "iamidol.sync.v1:";
+const ROUNDS = 200000;
+
+async function deriveAuth(name, pass){
+  const te = new TextEncoder();
+  const base = await crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveBits"]);
+  const master = new Uint8Array(await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    salt: te.encode(SALT_PREFIX + name),   // 名前を塩に混ぜる。同じ合言葉でも人が違えば別の鍵になる
+    iterations: ROUNDS,
+    hash: "SHA-256"
+  }, base, 256));
+  const label = te.encode("auth");
+  const buf = new Uint8Array(master.length + label.length);
+  buf.set(master, 0); buf.set(label, master.length);
+  const out = new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
+  return [...out].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+const $ = id => document.getElementById(id);
+$("go").onclick = async ()=>{
+  const name = $("name").value.trim();
+  const pass = $("pass").value;
+  if(!name || !pass){ alert("名前と合言葉の両方を入れてください"); return; }
+  if(!crypto.subtle){ alert("このブラウザでは計算できません（https で開いてください）"); return; }
+  $("go").disabled = true; $("go").textContent = "計算中…";
+  try{
+    $("val").textContent = await deriveAuth(name, pass);
+    $("out").style.display = "block";
+  }catch(e){
+    alert("作れませんでした: " + (e && e.message || e));
+  }
+  $("go").disabled = false; $("go").textContent = "作り直す";
+};
+</script>
+</body>
+</html>
