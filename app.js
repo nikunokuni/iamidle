@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-14.2";
+const APP_VERSION = "2026-08-14.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -219,6 +219,8 @@ function trySave(){
 }
 function save(){
   if(!trySave()) toast("保存に失敗しました。哲学タブから画像を減らしてください");
+  // 同期を使っているなら、少し待ってからまとめて送る（下の「同期」の節）
+  if(typeof syncSoon === "function") syncSoon();
 }
 /* いま保存に使っているおおよその量（KB） */
 function usedKB(){
@@ -900,12 +902,23 @@ function doTask(id){
     : (isDone(t) ? "やり切った！" : "できた（" + doneCount(t) + "/" + goalOf(t) + "）");
   toast(msg, ()=> undoStamp(id, stamp));
 }
+/* ▼ 記録を1つ取り消す。取り消しは必ずここを通すこと。
+   同期では log を「足し算」で混ぜる（両方の端末で押したぶんを残すため）。
+   だから「消した」ことを覚えておかないと、もう一方の端末から足し戻されて
+   取り消しがいつまでも効かない。gone がその覚え書き */
+function dropLog(t, idx){
+  const ts = t.log[idx];
+  t.log.splice(idx, 1);
+  t.gone = t.gone || [];
+  if(!t.gone.includes(ts)) t.gone.push(ts);
+  if(t.gone.length > 400) t.gone = t.gone.slice(-400);
+  const j = (t.actuals || []).findIndex(a => a.ts === ts);
+  if(j >= 0) t.actuals.splice(j, 1);
+}
 function undoStamp(id, stamp){
   const t = taskById(id); if(!t) return;
   const i = (t.log || []).lastIndexOf(stamp);
-  if(i >= 0) t.log.splice(i, 1);
-  const j = (t.actuals || []).findIndex(a => a.ts === stamp);
-  if(j >= 0) t.actuals.splice(j, 1);
+  if(i >= 0) dropLog(t, i);
   save(); renderAll(); toast("戻しました");
 }
 /* 今日ぶんの記録を1つ取り消す */
@@ -914,9 +927,7 @@ function undoToday(id){
   const from = dayStartTs();
   const idx = (t.log || []).map((ts,i) => ({ts,i})).filter(o => o.ts >= from).map(o => o.i).pop();
   if(idx === undefined){ toast("今日の記録はありません"); return; }
-  t.log.splice(idx, 1);
-  const j = (t.actuals || []).map((a,i) => ({a,i})).filter(o => o.a.ts >= from).map(o => o.i).pop();
-  if(j !== undefined) t.actuals.splice(j, 1);
+  dropLog(t, idx);
   save(); renderAll(); toast("1回ぶん取り消しました");
 }
 /* いまの期間の記録を1つ減らす（「やりたいこと」タブの − ） */
@@ -925,7 +936,7 @@ function undoDo(id){
   const st = statOf(t);
   const idx = t.log.map((ts,i) => ({ts,i})).filter(o => o.ts >= st.period.start).map(o => o.i).pop();
   if(idx === undefined){ toast("この期間の記録はありません"); return; }
-  t.log.splice(idx, 1);
+  dropLog(t, idx);
   save(); renderAll();
   toast("1回ぶん減らした（" + statOf(t).actual + "/" + st.count + "）");
 }
@@ -2743,8 +2754,10 @@ function loadDiary(){
 let D = loadDiary();
 
 function saveDiary(){
-  try{ localStorage.setItem(DKEY, JSON.stringify(D)); return true; }
+  try{ localStorage.setItem(DKEY, JSON.stringify(D)); }
   catch(e){ toast("日記を保存できませんでした。哲学タブから画像を減らしてください"); return false; }
+  if(typeof syncSoon === "function") syncSoon();
+  return true;
 }
 function diaryKB(){
   try{ return Math.round(JSON.stringify(D).length / 1024); }catch(e){ return 0; }
@@ -2965,6 +2978,7 @@ function renderSettings(){
     endClock(false) + " まで。休みは " + boxClock(dayKeyOfType(true), 0) + " から " +
     S.base.holiday + "箱で " + endClock(true) + " まで。";
   renderSound();
+  renderSync();
   renderBrowserPaths();
 }
 /* 目安の計算に使う、その区分の代表日。いまの日で区分だけ差し替える */
@@ -3467,6 +3481,360 @@ function renderAll(){
   renderVersion();
 }
 
+/* ================= 同期（ほかの端末と合わせる） =================
+   仕様は SPEC.md「追加仕様：端末をまたいで使う（2026-08-14 決定）」。
+   置き場は Vercel の Function → Supabase。手順は sync/README.md。
+
+   ▼ 中身はこの端末で暗号化してから送る。鍵は端末から出ない。
+     サーバーに置かれるのは「種類・伏せた見出し・触った時刻・暗号文」だけ。
+     持ち主でも他人の中身は読めない
+   ▼ 突き合わせは1件ごと。あとに触った方が勝つ。
+     ただし「やった記録（log）」だけは足し算にする（両方の端末で押したぶんを残す）
+   ▼ 消したものは行を消さずに「墓標」（body = null）にする。
+     消してしまうと、まだ知らない端末が次に送ってきたときに生き返る
+================================================================= */
+const SKEY_LS   = "jiko-kanri-sync-v1";     // この端末だけの控え。S にも書き出しにも混ぜない
+const SYNC_SALT = "iamidol.sync.v1:";       // ▼ sync/key.html と同じ。片方だけ変えると開けなくなる
+const SYNC_ROUNDS = 200000;
+const SYNC_GAP  = 5000;                     // 打ってから送るまでの間
+const SYNC_MIN  = 60000;                    // 戻ってきたとき、前回からこれ以上あいていたら合わせる
+
+/* 送る順番。やりたいことを先に入れないと、箱が「知らないID」として片付けられてしまう */
+const KIND_ORDER = ["task","routine","philo","cheer","set","wkov","rdone","day","diary"];
+
+function loadSync(){
+  try{
+    const d = JSON.parse(localStorage.getItem(SKEY_LS) || "null");
+    if(d && typeof d === "object") return Object.assign({ url:"", name:"", pass:"", cursor:0, marks:{}, at:0, dirtyAt:0 }, d);
+  }catch(e){}
+  return { url:"", name:"", pass:"", cursor:0, marks:{}, at:0, dirtyAt:0 };
+}
+let SY = loadSync();
+function saveSync(){ try{ localStorage.setItem(SKEY_LS, JSON.stringify(SY)); }catch(e){} }
+const syncOn = () => !!(SY.url && SY.name && SY.pass);
+
+/* ---- 鍵 ---- */
+let syncKeys = null;      // { auth, enc, id }。合言葉から作る。localStorage には置かない
+const te = new TextEncoder();
+const hex = u8 => [...u8].map(b => b.toString(16).padStart(2,"0")).join("");
+function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s += String.fromCharCode.apply(null, u8.subarray(i,i+0x8000)); return btoa(s); }
+function unb64(str){ const b = atob(str); const u = new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
+
+/* ▼ 合言葉から3つ作る。作り方を変えると、これまでのデータが開けなくなる。
+   sync/key.html にも同じものがある。片方だけ直さないこと */
+async function makeKeys(name, pass){
+  const base = await crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveBits"]);
+  const master = new Uint8Array(await crypto.subtle.deriveBits(
+    { name:"PBKDF2", salt: te.encode(SYNC_SALT + name), iterations: SYNC_ROUNDS, hash:"SHA-256" }, base, 256));
+  const part = async label => {
+    const b = new Uint8Array(master.length + label.length);
+    b.set(master, 0); b.set(te.encode(label), master.length);
+    return new Uint8Array(await crypto.subtle.digest("SHA-256", b));
+  };
+  return {
+    auth: hex(await part("auth")),                                     // これだけ送る
+    enc:  await crypto.subtle.importKey("raw", await part("enc"), { name:"AES-GCM" }, false, ["encrypt","decrypt"]),
+    id:   await crypto.subtle.importKey("raw", await part("id"), { name:"HMAC", hash:"SHA-256" }, false, ["sign"])
+  };
+}
+async function seal(obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name:"AES-GCM", iv }, syncKeys.enc, te.encode(JSON.stringify(obj))));
+  const all = new Uint8Array(iv.length + ct.length);
+  all.set(iv, 0); all.set(ct, iv.length);
+  return b64(all);
+}
+async function unseal(str){
+  const all = unb64(str);
+  const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv: all.slice(0,12) }, syncKeys.enc, all.slice(12));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+/* 見出しも伏せる。日付やIDがそのまま出ると「いつ書いたか」が読めてしまう */
+async function hideId(kind, id){
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", syncKeys.id, te.encode(kind + ":" + id)));
+  return hex(sig).slice(0, 32);
+}
+/* 中身が変わったかを見るためだけの短い印。暗号ではない */
+function markOf(body){
+  const s = JSON.stringify(body);
+  let h = 0x811c9dc5;
+  for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+  return s.length + ":" + h.toString(36);
+}
+
+/* ---- この端末が持っているもの ---- */
+function localRecords(){
+  const out = [];
+  const add = (kind, id, body) => out.push({ kind, id, body });
+  S.tasks.forEach(t => add("task", t.id, t));
+  Object.keys(S.days).forEach(k => {
+    const c = Object.assign({}, S.days[k]);
+    delete c.img;                       // 画像は端末ごと。向こうに無いIDを送らない
+    add("day", k, c);
+  });
+  S.routines.forEach(r => add("routine", r.id, r));
+  Object.keys(S.routineDone).forEach(k => add("rdone", k, S.routineDone[k]));
+  S.philos.forEach(p => add("philo", p.id, p));
+  S.cheers.forEach(c => add("cheer", c.id, c));
+  Object.keys(S.weekOverrides).forEach(w => add("wkov", w, S.weekOverrides[w]));
+  add("set", "base", S.base);
+  add("set", "boxStart", S.boxStart);
+  Object.keys(D.entries).forEach(k => add("diary", k, D.entries[k]));
+  return out;
+}
+
+/* ▼ やった記録は足し算にする（両方の端末で押したぶんを両方残すため）。
+   ただし、どちらかで取り消したもの（gone）は入れない。
+   これが無いと、取り消しがもう一方から足し戻されて、いつまでも消えない */
+function logUnion(a, b){
+  const dead = new Set([...(a.gone || []), ...(b.gone || [])]);
+  const log  = [...new Set([...(a.log || []), ...(b.log || [])])].filter(ts => !dead.has(ts)).sort((x,y)=>x-y);
+  const acts = {};
+  [...(a.actuals || []), ...(b.actuals || [])].forEach(x => { if(x && !dead.has(x.ts)) acts[x.ts] = x; });
+  return { log, gone: [...dead], actuals: Object.keys(acts).map(k => acts[k]).sort((x,y)=>x.ts-y.ts) };
+}
+/* こちらの中身は残したまま、記録だけ足す */
+function mergeLog(mine, theirs){ Object.assign(mine, logUnion(mine, theirs)); }
+
+/* ---- 受け取ったものを入れる ---- */
+function applyRecord(kind, id, body){
+  const gone = (body === null);
+  if(kind === "task"){
+    const i = S.tasks.findIndex(t => t.id === id);
+    if(gone){ if(i >= 0) S.tasks.splice(i, 1); return; }
+    if(i >= 0){
+      const mine = S.tasks[i];
+      S.tasks[i] = Object.assign({}, body, logUnion(mine, body));
+    } else S.tasks.push(body);
+    return;
+  }
+  if(kind === "day"){
+    if(gone){ delete S.days[id]; return; }
+    const img = (S.days[id] || {}).img;      // 画像の選択は端末ごとなので残す
+    S.days[id] = Object.assign({}, body, img ? { img } : {});
+    return;
+  }
+  if(kind === "diary"){
+    if(gone) delete D.entries[id]; else D.entries[id] = body;
+    return;
+  }
+  if(kind === "rdone"){
+    if(gone) delete S.routineDone[id]; else S.routineDone[id] = body;
+    return;
+  }
+  if(kind === "wkov"){
+    if(gone) delete S.weekOverrides[id]; else S.weekOverrides[id] = body;
+    return;
+  }
+  if(kind === "set"){
+    if(gone) return;                          // 設定は消さない
+    if(id === "base") S.base = body;
+    if(id === "boxStart") S.boxStart = body;
+    return;
+  }
+  const list = kind === "routine" ? S.routines : kind === "philo" ? S.philos : kind === "cheer" ? S.cheers : null;
+  if(!list) return;
+  const i = list.findIndex(x => x.id === id);
+  if(gone){ if(i >= 0) list.splice(i, 1); return; }
+  if(i >= 0) list[i] = body; else list.push(body);
+}
+
+/* ---- 本体 ---- */
+let syncing = false, syncTimer = 0, syncAgain = false;
+let syncNote = "";        // 画面に出す最後の結果
+
+async function callSync(payload){
+  const r = await fetch(SY.url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-sync-user": SY.name,
+      "x-sync-key": syncKeys.auth
+    },
+    body: JSON.stringify(payload)
+  });
+  const d = await r.json().catch(()=> ({}));
+  if(!r.ok) throw new Error(d.error || ("つながりませんでした（" + r.status + "）"));
+  return d;
+}
+
+async function syncNow(quiet){
+  if(!syncOn() || syncing) return;
+  if(!window.crypto || !crypto.subtle){ syncNote = "この開き方では暗号が使えません（https で開いてください）"; renderSync(); return; }
+  syncing = true;
+  if(syncTimer){ clearTimeout(syncTimer); syncTimer = 0; }
+  syncNote = "合わせています…"; renderSync();
+  try{
+    if(!syncKeys) syncKeys = await makeKeys(SY.name, SY.pass);
+
+    /* ---- 1. 先に受け取るだけ。送るのはそのあと ----
+       ▼ 同じ回で送ってしまうと、その日を作ったばかりの端末が、
+         もう一方が並べた箱を上書きしてしまう（順番の問題。まとめないこと） */
+    let got = await callSync({ since: SY.cursor, items: [] });
+    let rows = got.items || [];
+    while(got.more){ got = await callSync({ since: got.cursor, items: [] }); rows = rows.concat(got.items || []); }
+
+    /* ---- 2. 合言葉が合っているか ---- */
+    const check = rows.find(r => r.kind === "check");
+    if(check && check.body){
+      try{ await unseal(check.body); }
+      catch(e){
+        syncKeys = null;
+        syncNote = "合言葉が違います。合わせずに止めました";
+        syncing = false; renderSync();
+        toast("合言葉が違います。設定を見直してください");
+        return;
+      }
+    }
+
+    /* ---- 3. 入れる（やりたいことを先に。箱より後だと、知らないIDとして片付けられる） ---- */
+    const opened = [];
+    for(const r of rows){
+      if(r.kind === "check") continue;
+      let real = null;
+      if(r.body !== null){
+        try{ real = await unseal(r.body); }catch(e){ continue; }   // 開けないものは触らない
+        if(!real || typeof real.id !== "string") continue;
+      }else{
+        real = { id: null };
+      }
+      opened.push({ kind: r.kind, hid: r.id, id: real.id, body: r.body === null ? null : real.body, at: r.at });
+    }
+    // 墓標は中身が無いので、本当のIDが分からない。伏せた見出しから引き当てる
+    const backMap = {};
+    Object.keys(SY.marks).forEach(k => { const m = SY.marks[k]; if(m.hid) backMap[m.hid] = k; });
+    opened.forEach(o => {
+      if(o.id === null){
+        const k = backMap[o.hid];
+        if(k){ o.id = k.slice(k.indexOf(":") + 1); }
+      }
+    });
+    opened.sort((a,b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
+
+    /* ▼ 届いたものを、こちらの直しより優先させないこと。
+       つないでいない間にこの端末で直したぶんは、まだサーバーに載っていない。
+       何も見ずに上書きすると、圏外で並べた箱が古いもので消される。
+       「こちらで直してあって、しかもその直しが向こうより新しい」ものだけ、入れずに残す */
+    const mineMap = {};
+    localRecords().forEach(r => { mineMap[r.kind + ":" + r.id] = r.body; });
+
+    let taken = 0, kept = 0;
+    for(const o of opened){
+      if(!o.id) continue;
+      const key = o.kind + ":" + o.id;
+      const mk  = SY.marks[key];
+      const cur = mineMap[key];
+      const dirty = (cur !== undefined) ? (!mk || mk.h !== markOf(cur)) : (!!mk && mk.h !== "");
+      if(dirty && (SY.dirtyAt || 0) > o.at){
+        // 記録（log）だけは、こちらを残したまま足しておく。押したぶんを落とさない
+        if(o.kind === "task" && o.body && cur) mergeLog(cur, o.body);
+        kept++;
+        continue;                      // marks は更新しない。次に送るときに、こちらが勝つ
+      }
+      applyRecord(o.kind, o.id, o.body);
+      SY.marks[key] = { h: o.body === null ? "" : markOf(o.body), at: o.at, hid: o.hid };
+      taken++;
+    }
+    if(taken){ save(); saveDiary(); }
+    SY.cursor = got.cursor || SY.cursor;
+
+    /* ---- 4. こちらで変わったものを送る ---- */
+    const now = Date.now();
+    const mine = localRecords();
+    const seen = {};
+    const send = [];
+    for(const rec of mine){
+      const key = rec.kind + ":" + rec.id;
+      seen[key] = true;
+      const h = markOf(rec.body);
+      const old = SY.marks[key];
+      if(old && old.h === h) continue;                 // 変わっていない
+      const hid = await hideId(rec.kind, rec.id);
+      send.push({ kind: rec.kind, id: hid, body: await seal({ id: rec.id, body: rec.body }), at: now });
+      SY.marks[key] = { h, at: now, hid };
+    }
+    // 前はあったのに、いま無いもの＝消したもの。墓標を送る
+    for(const key of Object.keys(SY.marks)){
+      if(seen[key] || key === "check:check") continue;
+      const m = SY.marks[key];
+      if(m.h === "") continue;                         // もう墓標になっている
+      send.push({ kind: key.slice(0, key.indexOf(":")), id: m.hid, body: null, at: now });
+      SY.marks[key] = { h: "", at: now, hid: m.hid };
+    }
+    if(!check) send.push({ kind:"check", id:"check", body: await seal({ ok:1 }), at: now });
+
+    if(send.length){
+      const put = await callSync({ since: SY.cursor, items: send });
+      SY.cursor = put.cursor || SY.cursor;
+    }
+
+    SY.at = Date.now(); saveSync();
+    syncNote = "合わせました " + hhmm(SY.at) + "（受け取り " + taken + "件 ・ 送り " + send.length + "件" +
+      (kept ? " ・ こちらを残した " + kept + "件" : "") + "）";
+    if(taken) renderAll();
+    if(!quiet && (taken || send.length)) toast("同期しました");
+  }catch(e){
+    syncNote = "同期できませんでした：" + String(e && e.message || e);
+    if(!quiet) toast(syncNote);
+  }
+  syncing = false;
+  renderSync();
+  if(syncAgain){ syncAgain = false; syncSoon(); }
+}
+/* 打っている最中に何度も送らない。少し待ってからまとめて */
+function syncSoon(){
+  if(!syncOn()) return;
+  SY.dirtyAt = Date.now();          // 「この端末で直した時刻」。届いたものと比べるのに使う
+  saveSync();
+  if(syncing){ syncAgain = true; return; }
+  if(syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(()=> syncNow(true), SYNC_GAP);
+}
+
+/* ---- 設定タブ ---- */
+function renderSync(){
+  const el = $("syncNote"); if(!el) return;
+  const on = syncOn();
+  ["syncUrl","syncName","syncPass"].forEach(id => {
+    const f = $(id);
+    if(f && document.activeElement !== f){
+      f.value = id === "syncUrl" ? SY.url : id === "syncName" ? SY.name : SY.pass;
+    }
+  });
+  $("syncGo").disabled = !on;
+  $("syncGo").style.opacity = on ? "" : ".45";
+  $("syncOff").style.display = on ? "" : "none";
+  el.innerHTML = !on
+    ? '<div class="empty-note">まだ設定していません。この端末のデータは、この端末の中だけにあります。</div>'
+    : '<div class="kv"><span>' + esc(SY.name) + ' として同期</span><span>' +
+        (SY.at ? "最後に合わせたのは " + hhmm(SY.at) : "まだ合わせていません") + '</span></div>' +
+      (syncNote ? '<div class="empty-note">' + esc(syncNote) + '</div>' : '');
+}
+function bindSync(){
+  if(!$("syncSave")) return;
+  $("syncSave").onclick = async ()=>{
+    const url = $("syncUrl").value.trim(), name = $("syncName").value.trim(), pass = $("syncPass").value;
+    if(!url || !name || !pass){ toast("3つとも入れてください"); return; }
+    if(!/^https?:\/\//.test(url)){ toast("アドレスは https:// から入れてください"); return; }
+    const ok = await askConfirm("この端末を同期につなぎますか？", "つなぐ",
+      "最初の1回は、先に同期した端末の中身が優先されます。念のため、つなぐ前に" +
+      "「バックアップ書き出し」をしておくと安全です。");
+    if(!ok) return;
+    SY.url = url; SY.name = name; SY.pass = pass;
+    syncKeys = null; saveSync(); renderSync();
+    syncNow();
+  };
+  $("syncGo").onclick  = ()=> syncNow();
+  $("syncOff").onclick = async ()=>{
+    const ok = await askConfirm("この端末の同期をやめますか？", "やめる",
+      "この端末に入っているものは消えません。サーバーに預けたものも消えません。");
+    if(!ok) return;
+    SY = { url:"", name:"", pass:"", cursor:0, marks:{}, at:0 };
+    syncKeys = null; saveSync(); renderSync();
+    toast("同期をやめました");
+  };
+}
+
 /* 古い日のデータを捨てる（保存を太らせない） */
 function prune(){
   const keep = 180;
@@ -3507,6 +3875,12 @@ renderAll();
 save();
 checkForUpdate();
 
+bindSync();
+/* ▼ 起動時も合わせる。ただし描画のあと。
+   受け取ったものは、その日を作り直すのではなく「向こうのものを採る」形で入る
+   （初めての日は marks が無いので、向こうのものがそのまま入る） */
+if(syncOn()) setTimeout(()=> syncNow(true), 800);
+
 /* 読み込みに失敗していたら、必ず気づけるようにする（退避先は KEY + "-broken"） */
 if(loadFailed){
   toast("前のデータを読めませんでした（" + loadFailed + "）。中身は消さずに退避してあります");
@@ -3533,4 +3907,6 @@ document.addEventListener("visibilitychange", ()=>{
   const k = dayKey(), s = nowSlot();
   if(k !== lastKey || s !== lastSlot){ lastKey = k; lastSlot = s; rollDay(); }
   renderAll();
+  // 戻ってきたら合わせる。ただし、ぱたぱた切り替えるたびには行かない
+  if(syncOn() && Date.now() - (SY.at || 0) > SYNC_MIN) syncNow(true);
 });
