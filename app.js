@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-13.5";
+const APP_VERSION = "2026-08-14.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1253,6 +1253,159 @@ $("philoBar").addEventListener("click", ()=>{
   save(); renderPhiloBar();
 });
 
+/* ================= タイマー（「いま、これ」の中） =================
+   1箱＝30分なので、既定は30分。＋−で1分ずつ増減して、0になったら音が鳴る。
+   ▼ 状態はメモリだけに持つ（localStorage に入れない）。
+     途中の残り時間まで保存すると、閉じている間も進んでいたことにするのか、
+     止まっていたことにするのかを決めなければならなくなる。
+     タイマーは「いま座って使うもの」なので、読み込み直したら 30分に戻る、で通す
+   ▼ 終わりは残り秒ではなく終了時刻（timerEndAt）で持つ。setInterval は遅れるので、
+     残り秒を引き算していくと、じわじわずれていく
+=================================================================== */
+const TIMER_MIN_DEFAULT = 30;   // 既定の長さ（分）＝ 1箱ぶん
+const TIMER_MIN_MAX = 480;      // 上限8時間。押しっぱなしで壊れないように
+const RING_TIMES = 6;           // 鳴らす回数（止めるまで鳴りっぱなしにはしない）
+
+let timerState = "idle";        // "idle" 止まっている / "run" 動いている / "done" 鳴った
+let timerMin   = TIMER_MIN_DEFAULT;
+let timerEndAt = 0;             // 動いているとき、終わる時刻(ms)
+let timerId    = 0;             // 表示更新の interval
+let ringId     = 0;             // 鳴らしている interval
+let ringLeft   = 0;
+
+/* 残りミリ秒。止まっているときは、設定した長さそのもの */
+function timerLeftMs(){
+  if(timerState === "run") return Math.max(0, timerEndAt - Date.now());
+  if(timerState === "done") return 0;
+  return timerMin * 60000;
+}
+function timerText(){
+  const s = Math.ceil(timerLeftMs() / 1000);
+  return String(Math.floor(s / 60)).padStart(2,"0") + ":" + String(s % 60).padStart(2,"0");
+}
+
+/* ▼ 音は音声ファイルを持たずに、その場で作る。
+   file:// でも動かないといけないし、外部ファイルを増やしたくないため。
+   AudioContext は「ユーザーが押した」流れの中でしか鳴らせないので、
+   始めるよ を押したときに作って起こしておく */
+let actx = null;
+function audioOn(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    if(!actx) actx = new AC();
+    if(actx.state === "suspended") actx.resume();
+    return actx;
+  }catch(e){ return null; }
+}
+function beep(){
+  const ac = audioOn(); if(!ac) return;
+  try{
+    const t0 = ac.currentTime;
+    // ピッ・ピッ・ピッ と3回。1回だと聞き逃す
+    [0, .24, .48].forEach(off => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(880, t0 + off);
+      g.gain.setValueAtTime(.0001, t0 + off);
+      g.gain.exponentialRampToValueAtTime(.28, t0 + off + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, t0 + off + .2);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t0 + off); o.stop(t0 + off + .22);
+    });
+  }catch(e){ /* 音が出せない環境でも、タイマー自体は動かす */ }
+}
+function stopRing(){
+  if(ringId){ clearInterval(ringId); ringId = 0; }
+  ringLeft = 0;
+}
+function startRing(){
+  stopRing();
+  beep();
+  ringLeft = RING_TIMES - 1;
+  ringId = setInterval(()=>{
+    if(ringLeft <= 0){ stopRing(); return; }
+    ringLeft--;
+    beep();
+  }, 1500);
+}
+
+function stopTicking(){ if(timerId){ clearInterval(timerId); timerId = 0; } }
+
+function startTimer(){
+  audioOn();                       // 押したこの流れの中で起こしておく（あとからでは鳴らない）
+  timerEndAt = Date.now() + timerMin * 60000;
+  timerState = "run";
+  stopTicking();
+  timerId = setInterval(tickTimer, 250);
+  renderNow();
+}
+/* 止める＝設定した長さに戻す。一時停止は持たない（迷う操作を増やさない） */
+function resetTimer(){
+  stopRing(); stopTicking();
+  timerState = "idle";
+  timerEndAt = 0;
+  renderNow();
+}
+function finishTimer(){
+  stopTicking();
+  timerState = "done";
+  timerEndAt = 0;
+  startRing();
+  renderNow();
+  toast(timerMin + "分たちました", { label:"音を止める", run: stopRing });
+}
+function tickTimer(){
+  if(timerState !== "run") return;
+  if(timerLeftMs() <= 0){ finishTimer(); return; }
+  paintTimer();
+}
+/* 1秒ごとの書き換えは数字だけ。ここで renderNow() を呼ぶと、
+   押そうとしていたボタンが毎秒作り直されて押せなくなる */
+function paintTimer(){
+  const el = $("timerTime");
+  if(el) el.textContent = timerText();
+}
+/* ＋−。動いている最中も効く（終わる時刻をずらす）。残りは1分を下回らない */
+function adjTimer(n){
+  if(timerState === "run"){
+    const left = Math.min(TIMER_MIN_MAX * 60000, Math.max(60000, timerLeftMs() + n * 60000));
+    timerEndAt = Date.now() + left;
+    paintTimer();
+    return;
+  }
+  stopRing();
+  timerState = "idle";
+  timerMin = Math.min(TIMER_MIN_MAX, Math.max(1, timerMin + n));
+  renderNow();
+}
+
+function timerHTML(){
+  const run  = timerState === "run";
+  const done = timerState === "done";
+  return '<div class="timer' + (run ? " run" : "") + (done ? " done" : "") + '">' +
+    '<button class="tadj" id="timerMinus" title="1分減らす">−</button>' +
+    '<div class="ttime" id="timerTime">' + timerText() + '</div>' +
+    '<button class="tadj" id="timerPlus" title="1分増やす">＋</button>' +
+    (run
+      ? '<button class="tgo off" id="timerGo">やめる</button>'
+      : done
+        ? '<button class="tgo" id="timerGo">もう一回</button>'
+        : '<button class="tgo" id="timerGo">始めるよ</button>') +
+    '<span class="tnote">' +
+      (done ? "時間になりました" : run ? "1分ずつ増減できます" : "1箱ぶん＝30分。＋−で1分ずつ") +
+    '</span>' +
+    (done ? '<button class="tquiet" id="timerQuiet">音を止める</button>' : '') +
+  '</div>';
+}
+function bindTimer(){
+  if(!$("timerGo")) return;
+  $("timerGo").onclick    = ()=> (timerState === "run" ? resetTimer() : startTimer());
+  $("timerMinus").onclick = ()=> adjTimer(-1);
+  $("timerPlus").onclick  = ()=> adjTimer(1);
+  if($("timerQuiet")) $("timerQuiet").onclick = ()=>{ stopRing(); toast("音を止めました"); };
+}
+
 /* ================= 描画：いま、これ ================= */
 function renderNow(){
   const el = $("nowCard");
@@ -1276,7 +1429,9 @@ function renderNow(){
     else                           msg = "入れたぶんは終わりました。\n空き箱にまだ入れられます。";
     el.innerHTML =
       '<div class="label">いま、これ</div>' +
-      '<div class="empty">' + esc(msg) + '</div>';
+      '<div class="empty">' + esc(msg) + '</div>' +
+      timerHTML();
+    bindTimer();
     return;
   }
 
@@ -1310,8 +1465,10 @@ function renderNow(){
       '<button class="skip" id="nowNext">次の箱へ</button>' +
       (canSkip(t) ? '<button class="skip" id="nowSkip">今日はやらない</button>' : '') +
     '</div>' +
+    timerHTML() +
     '<div class="kbd">Space で完了 ／ N で次の箱へ</div>';
 
+  bindTimer();
   $("nowDone").onclick = ()=> doTask(t.id);
   $("nowNext").onclick = ()=> moveCursor(1);
   if($("nowOpen")) $("nowOpen").onclick = ()=> openTask(t.id);
@@ -2492,9 +2649,10 @@ document.querySelectorAll(".addtoggle").forEach(b => b.onclick = ()=>{
 const DKEY = "jiko-kanri-diary-v1";
 /* 欄の定義。key が保存名、id が textarea、id+"Wrap" が包み。fold=false の欄は常に開いている */
 const DIARY_FIELDS = [
-  { key:"done",  id:"dDone",  label:"今日できたこと",             fold:false },
-  { key:"mood",  id:"dMood",  label:"いま、もやもやしていること", fold:true  },
-  { key:"gripe", id:"dGripe", label:"今日の気持ち",               fold:true  }
+  { key:"done",   id:"dDone",   label:"今日できたこと",             fold:false },
+  { key:"mood",   id:"dMood",   label:"いま、もやもやしていること", fold:true  },
+  { key:"gripe",  id:"dGripe",  label:"今日の気持ち",               fold:true  },
+  { key:"thanks", id:"dThanks", label:"日常に感謝",                 fold:true  }
 ];
 
 let diaryFailed = "";

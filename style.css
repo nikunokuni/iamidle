@@ -149,6 +149,40 @@ h2{font-size:12px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;mar
 }
 .now .kbd{font-size:11px;color:var(--fg-faint);margin-top:10px}
 
+/* ---------- いま、これ の中のタイマー ---------- */
+.now .timer{
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  margin-top:14px;padding:9px 12px;
+  background:rgba(0,0,0,.24);border:1px solid rgba(255,255,255,.13);border-radius:12px;
+}
+.now .timer .ttime{
+  font-size:27px;font-weight:700;line-height:1.1;
+  font-variant-numeric:tabular-nums;min-width:96px;text-align:center;
+}
+.now .timer.run .ttime{color:var(--accent)}
+.now .timer.done .ttime{color:var(--warn)}
+/* ＋− は数字の左右に置く小さい四角。.now button の大きい塗りを上書きする */
+.now .tadj{
+  background:none;border:1px solid rgba(255,255,255,.22);color:var(--fg);
+  width:34px;height:34px;padding:0;border-radius:9px;
+  font-size:17px;font-weight:700;line-height:1;flex:none;
+}
+.now .tadj:hover{border-color:var(--accent);color:var(--accent);filter:none}
+.now .tgo{padding:9px 18px;font-size:14px;border-radius:10px}
+.now .tgo.off{background:none;border:1px solid rgba(255,255,255,.22);color:var(--fg-dim)}
+.now .tnote{font-size:11px;color:var(--fg-faint)}
+.now .timer.done .tnote{color:var(--warn);font-size:13px;font-weight:700}
+.now .tquiet{
+  background:none;border:1px solid var(--warn);color:var(--warn);
+  padding:7px 12px;font-size:12px;font-weight:600;border-radius:9px;
+}
+/* 時間になったら、気づけるように点滅させる */
+.now .timer.done{border-color:var(--warn);animation:tblink 1s ease-in-out 6}
+@keyframes tblink{
+  0%,100%{background:rgba(0,0,0,.24)}
+  50%{background:rgba(255,165,82,.22)}
+}
+
 /* ---------- 箱の列 ---------- */
 .boxrow{
   position:relative;

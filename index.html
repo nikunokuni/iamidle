@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-13.5">
+<meta name="app-version" content="2026-08-14.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-13.5">
+<link rel="stylesheet" href="style.css?v=2026-08-14.1">
 </head>
 <body>
 
@@ -145,9 +145,14 @@
         <label for="dGripe">今日の気持ち</label>
         <textarea id="dGripe" placeholder="誰にも見せない。好きに書く"></textarea>
       </div>
+      <div class="dfield" id="dThanksWrap" style="display:none">
+        <label for="dThanks">日常に感謝</label>
+        <textarea id="dThanks" placeholder="あたりまえの中から、ひとつ"></textarea>
+      </div>
       <div class="dmore" id="diaryMore">
         <button class="dtog" data-open="mood">＋ もやもや</button>
         <button class="dtog" data-open="gripe">＋ 今日の気持ち</button>
+        <button class="dtog" data-open="thanks">＋ 日常に感謝</button>
       </div>
       <div class="dnote">
         書いた欄だけが残ります。全部埋める必要はありません。<br>
@@ -334,6 +339,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-13.5"></script>
+<script src="app.js?v=2026-08-14.1"></script>
 </body>
 </html>
