@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-14.1">
+<meta name="app-version" content="2026-08-14.2">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-14.1">
+<link rel="stylesheet" href="style.css?v=2026-08-14.2">
 </head>
 <body>
 
@@ -243,6 +243,21 @@
       <div class="empty-note" id="startNote"></div>
     </div>
 
+    <h2>タイマーの音</h2>
+    <div class="empty-note" style="padding-top:0">
+      今日タブの「いま、これ」のタイマーが0になったときに鳴る音です。<br>
+      何も入れなければ<b>既定の「ピッピッピッ」</b>。好きな音を入れると、そちらが鳴ります。<br>
+      入れた音は<b>10秒だけ</b>鳴ります（10秒に足りなければ、その間くり返します）。<br>
+      長い曲は<b>最初の10秒だけ</b>を取り込みます。それでも重いときは音を粗くして、<b>400KB以下</b>（画像1枚ぶん）に収めます。
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="btnAddSnd">音を選ぶ</button>
+      <button class="btn ghost" id="btnTestSnd">試しに鳴らす</button>
+      <button class="btn ghost" id="btnResetSnd">既定の音に戻す</button>
+    </div>
+    <input type="file" id="sndInput" accept="audio/*" style="display:none">
+    <div id="sndNote"></div>
+
     <h2>ブラウザの場所（起動ファイル用）</h2>
     <div class="empty-note" style="padding-top:0">
       「Chromeで開く」のようなリンクは、起動ファイル(.bat)から
@@ -339,6 +354,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-14.1"></script>
+<script src="app.js?v=2026-08-14.2"></script>
 </body>
 </html>

@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-14.1";
+const APP_VERSION = "2026-08-14.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -72,6 +72,8 @@ const DEFAULTS = {
   weekOverrides: {},
   // 起動ファイル用。自動で見つからないブラウザだけ、設定タブで場所を教えてもらう
   browserPaths: {},   // { chrome:"C:\\...\\chrome.exe", brave:"", edge:"", firefox:"" }
+  // タイマーが0になったときに鳴らす音。null なら既定の「ピッピッピッ」
+  timerSound: null,   // { name, data:dataURL, sec, rate, at }
   lastOpen: "",
   foldDone: false,
   foldSkip: false
@@ -205,6 +207,8 @@ function migrate(d){
   d.boxStart  = Object.assign({ weekday: "18:00", holiday: "10:00" }, d.boxStart || {});
   d.weekOverrides = (d.weekOverrides && typeof d.weekOverrides === "object") ? d.weekOverrides : {};
   d.browserPaths = (d.browserPaths && typeof d.browserPaths === "object") ? d.browserPaths : {};
+  // タイマーの音。中身が無ければ既定（ピッピッピッ）に戻す
+  d.timerSound = (d.timerSound && typeof d.timerSound.data === "string") ? d.timerSound : null;
   delete d.links;   // v2 までの未使用フィールド
   return d;
 }
@@ -1264,7 +1268,8 @@ $("philoBar").addEventListener("click", ()=>{
 =================================================================== */
 const TIMER_MIN_DEFAULT = 30;   // 既定の長さ（分）＝ 1箱ぶん
 const TIMER_MIN_MAX = 480;      // 上限8時間。押しっぱなしで壊れないように
-const RING_TIMES = 6;           // 鳴らす回数（止めるまで鳴りっぱなしにはしない）
+const RING_TIMES = 6;           // 既定の音（ピッピッピッ）を鳴らす回数
+const RING_SEC = 10;            // 音を入れているときに鳴らす長さ（秒）。短ければ繰り返す
 
 let timerState = "idle";        // "idle" 止まっている / "run" 動いている / "done" 鳴った
 let timerMin   = TIMER_MIN_DEFAULT;
@@ -1315,12 +1320,73 @@ function beep(){
     });
   }catch(e){ /* 音が出せない環境でも、タイマー自体は動かす */ }
 }
+/* ▼ 入れた音（S.timerSound）は、鳴らす前に AudioBuffer にしておく。
+   鳴る瞬間に読み込みを始めると間に合わないので、始めるよ を押した時点で用意する */
+let soundBuf = null;
+let soundKey = "";              // どのデータから作ったバッファか。変わったら作り直す
+let ringSrc = null, ringGain = null;
+
+function dataUrlBytes(url){
+  const bin = atob(String(url).split(",")[1] || "");
+  const u8 = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8.buffer;
+}
+async function primeSound(){
+  const snd = S.timerSound;
+  if(!snd){ soundBuf = null; soundKey = ""; return; }
+  const key = (snd.at || 0) + ":" + snd.data.length;
+  if(soundBuf && soundKey === key) return;
+  const ac = audioOn(); if(!ac) return;
+  try{
+    // decodeAudioData は渡した ArrayBuffer を空にするので、毎回そのつど作る
+    soundBuf = await ac.decodeAudioData(dataUrlBytes(snd.data));
+    soundKey = key;
+  }catch(e){
+    soundBuf = null; soundKey = "";
+  }
+}
+/* 入れた音を sec 秒ぶん鳴らす。鳴らせたら true（鳴らせなければ既定の音に落とす） */
+function playSound(sec){
+  const ac = audioOn();
+  if(!ac || !soundBuf) return false;
+  try{
+    const t0 = ac.currentTime, end = t0 + sec;
+    const src = ac.createBufferSource();
+    src.buffer = soundBuf;
+    src.loop = true;                        // 10秒に足りなければ繰り返す
+    const g = ac.createGain();
+    g.gain.setValueAtTime(1, t0);
+    g.gain.setValueAtTime(1, Math.max(t0, end - .6));
+    g.gain.linearRampToValueAtTime(.0001, end);   // 終わりをぶつっと切らない
+    src.connect(g); g.connect(ac.destination);
+    src.start(t0); src.stop(end + .05);
+    ringSrc = src; ringGain = g;
+    src.onended = ()=>{ if(ringSrc === src){ ringSrc = null; ringGain = null; } };
+    return true;
+  }catch(e){ return false; }
+}
 function stopRing(){
   if(ringId){ clearInterval(ringId); ringId = 0; }
   ringLeft = 0;
+  if(ringSrc){
+    // すぐ止めるとブツッと鳴るので、ごく短くしぼってから止める
+    try{
+      const ac = audioOn();
+      if(ac && ringGain){
+        ringGain.gain.cancelScheduledValues(ac.currentTime);
+        ringGain.gain.setValueAtTime(ringGain.gain.value, ac.currentTime);
+        ringGain.gain.linearRampToValueAtTime(.0001, ac.currentTime + .08);
+      }
+      ringSrc.stop((audioOn() ? audioOn().currentTime : 0) + .1);
+    }catch(e){ try{ ringSrc.stop(); }catch(_){} }
+    ringSrc = null; ringGain = null;
+  }
 }
 function startRing(){
   stopRing();
+  // 音を入れているなら10秒。入れていない（または読めなかった）なら既定のピッピッピッ
+  if(playSound(RING_SEC)) return;
   beep();
   ringLeft = RING_TIMES - 1;
   ringId = setInterval(()=>{
@@ -1334,6 +1400,7 @@ function stopTicking(){ if(timerId){ clearInterval(timerId); timerId = 0; } }
 
 function startTimer(){
   audioOn();                       // 押したこの流れの中で起こしておく（あとからでは鳴らない）
+  primeSound();                    // 入れた音を先に読んでおく。鳴る瞬間では間に合わない
   timerEndAt = Date.now() + timerMin * 60000;
   timerState = "run";
   stopTicking();
@@ -2897,6 +2964,7 @@ function renderSettings(){
     "平日は " + boxClock(dayKeyOfType(false), 0) + " から " + S.base.weekday + "箱で " +
     endClock(false) + " まで。休みは " + boxClock(dayKeyOfType(true), 0) + " から " +
     S.base.holiday + "箱で " + endClock(true) + " まで。";
+  renderSound();
   renderBrowserPaths();
 }
 /* 目安の計算に使う、その区分の代表日。いまの日で区分だけ差し替える */
@@ -3009,6 +3077,153 @@ $("imgList").addEventListener("click", async e => {
   removeImage(id);
 });
 
+/* ================= 設定タブ：タイマーの音 =================
+   画像と同じ考え方。入れられるのは1つだけで、大きさの上限も画像1枚と同じ。
+   ▼ 鳴らすのは最初の RING_SEC 秒だけなので、長い曲はその場で切り落として保存する。
+     曲を丸ごと持つと localStorage（目安5MB）が画像と食い合って、
+     やりたいことが保存できなくなる
+   ▼ 切るには作り直しが要る。作り直したものは WAV（無圧縮）なので、
+     入らなければ SND_RATES の順に音を粗くする。画像の「画質→寸法」と同じ落とし方
+   ▼ 逆に、短くて軽いものは元のまま持つ。作り直すと音が悪くなるだけなので
+=========================================================== */
+const SND_MAX = 400 * 1024;         // 保存できる大きさ（データURLの長さ）＝ 画像1枚ぶん
+const SND_RATES = [16000, 12000, 8000];   // 入らなければ、この順に粗くする
+
+/* AudioBuffer（モノラル）→ WAV のデータURL */
+function wavDataURL(buf){
+  const ch = buf.getChannelData(0), n = ch.length, rate = buf.sampleRate;
+  const ab = new ArrayBuffer(44 + n*2), v = new DataView(ab);
+  const put = (o, s)=>{ for(let i = 0; i < s.length; i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  put(0, "RIFF");  v.setUint32(4, 36 + n*2, true);  put(8, "WAVE");
+  put(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);          // PCM
+  v.setUint16(22, 1, true);          // モノラル
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate*2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);         // 16bit
+  put(36, "data"); v.setUint32(40, n*2, true);
+  for(let i = 0; i < n; i++){
+    const s = Math.max(-1, Math.min(1, ch[i]));
+    v.setInt16(44 + i*2, s < 0 ? s*0x8000 : s*0x7fff, true);
+  }
+  const u8 = new Uint8Array(ab);
+  let bin = "";
+  for(let i = 0; i < u8.length; i += 0x8000){   // 一度に渡すと引数が多すぎて落ちる
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return "data:audio/wav;base64," + btoa(bin);
+}
+function fileDataURL(file){
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = ()=> reject(new Error("読み込めませんでした"));
+    fr.onload  = ()=> resolve(fr.result);
+    fr.readAsDataURL(file);
+  });
+}
+/* 選ばれた音を、鳴らすぶん（最初の RING_SEC 秒）だけに切り詰める */
+async function prepareSound(file){
+  const ac = audioOn();
+  if(!ac) throw new Error("この環境では音を扱えません");
+  let buf;
+  try{ buf = await ac.decodeAudioData(await file.arrayBuffer()); }
+  catch(e){ throw new Error("音として開けませんでした"); }
+  if(!buf.duration) throw new Error("音が入っていません");
+
+  const sec = Math.min(RING_SEC, buf.duration);
+  // 短くて軽いものは、そのまま持つ（切る必要が無いのに作り直すと、音が悪くなるだけ）
+  if(buf.duration <= RING_SEC + .5){
+    const asis = await fileDataURL(file);
+    if(asis.length <= SND_MAX){
+      // rate は「粗くした」ときだけ出す。ここは元のままなので持たない
+      // （buf.sampleRate は decodeAudioData が合わせた値で、元のファイルの値ではない）
+      return { data: asis, sec: Math.round(buf.duration*10)/10, rate: 0, cut: false };
+    }
+  }
+  const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if(!OC) throw new Error("この環境では切り取れません");
+  for(const rate of SND_RATES){
+    // モノラル・その周波数で鳴らし直すと、まとめて（頭だけ・1ch・粗く）作り直せる
+    const oc = new OC(1, Math.ceil(sec * rate), rate);
+    const src = oc.createBufferSource();
+    src.buffer = buf; src.connect(oc.destination); src.start(0);
+    const data = wavDataURL(await oc.startRendering());
+    if(data.length <= SND_MAX){
+      return { data, sec: Math.round(sec*10)/10, rate, cut: buf.duration > sec };
+    }
+  }
+  throw new Error("小さくできませんでした");
+}
+/* 保存できたら true。容量オーバーなら元に戻して false（画像の addImage と同じ） */
+function setTimerSound(snd){
+  const prev = S.timerSound;
+  S.timerSound = snd;
+  if(!trySave()){
+    S.timerSound = prev;
+    trySave();
+    return false;
+  }
+  soundBuf = null; soundKey = "";     // 次に鳴らすときに読み直す
+  return true;
+}
+
+$("btnAddSnd").onclick = ()=> $("sndInput").click();
+$("sndInput").onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if(!file) return;
+  toast("音を取り込んでいます…");
+  let snd;
+  try{ snd = await prepareSound(file); }
+  catch(err){ toast(String(err.message || err)); return; }
+  const name = (file.name || "音").slice(0, 40);
+  if(!setTimerSound(Object.assign({ name, at: Date.now() }, snd))){
+    toast("保存できる容量がいっぱいです。哲学タブから画像を減らしてください");
+    return;
+  }
+  renderAll();
+  toast(snd.cut ? "最初の" + RING_SEC + "秒だけを保存しました" : "この音を保存しました", {
+    label: "試しに鳴らす", run: testSound
+  });
+};
+$("btnResetSnd").onclick = async ()=>{
+  if(!S.timerSound) return;
+  const ok = await askConfirm("既定の音（ピッピッピッ）に戻しますか？", "戻す");
+  if(!ok) return;
+  const prev = S.timerSound;
+  setTimerSound(null);
+  renderAll();
+  toast("既定の音に戻しました", ()=>{ setTimerSound(prev); renderAll(); });
+};
+async function testSound(){
+  audioOn();
+  stopRing();
+  await primeSound();
+  startRing();
+  toast(S.timerSound ? RING_SEC + "秒だけ鳴らします" : "既定の音です", { label:"止める", run: stopRing });
+}
+$("btnTestSnd").onclick = testSound;
+
+function renderSound(){
+  const el = $("sndNote"); if(!el) return;
+  const s = S.timerSound;
+  $("btnResetSnd").disabled = !s;
+  $("btnResetSnd").style.opacity = s ? "" : ".45";
+  if(!s){
+    el.innerHTML = '<div class="empty-note">いまは既定の「ピッピッピッ」です' +
+      '（1.5秒おきに' + RING_TIMES + '回）。</div>';
+    return;
+  }
+  el.innerHTML =
+    '<div class="kv"><span>' + esc(s.name || "音") + '</span><span>' +
+      s.sec + '秒 ・ 約' + Math.round(s.data.length/1024) + 'KB' +
+      (s.rate ? ' ・ ' + Math.round(s.rate/1000) + 'kHz に粗くしました' : ' ・ そのまま') +
+    '</span></div>' +
+    '<div class="empty-note">0になると、この音が' + RING_SEC + '秒だけ鳴ります。' +
+      (s.sec < RING_SEC ? s.sec + '秒しかないので、その間くり返します。' : '') + '</div>';
+}
+
 /* 今月、何で箱が潰れたか */
 function renderCutStats(){
   const d = dayStart(dayKey());
@@ -3055,6 +3270,10 @@ function renderStats(){
       '</span></div>' +
     '<div class="kv"><span>哲学</span><span>' + S.philos.length + '件</span></div>' +
     '<div class="kv"><span>画像</span><span>' + S.images.length + '枚</span></div>' +
+    '<div class="kv"><span>タイマーの音</span><span>' +
+      (S.timerSound
+        ? esc(S.timerSound.name || "音") + '（約 ' + Math.round(S.timerSound.data.length/1024) + ' KB）'
+        : '既定のピッピッピッ（0 KB）') + '</span></div>' +
     '<div class="kv"><span>日記</span><span>' + diaryDays() + '日ぶん</span></div>' +
     '<div class="kv"><span>保存量のめやす</span><span>約 ' + (usedKB() + diaryKB()) +
       ' KB（うち日記 ' + diaryKB() + ' KB）</span></div>';
