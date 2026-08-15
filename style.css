@@ -377,6 +377,7 @@ kbd{
 .dtitle{font-size:17px;font-weight:700}
 .dstate{margin-left:auto;font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
 .dstate.saved{color:var(--ok)}
+.dstate.unsaved{color:var(--accent2)}
 .dfield{margin-bottom:12px}
 .dfield label{display:block;font-size:11px;letter-spacing:.1em;color:var(--accent2);margin-bottom:5px}
 .dfield textarea{min-height:104px}
@@ -386,6 +387,9 @@ kbd{
   border-radius:99px;padding:7px 16px;font-size:13px;font-family:inherit;cursor:pointer;
 }
 .dtog:hover{background:var(--card);border-color:var(--accent);color:var(--accent)}
+/* 保存ボタン。自動保存をやめたので、ここを押さないと何も残らない。目立たせておく */
+.dsave{display:flex;justify-content:flex-end;margin-top:14px}
+.dsave .btn{padding:11px 30px}
 .dnote{color:var(--fg-faint);font-size:12px;line-height:1.7;padding:12px 2px 0}
 
 .dcard{
@@ -396,6 +400,8 @@ kbd{
 .dcard.editing{border-color:var(--accent)}
 .dchead{display:flex;align-items:center;gap:8px}
 .dcdate{font-size:13px;font-weight:700;color:var(--fg-dim);font-variant-numeric:tabular-nums}
+/* 同じ日に何件も並ぶので、保存した時刻で見分ける */
+.dctime{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
 .dcago{
   font-size:11px;font-weight:600;color:var(--accent2);
   background:rgba(255,209,102,.14);border-radius:99px;padding:1px 9px;flex:none;

@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-14.3";
+const APP_VERSION = "2026-08-15.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2723,6 +2723,8 @@ document.querySelectorAll(".addtoggle").forEach(b => b.onclick = ()=>{
      そこは画像の枚数で調整する（設定タブの「保存量のめやす」に日記ぶんも出している）
    ▼ 書いた欄だけを持ち、全部空なら日付キーごと消す。
      「書かなかった日」を残さないので、過去を出すときに素直に「あるものだけ」並ぶ
+   ▼ 保存は「保存する」を押したときだけ（2026-08-15 に自動保存をやめた）。
+     押すたびに新しい1件として足すので、同じ日に何件でも置ける
 ========================================== */
 const DKEY = "jiko-kanri-diary-v1";
 /* 欄の定義。key が保存名、id が textarea、id+"Wrap" が包み。fold=false の欄は常に開いている */
@@ -2762,11 +2764,25 @@ function saveDiary(){
 function diaryKB(){
   try{ return Math.round(JSON.stringify(D).length / 1024); }catch(e){ return 0; }
 }
-const diaryDays = () => Object.keys(D.entries).length;
+const diaryCount = () => Object.keys(D.entries).length;
+const diaryDays  = () => new Set(Object.keys(D.entries).map(diaryDateOf)).size;
+
+/* ▼ 保存キーの形は2つある。どちらも「その日」で始まるので、文字のまま並べれば日付順になる。
+     "2026-08-13"                … 1日1件だった頃のもの。移行はしない。そのまま読む
+     "2026-08-15#1755230400000"  … いまの形。同じ日に何件でも置ける（後ろは保存した時刻）
+   ▼ 日付を取り出すときは必ず diaryDateOf() を通すこと。
+     dayStart() は "2026-08-13" の形しか受け付けず、外れると黙って今日に化ける */
+const diaryDateOf = key => String(key).slice(0, 10);
+function newDiaryKey(){
+  const day = dayKey();
+  let ts = Date.now();
+  while(D.entries[day + "#" + ts]) ts++;   // 同じミリ秒に2回入っても、前のぶんを潰さない
+  return day + "#" + ts;
+}
 
 /* 「2026年8月13日（木）」 */
 function diaryDateLabel(key){
-  const d = dayStart(key);
+  const d = dayStart(diaryDateOf(key));
   return d.getFullYear() + "年" + (d.getMonth()+1) + "月" + d.getDate() + "日（" + WD[d.getDay()] + "）";
 }
 function hhmm(ts){
@@ -2774,13 +2790,10 @@ function hhmm(ts){
   return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
 }
 
-/* ▼ いま入力欄に出している日。dayKey() ではなくこれを使って書き込む。
-   日付をまたいだ瞬間に打ちかけを確定すると、dayKey() では新しい日に書いてしまうため */
-let diaryKeyOpen = "";
-let diaryTimer = 0;
 let diaryOpened = {};      // その場で開いた欄（畳んである欄を開いたか）
-let diaryEditKey = "";     // 過去の日を書き直しているとき、その日付キー
+let diaryEditKey = "";     // 過去のものを書き直しているとき、その保存キー
 let diaryShow = 20;        // 「これまでの日記」を何件出すか
+let diarySavedAt = 0;      // この画面で最後に保存した時刻。見出しの右に出すだけ
 
 /* 入力欄の中身。空白だけの欄は「書いていない」とみなす */
 function collectDiary(){
@@ -2791,32 +2804,36 @@ function collectDiary(){
   });
   return e;
 }
-/* 入力欄の中身を保存に反映する。変わっていなければ何もしない */
-function commitDiary(){
-  if(diaryTimer){ clearTimeout(diaryTimer); diaryTimer = 0; }
-  const key = diaryKeyOpen || dayKey();
+/* ▼「保存する」を押したときだけ動く。押すたびに新しい1件として足す。
+     前に保存したものは触らないので、同じ日に何度書いてもいい。
+   ▼ 日付は押した瞬間の dayKey()。深夜1:59 に打って2:00すぎに押せば、押した日のぶんになる。
+     「いつ書いたか」ではなく「いつ保存したか」で決まる、と割り切っている */
+function saveNewDiary(){
   const cur = collectDiary();
-  const old = D.entries[key] || null;
-  const same = DIARY_FIELDS.every(f => (cur[f.key] || "") === ((old && old[f.key]) || ""));
-  if(same) return;
-  if(!Object.keys(cur).length) delete D.entries[key];    // 全部消したら、その日ごと消す
-  else D.entries[key] = Object.assign(cur, { at: Date.now() });
-  saveDiary();
+  if(!Object.keys(cur).length){ toast("なにか書いてから「保存する」を押してください"); return; }
+  const key = newDiaryKey();
+  D.entries[key] = Object.assign(cur, { at: Date.now() });
+  // 入りきらなかったときは足さなかったことにする。打ったものは欄に残す（消さない）
+  if(!saveDiary()){ delete D.entries[key]; return; }
+  diarySavedAt = Date.now();
+  DIARY_FIELDS.forEach(f => { $(f.id).value = ""; });
+  diaryOpened = {};
+  renderDiaryHead();      // 見出しの日付を今日に直し、開いていた欄を畳む
+  renderDiaryPast();      // すぐ下の「これまでの日記」の先頭に出る
   renderDiaryState();
-}
-function scheduleDiary(){
-  if(diaryTimer) clearTimeout(diaryTimer);
-  diaryTimer = setTimeout(commitDiary, 700);
-  renderDiaryState();
+  renderStats();
+  toast("保存しました");
 }
 
 function renderDiaryState(){
   const el = $("diaryState"); if(!el) return;
-  const e = D.entries[diaryKeyOpen || dayKey()];
-  if(diaryTimer){ el.textContent = "…"; el.className = "dstate"; return; }
-  if(!e){ el.textContent = "まだ書いていません"; el.className = "dstate"; return; }
-  el.textContent = "保存しました " + hhmm(e.at || Date.now());
-  el.className = "dstate saved";
+  if(Object.keys(collectDiary()).length){
+    el.textContent = "保存していません"; el.className = "dstate unsaved"; return;
+  }
+  if(diarySavedAt){
+    el.textContent = "保存しました " + hhmm(diarySavedAt); el.className = "dstate saved"; return;
+  }
+  el.textContent = ""; el.className = "dstate";
 }
 /* 中身のある欄と、その場で開いた欄だけを見せる */
 function syncDiaryFolds(){
@@ -2829,21 +2846,10 @@ function syncDiaryFolds(){
     if(btn) btn.style.display = on ? "none" : "";
   });
 }
-function fillDiaryToday(){
-  const k = dayKey();
-  if(diaryKeyOpen && diaryKeyOpen !== k){
-    commitDiary();                 // 日付をまたいだ。まず前の日として確定させる
-    diaryOpened = {};
-    diaryEditKey = "";
-  }
-  diaryKeyOpen = k;
-  const e = D.entries[k] || {};
-  // 値が同じときに代入しない。打っている最中にカーソルが飛ぶのを防ぐ
-  DIARY_FIELDS.forEach(f => {
-    const el = $(f.id), v = e[f.key] || "";
-    if(el.value !== v) el.value = v;
-  });
-  $("diaryTitle").textContent = diaryDateLabel(k) + " の日記";
+/* ▼ 入力欄の中身には触らない。ここは「保存前の下書き」であって、保存したものの写しではない。
+     値を入れ直すと、タブを行き来しただけで打ちかけが消える。触っていいのは保存した直後だけ */
+function renderDiaryHead(){
+  $("diaryTitle").textContent = diaryDateLabel(dayKey()) + " の日記";
   syncDiaryFolds();
 }
 
@@ -2853,11 +2859,13 @@ function diaryBody(e){
     '<div class="dtxt">' + esc(e[f.key]) + '</div></div>'
   ).join("");
 }
-/* 過去の1日。書き直し中はその場が入力欄に変わる */
+/* 保存した1件。書き直し中はその場が入力欄に変わる。
+   同じ日に何件も並ぶので、日付のとなりに保存した時刻を出して見分けられるようにしてある */
 function diaryCard(key, agoYears){
   const e = D.entries[key]; if(!e) return "";
   const head = '<div class="dchead">' +
     '<div class="dcdate">' + diaryDateLabel(key) + '</div>' +
+    (e.at ? '<div class="dctime">' + hhmm(e.at) + '</div>' : '') +
     (agoYears ? '<div class="dcago">' + agoYears + '年前</div>' : '') +
     '<div class="sp"></div>';
   if(diaryEditKey === key){
@@ -2883,29 +2891,32 @@ function diaryCard(key, agoYears){
 
 function renderDiaryPast(){
   const el = $("diaryPast"); if(!el) return;
-  const today = diaryKeyOpen || dayKey();
+  const today = dayKey();
   const md    = today.slice(5);                       // "08-13"
-  const thisY = Number(today.slice(0,4));
-  const all   = Object.keys(D.entries).filter(k => k !== today).sort().reverse();
-  // 同じ月日は上に出す。書いていない年はそもそも並ばない（キーが無いので）
-  const same  = all.filter(k => k.slice(5) === md);
-  const rest  = all.filter(k => k.slice(5) !== md);
+  const thisY = today.slice(0,4);
+  // キーは「日付」または「日付#保存した時刻」なので、文字のまま並べれば新しい順になる
+  const all   = Object.keys(D.entries).sort().reverse();
+  // 「同じ日」は別の年の同じ月日だけ。今日書いたものは「これまでの日記」の先頭に出す
+  const same  = all.filter(k => diaryDateOf(k).slice(5) === md && diaryDateOf(k).slice(0,4) !== thisY);
+  const sameSet = new Set(same);
+  const rest  = all.filter(k => !sameSet.has(k));
 
   let h = "";
   if(same.length){
     h += '<h2>同じ日に書いたもの</h2>' +
-         same.map(k => diaryCard(k, thisY - Number(k.slice(0,4)))).join("");
+         same.map(k => diaryCard(k, Number(thisY) - Number(diaryDateOf(k).slice(0,4)))).join("");
   }
   if(rest.length){
     h += '<h2>これまでの日記</h2>' +
          rest.slice(0, diaryShow).map(k => diaryCard(k, 0)).join("");
     if(rest.length > diaryShow){
-      h += '<button class="fold" id="diaryMoreBtn">もっと見る（残り ' + (rest.length - diaryShow) + '日）</button>';
+      h += '<button class="fold" id="diaryMoreBtn">もっと見る（残り ' + (rest.length - diaryShow) + '件）</button>';
     }
   }
   if(!h){
-    h = '<div class="empty-note">書いたものは、この下に新しい順で並びます。' +
-        '同じ月日に書いたものがあれば、いちばん上に出ます。</div>';
+    h = '<div class="empty-note">「保存する」を押すと、この下に新しい順で並びます。' +
+        '同じ日に何度書いても、それぞれ別の1件として残ります。' +
+        '同じ月日に書いたものが去年までにあれば、いちばん上に出ます。</div>';
   }
   el.innerHTML = h;
   const more = $("diaryMoreBtn");
@@ -2913,23 +2924,27 @@ function renderDiaryPast(){
 }
 
 function renderDiary(){
-  if(diaryTimer) commitDiary();      // 打ちかけを取りこぼさない
-  fillDiaryToday();
+  renderDiaryHead();
   renderDiaryPast();
   renderDiaryState();
 }
 
 DIARY_FIELDS.forEach(f => {
-  $(f.id).addEventListener("input", scheduleDiary);
-  $(f.id).addEventListener("blur", commitDiary);
+  $(f.id).addEventListener("input", renderDiaryState);   // 保存はしない。見出しの右の文字を変えるだけ
 });
+$("diarySaveBtn").onclick = saveNewDiary;
 document.querySelectorAll(".dtog").forEach(b => b.onclick = ()=>{
   diaryOpened[b.dataset.open] = true;
   syncDiaryFolds();
   const f = DIARY_FIELDS.find(x => x.key === b.dataset.open);
   if(f) $(f.id).focus();
 });
-window.addEventListener("beforeunload", ()=>{ if(diaryTimer) commitDiary(); });
+/* 自動保存をやめたので、押さずに閉じると打ったものは消える。ここで一度だけ引き止める */
+window.addEventListener("beforeunload", e => {
+  if(!Object.keys(collectDiary()).length) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
 
 $("diaryPast").addEventListener("click", async e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
@@ -2945,15 +2960,19 @@ $("diaryPast").addEventListener("click", async e => {
       const v = (t.value || "").replace(/\s+$/, "");
       if(v.trim()) next[t.dataset.fld] = v;
     });
+    const old = D.entries[key];
     diaryEditKey = "";
     if(!Object.keys(next).length) delete D.entries[key];
-    else D.entries[key] = Object.assign(next, { at: Date.now() });
+    // at は書いた時刻として画面に出しているので、書き直しても付け替えない
+    else D.entries[key] = Object.assign(next, { at: (old && old.at) || Date.now() });
     saveDiary(); renderDiaryPast(); renderStats();
     toast("書き直しました");
     return;
   }
   if(act === "ddel"){
-    const ok = await askConfirm(diaryDateLabel(key) + " の日記を削除しますか？", "削除", "元に戻せます（この画面にいる間だけ）");
+    const e = D.entries[key];
+    const when = diaryDateLabel(key) + ((e && e.at) ? " " + hhmm(e.at) : "");
+    const ok = await askConfirm(when + " の日記を削除しますか？", "削除", "元に戻せます（この画面にいる間だけ）");
     if(!ok) return;
     const removed = D.entries[key];
     delete D.entries[key];
@@ -3288,12 +3307,12 @@ function renderStats(){
       (S.timerSound
         ? esc(S.timerSound.name || "音") + '（約 ' + Math.round(S.timerSound.data.length/1024) + ' KB）'
         : '既定のピッピッピッ（0 KB）') + '</span></div>' +
-    '<div class="kv"><span>日記</span><span>' + diaryDays() + '日ぶん</span></div>' +
+    '<div class="kv"><span>日記</span><span>' + diaryCount() + '件（' + diaryDays() + '日ぶん）</span></div>' +
     '<div class="kv"><span>保存量のめやす</span><span>約 ' + (usedKB() + diaryKB()) +
       ' KB（うち日記 ' + diaryKB() + ' KB）</span></div>';
 }
 $("btnExport").onclick = ()=>{
-  commitDiary();     // 打ちかけの日記も書き出しに含める
+  // ▼ 保存していない日記は入らない（自動保存をやめたので、押していないものはまだ存在しない）
   // 日記は別のキーに持っているので、書き出しのときだけ diary として同じファイルに入れる
   const blob = new Blob([JSON.stringify(Object.assign({}, S, { diary: D }), null, 2)], { type: "application/json" });
   const a = document.createElement("a");
@@ -3317,15 +3336,13 @@ $("fileInput").onchange = e => {
                      typeof d.diary.entries === "object") ? { v:1, entries: d.diary.entries } : null;
     const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
       "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます。" +
-      (inDiary ? "日記も、読み込むほうに置き換わります（" + Object.keys(inDiary.entries).length + "日ぶん）"
+      (inDiary ? "日記も、読み込むほうに置き換わります（" + Object.keys(inDiary.entries).length + "件）"
                : "このファイルに日記は入っていないので、いまの日記はそのまま残します"));
     if(!ok) return;
     delete d.diary;      // 本体（S）に混ぜない。日記は別のキーで持つ
     S = migrate(Object.assign(structuredClone(DEFAULTS), d));
     if(inDiary){
-      // 打ちかけを新しい日記に書き込んでしまわないよう、先に捨てる
-      if(diaryTimer){ clearTimeout(diaryTimer); diaryTimer = 0; }
-      D = inDiary; diaryKeyOpen = ""; diaryOpened = {}; diaryEditKey = ""; diaryShow = 20;
+      D = inDiary; diaryOpened = {}; diaryEditKey = ""; diaryShow = 20; diarySavedAt = 0;
       saveDiary();
     }
     save(); renderAll(); toast("読み込みました");
