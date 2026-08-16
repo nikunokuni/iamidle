@@ -18,6 +18,7 @@
   --warn:#ffa552;
   --danger:#ff6b6b;
   --radius:14px;
+  --navh:64px;          /* 下のタブ帯の高さ。今日タブの枠を固定するときに使う */
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -52,35 +53,9 @@ header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:sp
 .greet{font-size:21px;font-weight:700;margin-top:2px}
 .clock{font-size:30px;font-weight:300;color:var(--fg-dim);font-variant-numeric:tabular-nums;flex:none}
 
-/* ---------- 残り箱バー（常に見えるところ） ---------- */
-.boxbar{
-  position:sticky;top:0;z-index:40;
-  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-  margin:12px 0 0;padding:12px 16px;
-  background:rgba(22,26,33,.94);backdrop-filter:blur(10px);
-  border:1px solid var(--line);border-radius:var(--radius);
-}
-.boxbar .bb-main{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
-.boxbar .bb-main b{font-size:28px;color:var(--accent);padding:0 2px}
-.boxbar .bb-main.low b{color:var(--warn)}
-.boxbar .bb-main.zero b{color:var(--danger)}
-.boxbar .bb-sub{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
-.boxbar .bb-btns{margin-left:auto;display:flex;gap:6px;align-items:center}
-.boxbar .bb-btns button{
-  width:36px;height:36px;flex:none;border-radius:9px;
-  background:var(--card);border:1px solid var(--line);color:var(--fg);
-  font-size:18px;font-family:inherit;cursor:pointer;line-height:1;
-}
-.boxbar .bb-btns button:hover{border-color:var(--accent);color:var(--accent)}
-.boxbar .bb-btns #dayType{width:auto;padding:0 14px;font-size:13px;font-weight:700;color:var(--fg-dim)}
-.boxbar .bb-end{
-  font-size:12px;font-weight:700;color:var(--ok);
-  background:rgba(78,203,143,.14);padding:4px 12px;border-radius:99px;
-}
-
 /* ---------- philosophy banner ---------- */
 .philo-bar{
-  margin:14px 0 16px;padding:14px 18px;
+  margin:0 0 14px;padding:14px 18px;
   background:linear-gradient(135deg,#1d2431,#171b24);
   border:1px solid var(--line);border-left:3px solid var(--accent2);
   border-radius:var(--radius);cursor:pointer;
@@ -110,15 +85,47 @@ section.on{display:block}
 
 h2{font-size:12px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;margin:22px 0 9px}
 
-/* ---------- ホームの2カラム ---------- */
+/* ---------- ホームの2カラム ----------
+   左：今日の指針・いま、これ・今日の箱　／　右：やりたいこと・ルーレット・ルーティーン
+   ------------------------------------ */
 .home{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(0,340px);
   gap:22px;align-items:start;
 }
 .home .col{min-width:0}
+
+/* ▼ 今日タブだけ、枠を画面の高さに固定して、左右それぞれの中でスクロールさせる。
+     印は switchTab() が body に付ける。ほかのタブはページ全体がこれまでどおり動く。
+     ・nav は position:fixed なので、その高さぶんを .wrap の下に空けている
+     ・列に overflow を効かせるには min-height:0 が要る（grid/flex の既定は auto で縮まない）
+     ・狭い画面（900px 以下）では1カラムに戻り、固定もやめる（下の @media） */
+body.now-fixed{
+  height:100vh;height:100dvh;
+  overflow:hidden;padding-bottom:0;
+  display:flex;flex-direction:column;
+}
+body.now-fixed .wrap{
+  flex:1;min-height:0;display:flex;flex-direction:column;
+  padding-bottom:var(--navh);
+}
+body.now-fixed #sec-now.on{flex:1;min-height:0;display:flex;flex-direction:column;padding-top:10px}
+body.now-fixed .home{flex:1;min-height:0;align-items:stretch}
+body.now-fixed .home .col{
+  min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding-right:6px;                 /* スクロールバーが中身に重ならないように */
+}
+/* 中身が下まで来たとき、最後の行が切り立って見えないように少しだけ空ける */
+body.now-fixed .home .col::after{content:"";display:block;height:10px}
+
 @media (max-width:900px){
   .home{grid-template-columns:minmax(0,1fr)}
+  /* 狭いときは固定をやめる。1カラムで縦に長いので、ページごとスクロールしたほうが読める */
+  body.now-fixed{height:auto;overflow:visible;display:block;padding-bottom:88px}
+  body.now-fixed .wrap{display:block;padding-bottom:0}
+  body.now-fixed #sec-now.on{display:block;padding-top:0}
+  body.now-fixed .home .col{overflow-y:visible;padding-right:0}
+  body.now-fixed .home .col::after{display:none}
 }
 
 /* ---------- now card ---------- */
@@ -424,6 +431,45 @@ kbd{
   font-size:14px;font-family:inherit;cursor:pointer;padding:0 0 0 14px;
 }
 
+/* ---------- 「今日の箱」の見出しと足もと ----------
+   見出しの右に平日／休みの切り替え、最後の箱の下に ＋−。
+   もとは画面上部の「残り○箱」の帯にあったもの（2026-08-15 に畳んだ）
+   ------------------------------------------------ */
+.bhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bhead h2{margin:0}
+.bhead .sp{margin-left:auto}
+.bcount{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
+.bcount b{font-size:15px;color:var(--accent);font-weight:700;padding:0 1px}
+.bcount.low b{color:var(--warn)}
+.bcount.zero b{color:var(--danger)}
+.bhint{font-size:11px;color:var(--fg-faint)}
+.bend{
+  font-size:11px;font-weight:700;color:var(--ok);flex:none;
+  background:rgba(78,203,143,.14);padding:3px 11px;border-radius:99px;
+}
+.daytype{
+  flex:none;border-radius:9px;padding:5px 14px;
+  background:var(--card);border:1px solid var(--line);color:var(--fg-dim);
+  font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;line-height:1.4;
+}
+.daytype:hover{border-color:var(--accent);color:var(--accent)}
+.daytype.off{color:var(--accent2);border-color:rgba(255,209,102,.4)}
+
+.bfoot{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:10px}
+.bfoot button{
+  width:38px;height:38px;flex:none;border-radius:10px;
+  background:var(--card);border:1px solid var(--line);color:var(--fg);
+  font-size:18px;font-family:inherit;cursor:pointer;line-height:1;
+}
+.bfoot button:hover{border-color:var(--accent);color:var(--accent)}
+.bfnote{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;min-width:150px;text-align:center}
+/* 画像の上に来ても読めるように、見出しと同じ下地を敷く */
+.boxarea.has-img .bhead,
+.boxarea.has-img .bfoot{
+  background:rgba(15,17,21,.9);border-radius:10px;padding:6px 11px;
+}
+.boxarea.has-img .bhead h2{background:none;padding:0;margin:0;display:block}
+
 /* ---------- ごほうびの画像 ----------
    箱が画像を隠し、終わった箱から透けて見えてくる
    ------------------------------------ */
@@ -432,11 +478,8 @@ kbd{
   border-radius:16px;padding:10px;margin-top:4px;
   box-shadow:inset 0 0 0 1px var(--line);
 }
-/* 見出しが画像に埋もれないよう、下地を敷く */
-.boxarea.has-img h2{
-  display:inline-block;margin:2px 0 8px;padding:5px 11px;
-  background:rgba(15,17,21,.9);border-radius:8px;
-}
+/* 見出しが画像に埋もれないよう、下地を敷く（下地は .bhead に付けてある） */
+.boxarea.has-img h2{margin:2px 0 8px}
 /* まだの箱：中を見せない */
 .boxarea.has-img .boxrow{background:var(--card);border-color:var(--line)}
 .boxarea.has-img .boxrow.empty{background:rgba(27,32,42,.94)}

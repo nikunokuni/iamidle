@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-15.1";
+const APP_VERSION = "2026-08-15.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1234,25 +1234,6 @@ function renderHeader(){
   const s = nowSlot();
   $("greet").textContent = SLOT[s].icon + " " + SLOT[s].label + (isHoliday(key) ? " ・休み" : " ・平日");
 }
-function renderBoxBar(){
-  const d = getDay();
-  const rest = remainBoxes(d), empty = emptyBoxes(d);
-  const cls = rest === 0 ? " zero" : (rest <= 2 ? " low" : "");
-  $("boxBar").innerHTML =
-    '<div class="bb-main' + cls + '">残り <b>' + rest + '</b> 箱</div>' +
-    '<div class="bb-sub">' + boxTime(rest) + ' ぶん ・ 空き ' + empty + ' 箱 ・ 今日は全 ' + d.count + ' 箱</div>' +
-    (dayFinished(d) ? '<div class="bb-end">今日は終了</div>' : '') +
-    '<div class="bb-btns">' +
-      '<button id="dayType" title="平日／休みを切り替える">' + (d.holiday ? "休み" : "平日") + '</button>' +
-      '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
-      '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
-    '</div>';
-  // 関数をそのまま渡すと click イベントが日付キーとして流れ込む。必ず包むこと
-  $("boxPlus").onclick  = ()=> addBox();
-  $("boxMinus").onclick = ()=> removeBox();
-  $("dayType").onclick  = ()=> setDayType(!getDay().holiday);
-}
-
 /* ================= 描画：哲学バー ================= */
 function renderPhiloBar(){
   if(!S.philos.length){
@@ -1554,7 +1535,10 @@ function renderNow(){
   if($("nowSkip")) $("nowSkip").onclick = ()=> skipToday(t.id);
 }
 
-/* ================= 描画：今日の箱の列 ================= */
+/* ================= 描画：今日の箱の列 =================
+   ▼ 2026-08-15 に「残り○箱」の帯（#boxBar）をやめて、この中に畳んだ。
+     平日／休みの切り替えは見出しの右、箱の ＋− は最後の箱の下（.bfoot）。
+     どちらも描き直すたびに作り直すので、onclick は毎回つけ直すこと */
 function renderBoxes(){
   const d = getDay();
   const cur = currentGroup();
@@ -1566,8 +1550,35 @@ function renderBoxes(){
   el.className = "boxarea" + (showHere ? " has-img" : "");
   el.style.backgroundImage = showHere ? 'url("' + img.data + '")' : "";
 
+  const rest = remainBoxes(d), empty = emptyBoxes(d);
+  const restCls = rest === 0 ? " zero" : (rest <= 2 ? " low" : "");
+  const head =
+    '<div class="bhead">' +
+      '<h2>今日の箱（1箱 ＝ 30分）</h2>' +
+      (d.count ? '<span class="bcount' + restCls + '">残り <b>' + rest + '</b> ・ 空き ' + empty + '</span>' : '') +
+      '<div class="sp"></div>' +
+      (showHere ? '<span class="bhint">終わった箱から見えてきます</span>' : '') +
+      (dayFinished(d) ? '<span class="bend">今日は終了</span>' : '') +
+      '<button class="daytype' + (d.holiday ? " off" : "") + '" id="dayType" ' +
+        'title="平日／休みを切り替える">' + (d.holiday ? "休み" : "平日") + '</button>' +
+    '</div>';
+  // 箱が0でも ＋ は出す。出さないと、減らし切ったあと増やせなくなる
+  const foot =
+    '<div class="bfoot">' +
+      '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
+      '<span class="bfnote">全 ' + d.count + ' 箱 ＝ ' + boxTime(d.count) + '</span>' +
+      '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
+    '</div>';
+  // 関数をそのまま渡すと click イベントが日付キーとして流れ込む。必ず包むこと
+  const wire = ()=>{
+    $("boxPlus").onclick  = ()=> addBox();
+    $("boxMinus").onclick = ()=> removeBox();
+    $("dayType").onclick  = ()=> setDayType(!getDay().holiday);
+  };
+
   if(d.count === 0){
-    el.innerHTML = '<div class="allclear"><span class="big">📦</span>今日は箱がありません。</div>';
+    el.innerHTML = head + '<div class="allclear"><span class="big">📦</span>今日は箱がありません。</div>' + foot;
+    wire();
     return;
   }
   const key = dayKey();
@@ -1603,14 +1614,12 @@ function renderBoxes(){
     '</div>';
   }).join("");
 
-  el.innerHTML =
-    '<h2>今日の箱（1箱 ＝ 30分）' +
-      (showHere ? '　<span style="letter-spacing:0">終わった箱から見えてきます</span>' : '') +
-    '</h2>' + rows +
+  el.innerHTML = head + rows +
     (dayFinished(d)
       ? '<div class="allclear"><span class="big">🌙</span>箱を使い切りました。今日は終了。<br>' +
-        esc(SLEEP_LINE) + '<br>まだやるなら、上の ＋ で箱を足してください。</div>'
-      : '');
+        esc(SLEEP_LINE) + '<br>まだやるなら、下の ＋ で箱を足してください。</div>'
+      : '') + foot;
+  wire();
 }
 $("boxList").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
@@ -3447,8 +3456,12 @@ $("updateNow").onclick = hardReload;
 function switchTab(name){
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === "sec-" + name));
+  // 今日タブだけ、枠を画面の高さに固定して中でスクロールさせる（style.css の body.now-fixed）。
+  // ほかのタブは、これまでどおりページ全体がスクロールする
+  document.body.classList.toggle("now-fixed", name === "now");
   window.scrollTo(0,0);
 }
+switchTab("now");        // 最初は今日タブ。body の印を付けるためにここでも通す
 document.querySelectorAll("nav button").forEach(b => b.onclick = ()=> switchTab(b.dataset.tab));
 
 /* ================= キーボード ================= */
@@ -3473,7 +3486,6 @@ document.addEventListener("keydown", e => {
 /* ================= boot ================= */
 function renderAll(){
   renderHeader();
-  renderBoxBar();
   renderWeek();
   renderWeekSide();
   renderPhiloBar();
