@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-15.2">
+<meta name="app-version" content="2026-08-15.3">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-15.2">
+<link rel="stylesheet" href="style.css?v=2026-08-15.3">
 </head>
 <body>
 
@@ -30,8 +30,9 @@
 
   <!-- ============ 今日（2カラム）============
        枠は画面の高さに固定して、左右それぞれの中でスクロールする。
-       左：今日の指針／いま、これ／今日の箱　右：やりたいこと／ルーレット／ルーティーン
-       平日・休みの切り替えと ＋− は「今日の箱」の中（app.js の renderBoxes）にある -->
+       左：今日の指針／いま、これ／今日の箱　右：ルーレット／やりたいこと／ルーティーン
+       平日・休みの切り替えと ＋− は「今日の箱」の中（app.js の renderBoxes）にある。
+       ルーレットは右カラムの一番上に貼り付く（下までスクロールしてもドラッグ先が消えない） -->
   <section id="sec-now" class="on">
     <div class="home">
       <div class="col main">
@@ -46,8 +47,8 @@
         <div id="doneToday"></div>
       </div>
       <aside class="col side">
-        <div id="unplaced"></div>
         <div id="rouletteBox"></div>
+        <div id="unplaced"></div>
         <div id="routineBox"></div>
         <div class="keyhelp">
           <b>キーボード</b>
@@ -389,6 +390,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-15.2"></script>
+<script src="app.js?v=2026-08-15.3"></script>
 </body>
 </html>

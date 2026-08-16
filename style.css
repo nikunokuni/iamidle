@@ -118,6 +118,21 @@ body.now-fixed .home .col{
 /* 中身が下まで来たとき、最後の行が切り立って見えないように少しだけ空ける */
 body.now-fixed .home .col::after{content:"";display:block;height:10px}
 
+/* ▼ ルーレットは右カラムの一番上に貼り付ける（2026-08-15）。
+     やりたいことが増えて下までスクロールしても、ドラッグの落とし先が画面から消えない。
+     ・貼り付く相手は「スクロールしている枠」＝ .col なので、
+       .col が overflow を持っている今日タブ（body.now-fixed）でだけ効く
+     ・下地（--bg）を敷かないと、パネルの隙間から下の中身が透けて見える
+     ・候補が増えたときのために丈を切ってある。切らないと、
+       ルーレットだけで枠が埋まって、ドラッグの元になる一覧に手が届かなくなる。
+       落とし先（「ここにドラッグして候補を足す」）はパネルの先頭にあるので、
+       丈を切っても、落とし先そのものは必ず見えている */
+body.now-fixed .side #rouletteBox{
+  position:sticky;top:0;z-index:20;
+  background:var(--bg);
+  max-height:50%;overflow-y:auto;
+}
+
 @media (max-width:900px){
   .home{grid-template-columns:minmax(0,1fr)}
   /* 狭いときは固定をやめる。1カラムで縦に長いので、ページごとスクロールしたほうが読める */
@@ -126,6 +141,9 @@ body.now-fixed .home .col::after{content:"";display:block;height:10px}
   body.now-fixed #sec-now.on{display:block;padding-top:0}
   body.now-fixed .home .col{overflow-y:visible;padding-right:0}
   body.now-fixed .home .col::after{display:none}
+  /* 貼り付ける相手（枠）が無くなるので、ここで解く。
+     解かないと画面そのものに貼り付いて、ヘッダーの上に居座る */
+  body.now-fixed .side #rouletteBox{position:static;max-height:none;overflow-y:visible;background:none}
 }
 
 /* ---------- now card ---------- */
