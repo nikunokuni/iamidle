@@ -713,28 +713,45 @@ kbd{
 .wkov.on b{color:var(--accent2)}
 
 /* 「この週に置くもの」。1週間ページの一番上で、スクロールしても貼り付く。
-   横に並べて、貼り付いたときの高さが出すぎないようにする */
+   ▼ 2026-08-16：横1列に並べて横スクロールさせていたが、長くなりすぎて面倒、と本人。
+     折り返して2段ぶんの高さに収め、あふれたぶんは縦に転がす（横スクロールはやめた）。
+     1つ1つも小さくして、同じ高さに入る数を増やしてある */
 .weekside{
   position:sticky;top:0;z-index:40;
-  padding:12px 0;
+  padding:10px 0;
   background:var(--bg);
 }
 .weekside .panel{
-  margin-bottom:0;padding:12px 14px;
+  margin-bottom:0;padding:9px 12px;
   background:rgba(22,26,33,.94);backdrop-filter:blur(10px);
 }
-.weekside .panel .ph{justify-content:flex-start;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.weekside .panel .ph{justify-content:flex-start;gap:10px;margin-bottom:7px;flex-wrap:wrap}
 .weekside .panel .ph .tip{
   margin-left:auto;letter-spacing:0;font-size:11px;color:var(--fg-faint);
 }
 .weekside .panel .ph .tip b{color:var(--fg-dim);font-weight:700}
 .wksidelist{
-  display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
-  padding-bottom:4px;scrollbar-width:thin;
+  display:flex;flex-wrap:wrap;gap:6px;
+  max-height:94px;                     /* ちょうど2段ぶん（1件43px＋すきま6px）。3段目からは縦に転がる */
+  overflow-y:auto;overflow-x:hidden;
+  padding:1px 4px 1px 1px;scrollbar-width:thin;
 }
 .wksidelist .item{
-  margin-bottom:0;flex:0 0 auto;max-width:300px;padding:9px 11px;
+  margin-bottom:0;flex:0 0 auto;width:206px;
+  gap:6px;padding:5px 8px;border-radius:9px;
+  font-size:13px;line-height:1.35;
 }
+/* ▼ 1行で打ち切る。折り返すと丈が揃わず、2段に収めた枠から溢れる。
+     全部は data-title（マウスを乗せると出る）で読める */
+.wksidelist .item .grow{overflow:hidden}
+.wksidelist .item .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wksidelist .item .s{
+  font-size:10px;margin-top:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal;
+}
+.wksidelist .grip{font-size:11px;padding:0}
+.wksidelist .wkov button{padding:2px 5px;font-size:10px}
+.wksidelist .wkov b{font-size:11px;min-width:12px}
 
 @media (max-width:900px){
   .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}

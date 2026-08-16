@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-16.1";
+const APP_VERSION = "2026-08-16.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1772,10 +1772,14 @@ function renderWeekSide(){
         sub.push(t.freq.unit === "once" ? "単発" : freqLabel(t.freq));
         if(t.fixed) sub.push(fixedLabel(t));
         const ovr = t.freq.unit === "week" && hasOverride(t, key);
-        return '<div class="item" data-id="' + t.id + '" draggable="true">' +
+        // ▼ 名前と下の行は1行で打ち切る（CSS の .nm / .s）。ここが折り返すと丈が揃わず、
+        //   2段に収めた枠から溢れる。全部読みたいときのために title で出しておく
+        const full = t.text + "（あと" + o.left + "回 ・ " + sub.join(" ・ ") + "）";
+        return '<div class="item" data-id="' + t.id + '" draggable="true" title="' + esc(full) + '">' +
           '<span class="grip" title="ドラッグして箱へ">⠿</span>' +
-          '<div class="grow">' + esc(t.text) +
-            '<div class="s">あと ' + o.left + ' 回 ・ ' + esc(sub.join(" ・ ")) + '</div>' +
+          '<div class="grow">' +
+            '<div class="nm">' + esc(t.text) + '</div>' +
+            '<div class="s">あと' + o.left + '回 ・ ' + esc(sub.join(" ・ ")) + '</div>' +
           '</div>' +
           (t.freq.unit === "week"
             ? '<span class="wkov' + (ovr ? " on" : "") + '">' +
