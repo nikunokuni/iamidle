@@ -402,7 +402,6 @@ kbd{
 .dtitle{font-size:17px;font-weight:700}
 .dstate{margin-left:auto;font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
 .dstate.saved{color:var(--ok)}
-.dstate.unsaved{color:var(--accent2)}
 .dfield{margin-bottom:12px}
 .dfield label{display:block;font-size:11px;letter-spacing:.1em;color:var(--accent2);margin-bottom:5px}
 .dfield textarea{min-height:104px}
@@ -415,7 +414,21 @@ kbd{
 /* 保存ボタン。自動保存をやめたので、ここを押さないと何も残らない。目立たせておく */
 .dsave{display:flex;justify-content:flex-end;margin-top:14px}
 .dsave .btn{padding:11px 30px}
-.dnote{color:var(--fg-faint);font-size:12px;line-height:1.7;padding:12px 2px 0}
+
+/* 「これまでの日記」の見出しと、年月のしぼりこみ */
+.dpasthead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 9px}
+.dpasthead h2{margin:0}
+.dpasthead .sp{margin-left:auto}
+.dpcount{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
+.dpasthead input[type=month]{
+  margin:0;width:auto;flex:none;padding:7px 10px;font-size:13px;
+  color-scheme:dark;                 /* カレンダーの絵柄を暗い側に合わせる */
+}
+.dclear{
+  flex:none;background:none;border:1px solid var(--line);color:var(--fg-dim);
+  border-radius:9px;padding:7px 14px;font-size:13px;font-family:inherit;cursor:pointer;
+}
+.dclear:hover{border-color:var(--accent);color:var(--accent)}
 
 .dcard{
   background:var(--card);border:1px solid var(--line);

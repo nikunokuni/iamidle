@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-15.3";
+const APP_VERSION = "2026-08-16.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2803,6 +2803,15 @@ let diaryOpened = {};      // その場で開いた欄（畳んである欄を�
 let diaryEditKey = "";     // 過去のものを書き直しているとき、その保存キー
 let diaryShow = 20;        // 「これまでの日記」を何件出すか
 let diarySavedAt = 0;      // この画面で最後に保存した時刻。見出しの右に出すだけ
+let diaryMonth = "";       // 年月のしぼりこみ。"" なら全部、"2026-08" ならその月だけ
+
+/* 「2026年8月」 */
+const monthLabel = m => Number(m.slice(0,4)) + "年" + Number(m.slice(5,7)) + "月";
+/* 書いたものがある、いちばん古い月といちばん新しい月。カレンダーの選べる幅にする */
+function diaryMonthSpan(){
+  const ms = Object.keys(D.entries).map(k => diaryDateOf(k).slice(0,7)).sort();
+  return ms.length ? { min: ms[0], max: ms[ms.length-1] } : null;
+}
 
 /* 入力欄の中身。空白だけの欄は「書いていない」とみなす */
 function collectDiary(){
@@ -2827,6 +2836,8 @@ function saveNewDiary(){
   diarySavedAt = Date.now();
   DIARY_FIELDS.forEach(f => { $(f.id).value = ""; });
   diaryOpened = {};
+  // 古い月でしぼりこんだままだと、いま保存したものが下に出ない。しぼりこみは解く
+  diaryMonth = ""; diaryShow = 20;
   renderDiaryHead();      // 見出しの日付を今日に直し、開いていた欄を畳む
   renderDiaryPast();      // すぐ下の「これまでの日記」の先頭に出る
   renderDiaryState();
@@ -2834,11 +2845,10 @@ function saveNewDiary(){
   toast("保存しました");
 }
 
+/* 見出しの右。保存したときだけ出す。
+   「保存していません」は 2026-08-16 に本人の指示で消した（打っている最中は何も出さない） */
 function renderDiaryState(){
   const el = $("diaryState"); if(!el) return;
-  if(Object.keys(collectDiary()).length){
-    el.textContent = "保存していません"; el.className = "dstate unsaved"; return;
-  }
   if(diarySavedAt){
     el.textContent = "保存しました " + hhmm(diarySavedAt); el.className = "dstate saved"; return;
   }
@@ -2898,6 +2908,9 @@ function diaryCard(key, agoYears){
   '</article>';
 }
 
+/* ▼ 上の「同じ日に書いたもの」（#diarySame）と、下の「これまでの日記」（#diaryPast）を書く。
+     間の見出しと年月の入力（#diaryPastHead）は index.html にある静的なもので、
+     ここでは中身と出し隠しだけを触る。作り直すとフォーカスが飛ぶため触らないこと */
 function renderDiaryPast(){
   const el = $("diaryPast"); if(!el) return;
   const today = dayKey();
@@ -2910,27 +2923,58 @@ function renderDiaryPast(){
   const sameSet = new Set(same);
   const rest  = all.filter(k => !sameSet.has(k));
 
-  let h = "";
-  if(same.length){
-    h += '<h2>同じ日に書いたもの</h2>' +
-         same.map(k => diaryCard(k, Number(thisY) - Number(diaryDateOf(k).slice(0,4)))).join("");
+  // ▼ 上の段は年月のしぼりこみを受けない。「去年の今日」は年をまたいで出したいもの
+  $("diarySame").innerHTML = same.length
+    ? '<h2>同じ日に書いたもの</h2>' +
+      same.map(k => diaryCard(k, Number(thisY) - Number(diaryDateOf(k).slice(0,4)))).join("")
+    : "";
+
+  // まだ1件も無いときは、見出しも年月の入力も出さない（しぼりこむものが無い）
+  const head = $("diaryPastHead");
+  if(!all.length){
+    head.style.display = "none";
+    el.innerHTML = '<div class="empty-note">「保存する」を押すと、この下に新しい順で並びます。' +
+      '同じ日に何度書いても、それぞれ別の1件として残ります。' +
+      '同じ月日に書いたものが去年までにあれば、いちばん上に出ます。</div>';
+    return;
   }
-  if(rest.length){
-    h += '<h2>これまでの日記</h2>' +
-         rest.slice(0, diaryShow).map(k => diaryCard(k, 0)).join("");
-    if(rest.length > diaryShow){
-      h += '<button class="fold" id="diaryMoreBtn">もっと見る（残り ' + (rest.length - diaryShow) + '件）</button>';
-    }
+  head.style.display = "";
+
+  const span = diaryMonthSpan();
+  const pick = $("diaryMonthPick");
+  // 打っている最中に入れ直さない。カーソルが飛ぶ
+  if(document.activeElement !== pick && pick.value !== diaryMonth) pick.value = diaryMonth;
+  if(span){ pick.min = span.min; pick.max = span.max; }
+  $("diaryMonthAll").style.display = diaryMonth ? "" : "none";
+
+  const list = diaryMonth ? rest.filter(k => diaryDateOf(k).slice(0,7) === diaryMonth) : rest;
+  $("diaryCountLabel").textContent =
+    (diaryMonth ? monthLabel(diaryMonth) + " ・ " : "") + list.length + "件";
+
+  if(!list.length){
+    el.innerHTML = '<div class="empty-note">' +
+      (diaryMonth ? monthLabel(diaryMonth) + "に書いたものはありません。「すべて」で戻せます。"
+                  : "まだありません。") + '</div>';
+    return;
   }
-  if(!h){
-    h = '<div class="empty-note">「保存する」を押すと、この下に新しい順で並びます。' +
-        '同じ日に何度書いても、それぞれ別の1件として残ります。' +
-        '同じ月日に書いたものが去年までにあれば、いちばん上に出ます。</div>';
-  }
-  el.innerHTML = h;
+  el.innerHTML = list.slice(0, diaryShow).map(k => diaryCard(k, 0)).join("") +
+    (list.length > diaryShow
+      ? '<button class="fold" id="diaryMoreBtn">もっと見る（残り ' + (list.length - diaryShow) + '件）</button>'
+      : '');
   const more = $("diaryMoreBtn");
   if(more) more.onclick = ()=>{ diaryShow += 20; renderDiaryPast(); };
 }
+/* 年月のしぼりこみ。入力は作り直さないので、ここで1度だけつなぐ */
+$("diaryMonthPick").onchange = ()=>{
+  diaryMonth = $("diaryMonthPick").value || "";
+  diaryShow = 20;                     // 月を変えたら「もっと見る」も最初から
+  renderDiaryPast();
+};
+$("diaryMonthAll").onclick = ()=>{
+  diaryMonth = ""; diaryShow = 20;
+  $("diaryMonthPick").value = "";
+  renderDiaryPast();
+};
 
 function renderDiary(){
   renderDiaryHead();
@@ -2938,9 +2982,6 @@ function renderDiary(){
   renderDiaryState();
 }
 
-DIARY_FIELDS.forEach(f => {
-  $(f.id).addEventListener("input", renderDiaryState);   // 保存はしない。見出しの右の文字を変えるだけ
-});
 $("diarySaveBtn").onclick = saveNewDiary;
 document.querySelectorAll(".dtog").forEach(b => b.onclick = ()=>{
   diaryOpened[b.dataset.open] = true;
@@ -2955,7 +2996,9 @@ window.addEventListener("beforeunload", e => {
   e.returnValue = "";
 });
 
-$("diaryPast").addEventListener("click", async e => {
+/* ▼ ✎ と ✕。カードは2か所（#diarySame と #diaryPast）にあるので、
+     どちらも囲んでいるタブ全体で受ける。.dcard の中でなければ何もしない */
+$("sec-diary").addEventListener("click", async e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   const card = e.target.closest(".dcard"); if(!card) return;
   const key = card.dataset.key;

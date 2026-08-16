@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-15.3">
+<meta name="app-version" content="2026-08-16.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-15.3">
+<link rel="stylesheet" href="style.css?v=2026-08-16.1">
 </head>
 <body>
 
@@ -157,13 +157,19 @@
       <div class="dsave">
         <button class="btn" id="diarySaveBtn">保存する</button>
       </div>
-      <div class="dnote">
-        書いた欄だけが残ります。全部埋める必要はありません。<br>
-        <b>「保存する」を押すまで、どこにも残りません。</b>押すと、すぐ下の「これまでの日記」に出ます。<br>
-        同じ日に何度でも書けます。箱は使いません。
-      </div>
     </div>
 
+    <!-- 過去のもの。「同じ日に書いたもの」→「これまでの日記」の順。
+         月の絞り込みの入力は静的に置いてある。描き直しで作り直すと、
+         年を打っている途中で input が消えてフォーカスが飛ぶため -->
+    <div id="diarySame"></div>
+    <div class="dpasthead" id="diaryPastHead">
+      <h2>これまでの日記</h2>
+      <span class="dpcount" id="diaryCountLabel"></span>
+      <div class="sp"></div>
+      <input type="month" id="diaryMonthPick" aria-label="年月でしぼりこむ">
+      <button class="dclear" id="diaryMonthAll">すべて</button>
+    </div>
     <div id="diaryPast"></div>
   </section>
 
@@ -390,6 +396,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-15.3"></script>
+<script src="app.js?v=2026-08-16.1"></script>
 </body>
 </html>
