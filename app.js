@@ -1551,6 +1551,7 @@ function renderBoxes(){
   el.style.backgroundImage = showHere ? 'url("' + img.data + '")' : "";
 
   const rest = remainBoxes(d), empty = emptyBoxes(d);
+  const filled = d.slots.filter(x => x !== null).length;   // やりたいことが入っている箱
   const restCls = rest === 0 ? " zero" : (rest <= 2 ? " low" : "");
   const head =
     '<div class="bhead">' +
@@ -1566,7 +1567,7 @@ function renderBoxes(){
   const foot =
     '<div class="bfoot">' +
       '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
-      '<span class="bfnote">全 ' + d.count + ' 箱 ＝ ' + boxTime(d.count) + '</span>' +
+      '<span class="bfnote">空き ' + empty + ' 箱 ・ 埋まった箱 ' + filled + ' 個</span>' +
       '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
     '</div>';
   // 関数をそのまま渡すと click イベントが日付キーとして流れ込む。必ず包むこと
