@@ -1567,7 +1567,8 @@ function renderBoxes(){
   const foot =
     '<div class="bfoot">' +
       '<button id="boxMinus" title="箱を1つ減らす（-）">−</button>' +
-      '<span class="bfnote">空き ' + empty + ' 箱 ・ 埋まった箱 ' + filled + ' 個</span>' +
+      '<span class="bfnote">空き ' + empty + ' 箱（' + boxTime(empty) + '）' +
+        ' ・ 埋まった箱 ' + filled + ' 個（' + boxTime(filled) + '）</span>' +
       '<button id="boxPlus" title="箱を1つ増やす（+）">＋</button>' +
     '</div>';
   // 関数をそのまま渡すと click イベントが日付キーとして流れ込む。必ず包むこと
