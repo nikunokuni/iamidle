@@ -99,7 +99,7 @@ h2{font-size:12px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;mar
      印は switchTab() が body に付ける。ほかのタブはページ全体がこれまでどおり動く。
      ・nav は position:fixed なので、その高さぶんを .wrap の下に空けている
      ・列に overflow を効かせるには min-height:0 が要る（grid/flex の既定は auto で縮まない）
-     ・狭い画面（900px 以下）では1カラムに戻り、固定もやめる（下の @media） */
+     ・狭い画面（600px 以下）では1カラムに戻り、固定もやめる（下の @media） */
 body.now-fixed{
   height:100vh;height:100dvh;
   overflow:hidden;padding-bottom:0;
@@ -133,8 +133,19 @@ body.now-fixed .side #rouletteBox{
   max-height:50%;overflow-y:auto;
 }
 
+/* ▼ 2カラムをやめる幅を 900 → 600 に下げた（2026-08-17）。
+     ノートPCで「あと少しで2カラムにならない」ことがあったため。
+     ただし右の列を 340px のままにすると、600px では左が細くなりすぎる。
+     900px を切ったところから、右の列と隙間を少しずつ詰めて左に幅を残す */
 @media (max-width:900px){
-  .home{grid-template-columns:minmax(0,1fr)}
+  .home{
+    grid-template-columns:minmax(0,1fr) minmax(0,clamp(230px,38vw,340px));
+    gap:14px;
+  }
+}
+
+@media (max-width:600px){
+  .home{grid-template-columns:minmax(0,1fr);gap:22px}
   /* 狭いときは固定をやめる。1カラムで縦に長いので、ページごとスクロールしたほうが読める */
   body.now-fixed{height:auto;overflow:visible;display:block;padding-bottom:88px}
   body.now-fixed .wrap{display:block;padding-bottom:0}
@@ -466,7 +477,9 @@ kbd{
    見出しの右に平日／休みの切り替え、最後の箱の下に ＋−。
    もとは画面上部の「残り○箱」の帯にあったもの（2026-08-15 に畳んだ）
    ------------------------------------------------ */
-.bhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* margin-bottom は、1つめの箱の時刻の札（.bclock は top:-8px で上にはみ出す）の居場所。
+   狭い画面で見出しが2行に折り返すと、これが無いと札が平日／休みのボタンに重なる */
+.bhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:9px}
 .bhead h2{margin:0}
 .bhead .sp{margin-left:auto}
 .bcount{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
