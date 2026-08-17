@@ -540,6 +540,21 @@ kbd{
 .now.reward .label,.now.reward .empty{text-shadow:0 2px 14px rgba(0,0,0,.95)}
 .now.reward .empty{color:#fff;font-size:19px;font-weight:600}
 
+/* 画像の前の文字とボタンを、まとめて消す／戻す。目のボタンだけは残す */
+.now.reward .rbare{
+  position:absolute;top:10px;right:10px;z-index:2;
+  background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.28);color:#fff;
+  padding:7px 10px;font-size:15px;line-height:1;border-radius:9px;
+}
+.now.reward .rbare:hover{background:rgba(0,0,0,.75);filter:none}
+/* 消したときは <img> で1枚まるごと。カードの高さも画像に合わせる */
+.now.reward.bare{min-height:0;padding:0;background:none}
+.now.reward.bare::after{display:none}          /* 下の黒いぼかしも消す */
+.now.reward.bare > *:not(.rbare):not(.rimg){display:none}
+.now.reward .rimg{display:block;width:100%;height:auto;border-radius:17px}
+.now.reward.bare .rbare{opacity:.35}
+.now.reward.bare .rbare:hover{opacity:1}
+
 /* 設定の画像一覧 */
 .imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px}
 .imgs .cell{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);aspect-ratio:4/3}

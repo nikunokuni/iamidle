@@ -1465,7 +1465,11 @@ function bindTimer(){
   if($("timerQuiet")) $("timerQuiet").onclick = ()=>{ stopRing(); toast("音を止めました"); };
 }
 
-/* ================= 描画：いま、これ ================= */
+/* ================= 描画：いま、これ =================
+   ごほうびの画像が出ているとき、文字やボタンが前に乗って画像が見えない。
+   目のボタンで、画像以外を全部消せるようにした（保存はしない。開いている間だけ） */
+let rewardBare = false;
+
 function renderNow(){
   const el = $("nowCard");
   const d = getDay();
@@ -1473,12 +1477,23 @@ function renderNow(){
   const img = dayImage();
 
   // やり切ったら、箱の背景にあった画像がここへ移ってはっきり出る
-  el.className = "now";
-  el.style.backgroundImage = "";
-  if(img && !g && dayFinished(d)){
-    el.classList.add("reward");
-    el.style.backgroundImage = 'url("' + img.data + '")';
-  }
+  const reward = !!img && !g && dayFinished(d);
+  if(!reward) rewardBare = false;   // 画像が引っ込んだら、消した状態も戻しておく
+  el.className = "now" + (reward ? " reward" : "") + (rewardBare ? " bare" : "");
+  // 消したときは背景ではなく <img> で出す。そうすると、切り取らずに全部見えて、
+  // 縦の長さも画像そのものに合う（背景のままだと余白か切り取りのどちらかになる）
+  el.style.backgroundImage = (reward && !rewardBare) ? 'url("' + img.data + '")' : "";
+
+  // 画像だけにする／文字を戻す。画像が出ているときだけ置く
+  const bareBtn = reward
+    ? (rewardBare ? '<img class="rimg" src="' + img.data + '" alt="">' : '') +
+      '<button class="rbare" id="nowBare" title="' +
+        (rewardBare ? "文字とボタンを出す" : "文字とボタンを消して、画像だけにする") + '">' +
+      (rewardBare ? "👁" : "🙈") + '</button>'
+    : '';
+  const wireBare = ()=>{
+    if($("nowBare")) $("nowBare").onclick = ()=>{ rewardBare = !rewardBare; renderNow(); };
+  };
 
   if(!g){
     let msg;
@@ -1487,10 +1502,12 @@ function renderNow(){
     else if(emptyBoxes(d) === d.count) msg = "箱にやりたいことを入れてください。\n右の一覧からクリックで入ります。";
     else                           msg = "入れたぶんは終わりました。\n空き箱にまだ入れられます。";
     el.innerHTML =
+      bareBtn +
       '<div class="label">いま、これ</div>' +
       '<div class="empty">' + esc(msg) + '</div>' +
       timerHTML();
     bindTimer();
+    wireBare();
     return;
   }
 
