@@ -439,7 +439,7 @@ Supabase
 
 | | やること | 備考 |
 |---|---|---|
-| 1 | ~~GitHub Pages に寄せる~~ | 済。 https://nikunokuni.github.io/iamidol/ |
+| 1 | ~~GitHub Pages に寄せる~~ | 済。 https://nikunokuni.github.io/iamidle/ |
 | 2 | ~~Vercel に Function を1本、Supabase にテーブルを1つ~~ | **書いた**（`api/sync.js` / `sync/schema.sql` / `sync/key.html`）。**通るかの確認はこれから**。手順は `sync/README.md` |
 | 3 | ~~各データに「いつ触ったか」を足す~~ | **やめた**（上記。中身の印で見る） |
 | 4 | ~~合言葉の入力と、3つの鍵を作るところ~~ | 済 |

@@ -44,7 +44,7 @@ SQL Editor に丸ごと貼って実行。何度実行してもよい。
 各自が `key.html` を開いて、**名前**（`niku` / `Haru`）と**自分で決めた合言葉**を入れる。
 出てきた64文字を管理者に渡す。**合言葉そのものは渡さない。渡す必要もない。**
 
-- 置き場所： https://nikunokuni.github.io/iamidol/sync/key.html
+- 置き場所： https://nikunokuni.github.io/iamidle/sync/key.html
 - この値から合言葉は割り出せない。渡しても中身は読まれない
 
 ### 3. Vercel：環境変数を入れる
@@ -67,7 +67,7 @@ SQL Editor に丸ごと貼って実行。何度実行してもよい。
 
 ```bash
 # 空で1回叩く。ok が返れば、鍵も権限も通っている
-curl -i -X POST https://iamidol.vercel.app/api/sync \
+curl -i -X POST https://iamidle.vercel.app/api/sync \
   -H "content-type: application/json" \
   -H "x-sync-user: niku" \
   -H "x-sync-key: <入口用の値>" \
@@ -85,12 +85,12 @@ curl -i -X POST https://iamidol.vercel.app/api/sync \
 
 ```bash
 # 置く
-curl -s -X POST https://iamidol.vercel.app/api/sync \
+curl -s -X POST https://iamidle.vercel.app/api/sync \
   -H "content-type: application/json" -H "x-sync-user: niku" -H "x-sync-key: <値>" \
   -d '{"since":0,"items":[{"kind":"check","id":"test","body":"ためし","at":1}]}'
 
 # 取る（さっき置いたものが返ってくる）
-curl -s -X POST https://iamidol.vercel.app/api/sync \
+curl -s -X POST https://iamidle.vercel.app/api/sync \
   -H "content-type: application/json" -H "x-sync-user: niku" -H "x-sync-key: <値>" \
   -d '{"since":0,"items":[]}'
 ```
@@ -106,7 +106,7 @@ delete from sync_items where kind = 'check' and item_id = 'test';
 アプリを開いた状態で、ブラウザの Console に貼る。
 
 ```js
-fetch("https://iamidol.vercel.app/api/sync", {
+fetch("https://iamidle.vercel.app/api/sync", {
   method: "POST",
   headers: { "content-type":"application/json", "x-sync-user":"niku", "x-sync-key":"<値>" },
   body: JSON.stringify({ since:0, items:[] })

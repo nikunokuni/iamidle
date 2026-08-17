@@ -3571,9 +3571,14 @@ function renderAll(){
 ================================================================= */
 /* 置き場のアドレス。端末ごとに打ち直さなくていいよう、既定を入れてある。
    入れ替えたいときは設定タブの欄を書き換えれば、そちらが使われる */
-const SYNC_URL_DEFAULT = "https://iamidol.vercel.app/api/sync";
+const SYNC_URL_DEFAULT = "https://iamidle.vercel.app/api/sync";
 const SKEY_LS   = "jiko-kanri-sync-v1";     // この端末だけの控え。S にも書き出しにも混ぜない
-const SYNC_SALT = "iamidol.sync.v1:";       // ▼ sync/key.html と同じ。片方だけ変えると開けなくなる
+/* ▼ この "iamidol" は綴り間違いのままで正しい。直してはいけない。
+   これは名前ではなく、合言葉から鍵を作るときの材料（塩）。
+   1文字でも変えると別の鍵になり、サーバーに置いてある今までの中身が
+   二度と開けなくなる（入口の鍵も変わるので、取り出すことすらできない）。
+   sync/key.html の SALT_PREFIX と同じ値。片方だけ変えても開けなくなる */
+const SYNC_SALT = "iamidol.sync.v1:";
 const SYNC_ROUNDS = 200000;
 const SYNC_GAP  = 5000;                     // 打ってから送るまでの間
 const SYNC_MIN  = 60000;                    // 戻ってきたとき、前回からこれ以上あいていたら合わせる

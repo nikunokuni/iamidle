@@ -35,7 +35,7 @@
 
 ### GitHubのファイルが唯一の正
 
-**このリポジトリ（`nikunokuni/iamidol`）にあるファイルが常に最新かつ正。**
+**このリポジトリ（`nikunokuni/iamidle`）にあるファイルが常に最新かつ正。**
 手元のコピーやプレビュー環境の状態を正としないこと。作業のはじめに必ずリポジトリの現物を読むこと。
 
 ### 流れ
@@ -279,8 +279,15 @@
 **ほかの端末と、やりたいこと・箱・日記を合わせる。** 設定タブ「ほかの端末と同期」。
 仕様は `SPEC.md`「追加仕様：端末をまたいで使う」、置き場の手順は `sync/README.md`。
 
-- 置き場は **https://iamidol.vercel.app/api/sync**（`SYNC_URL_DEFAULT`）。
+- 置き場は **https://iamidle.vercel.app/api/sync**（`SYNC_URL_DEFAULT`）。
   設定タブの欄に既定として出るので、端末ごとに打ち直さなくてよい。書き換えればそちらが使われる
+- **綴りを `iamidol` → `iamidle` に直した（2026-08-17）。** GitHub と Vercel の両方を改名ずみ。
+  ただし既定値が使われるのは設定タブが空のときだけで（`app.js` の `SY.url || SYNC_URL_DEFAULT`）、
+  一度保存した端末には旧アドレスが文字列で残る。**同期ずみの端末はURL欄を入れ直すこと。**
+  記録そのものは無事（ローカルはホスト名ごとの保管なので `/iamidol/` と `/iamidle/` で同じ。
+  サーバー側は名前で引いているのでアドレスと無関係）
+- ⚠️ `SYNC_SALT` / `SALT_PREFIX` の **`"iamidol.sync.v1:"` は綴り間違いのまま据え置き**。
+  これは名前ではなく鍵を作る材料で、直すと今までの中身が開けなくなる
 - 使っているのは **`niku` と `Haru` の2人**。引き出しは完全に分かれている
 - **同期するのは** やりたいこと／箱／ルーティーンと実施記録／基本値と開始時刻／
   今週だけの回数／哲学・一言／日記
@@ -810,7 +817,7 @@ exe が「独自スキームだから、そのまま起動できる」と誤判�
 **main に取り込みずみで、消してよいブランチ：**
 `claude/layout-box-model` / `claude/pages-cache-update` / `claude/repository-review-a7i5bi`
 
-- リモート：`nikunokuni/iamidol`（接続ずみ）。既定ブランチは `main`
+- リモート：`nikunokuni/iamidle`（接続ずみ）。既定ブランチは `main`
 - README は現状置いていない。必要になったら作る
 - **作業を始める前に `git fetch origin` すること。** ローカルの `main` が古いまま
   「main には入っていない」と誤認しかけた（実際には入っていた）
