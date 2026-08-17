@@ -120,8 +120,12 @@ fetch("https://iamidle.vercel.app/api/sync", {
 
 ## 注意
 
-- **このリポジトリを Vercel に入れているので、Vercel 側にもアプリ本体が並ぶ。**
-  ふだん開くのは **GitHub Pages のURL のまま**にすること。`localStorage` はURLごとに
-  別の引き出しなので、両方で開くと「書いたものが消えた」と見える
+- **Vercel に上げるのは `api/` だけ**（`.vercelignore` で絞ってある）。
+  以前はアプリ本体も一緒に並んでいて、`vercel.app` の方でもアプリが開けてしまった。
+  `localStorage` は**ホスト名ごと**に別の引き出しなので、そちらで開くと中身が空に見え、
+  「書いたものが消えた」と誤解する。**開く入口は次の1つだけ**にすること。
+  https://nikunokuni.github.io/iamidle/
+- ⚠️ **`.vercelignore` に `api/` を書かないこと。** 書くと Function ごと消えて同期が止まる。
+  逆に、アプリ側にファイルを足したときは `.vercelignore` にも足すこと
 - `api/sync.js` は GitHub Pages からも**中身が読める**。鍵になるものを書かないこと
   （全部 Vercel の環境変数から読んでいる）

@@ -284,6 +284,10 @@
 - **綴りを `iamidol` → `iamidle` に直した（2026-08-17）。** GitHub と Vercel の両方を改名ずみ。
   端末の打ち直しは不要だった。記録の移行も不要（ローカルはホスト名ごとの保管なので
   `/iamidol/` と `/iamidle/` で同じものを見る。サーバー側は名前で引いていてアドレスと無関係）
+- **Vercel に上げているのは `api/` だけ**（`.vercelignore`、2026-08-17 に追加）。
+  それまではアプリ本体も並んでいて `vercel.app` からも開けた。ホスト名が違えば
+  `localStorage` は別の引き出しなので、開く入口は GitHub Pages の1つだけに絞ってある。
+  `.vercelignore` に `api/` を書くと Function ごと消えて同期が止まるので注意
 - ⚠️ **Vercel の旧ドメイン `iamidol.vercel.app` を消さないこと。**
   新旧2つを両方とも本番に割り当ててあり、どちらも同じ Function に届く。
   既定値が使われるのは設定タブが空のときだけで（`app.js` の `SY.url || SYNC_URL_DEFAULT`）、
