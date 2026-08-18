@@ -526,7 +526,27 @@ kbd{
 .boxarea.has-img h2{margin:2px 0 8px}
 /* まだの箱：中を見せない */
 .boxarea.has-img .boxrow{background:var(--card);border-color:var(--line)}
-.boxarea.has-img .boxrow.empty{background:rgba(27,32,42,.94)}
+/* 空き箱：やった数につれて薄くなる。
+   画像を隠すのは「やると決めて、まだやっていない箱」だけ、という考え方。
+   空き箱は破った約束ではなく、ただ割り当てなかった時間なので、
+   入れたぶんを全部やれば、ここはほとんど透ける（濃さは renderBoxes が入れる）。
+   --emptyveil は 0.88（何もしていない）→ 0.18（入れたぶんを全部やった） */
+.boxarea.has-img .boxrow.empty{
+  background:rgba(27,32,42,var(--emptyveil,.88));
+  border-color:rgba(255,255,255,.16);
+  transition:background .45s ease;
+}
+/* 薄くなっても字が読めるように。下地が消えるぶん、影で浮かせる */
+.boxarea.has-img .boxrow.empty .bt,
+.boxarea.has-img .boxrow.empty .bi{
+  color:rgba(255,255,255,.74);text-shadow:0 1px 8px rgba(0,0,0,.95);
+}
+/* ドラッグ中の受け皿は、膜より強く出す。
+   ここを書かないと上の2つに負けて、落とし先がどこか分からなくなる */
+.boxarea.has-img .boxrow.empty.over{
+  background:rgba(91,156,255,.3);border-color:var(--accent);transition:none;
+}
+.boxarea.has-img .boxrow.empty.over .bt{color:var(--accent);text-shadow:none}
 .boxarea.has-img .boxrow.current{background:#1d2534}
 /* 終わった箱：透けて画像が出る */
 .boxarea.has-img .boxrow.done{
