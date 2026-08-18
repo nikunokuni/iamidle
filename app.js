@@ -552,39 +552,49 @@ function unplace(id, key){
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
   save(); renderAll(); toast("箱から出した");
 }
-/* 箱に入れたあとで、占めている箱の数を直す。
-   これまでは「必要な箱」を変えると箱から追い出されて入れ直しだったが、
+/* ================= 箱に入れたあとの、箱の数の直し =================
+   これまでは「必要な箱」を変えると箱から追い出されて入れ直しだった。
    やってみて「思ったより長い／短い」と気づくのは箱に入れたあとなので、
    その場で伸び縮みさせる。
+   ▼ 操作は「左の番号を押す → 1箱 2箱 … から選ぶ」。
+     ＋− を行に並べると、すぐ下にある「その日の箱を増やす／減らす」の ＋− と
+     字も形も同じになって取り違える。番号はもともと占めている箱そのものの表示なので、
+     押して変える先として意味がずれない
    ▼ t.size も必ず合わせること。ずれたままにすると、次にドラッグで動かしたときに
      placeTaskAt() が t.size を見て、直したはずの長さが元に戻ってしまう */
-function resizePlaced(id, delta, key){
-  const d = getDay(key);
-  const t = taskById(id); if(!t) return;
+let sizePickId = null;      // 選択列を開いている行。メモリだけに持つ
+
+/* いま占めている箱と、その上下に続く空き箱。ここから選べる最大数が決まる */
+function fitRange(d, id){
   const at = [];
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) at.push(i);
-  if(!at.length) return;
+  if(!at.length) return null;
+  const from = at[0], to = at[at.length-1];
+  let down = 0, up = 0;
+  for(let i = to + 1; i < d.slots.length && d.slots[i] === null; i++) down++;
+  for(let i = from - 1; i >= 0 && d.slots[i] === null; i--) up++;
+  return { from, to, size: at.length, down, up, max: Math.min(16, at.length + down + up) };
+}
+
+/* 箱の数をちょうど n にする。伸ばす先は下が優先で、下が足りないぶんだけ上へ回る */
+function setPlacedSize(id, n){
+  const d = getDay();
+  const t = taskById(id); if(!t) return;
   if(doneOn(t)){ toast("終わったものの箱は変えられません"); return; }
-  const from = at[0], to = at[at.length-1], size = at.length;
+  const f = fitRange(d, id); if(!f) return;
+  n = Math.max(1, Math.min(f.max, n));
+  sizePickId = null;
+  if(n === f.size){ renderBoxes(); return; }
 
-  if(delta < 0){
-    if(size <= 1){ toast("1箱より短くはできません"); return; }
-    d.slots[to] = null;
-  }else{
-    if(size >= 16){ toast("これ以上は増やせません"); return; }
-    // まず下へ伸ばす。下がふさがっていれば上へ（どちらに伸びたかは下の toast で分かる）
-    if(to + 1 < d.slots.length && d.slots[to+1] === null)  d.slots[to+1] = id;
-    else if(from - 1 >= 0 && d.slots[from-1] === null)     d.slots[from-1] = id;
-    else { toast("となりに空き箱がありません。先に箱を増やしてください"); return; }
-  }
-
-  // 直したあとの実際の位置から数え直す（上へ伸びた場合も正しく拾える）
-  const now = [];
-  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) now.push(i);
-  t.size = now.length;
+  for(let i = f.from; i <= f.to; i++) d.slots[i] = null;   // いったん空けてから置き直す
+  const lowEnd = f.to + f.down;                            // 下へ使える一番下の箱
+  let start = f.from;
+  if(start + n - 1 > lowEnd) start = lowEnd - n + 1;       // はみ出るぶんだけ上へずらす
+  for(let k = 0; k < n; k++) d.slots[start+k] = id;
+  t.size = n;
   save(); renderAll();
-  toast(t.text + " は 箱 " + (now[0]+1) + (now.length > 1 ? "–" + (now[now.length-1]+1) : "") +
-    "（" + boxTime(now.length) + "）");
+  toast(t.text + " は 箱 " + (start+1) + (n > 1 ? "–" + (start+n) : "") +
+    "（" + boxTime(n) + "）");
 }
 function addBox(key){
   const d = getDay(key);
@@ -1586,6 +1596,23 @@ function renderNow(){
   if($("nowSkip")) $("nowSkip").onclick = ()=> skipToday(t.id);
 }
 
+/* 番号を押したときに、その行の下へ出す選択列。
+   入らない数は最初から出さないので、選んで失敗することがない。
+   「1箱 2箱」と字を添えるのは、下にある「その日の箱の ＋−」と意味を見分けるため */
+function sizePickHTML(id, size, d){
+  if(sizePickId !== id) return '';
+  const f = fitRange(d, id); if(!f) return '';
+  let chips = '';
+  for(let n = 1; n <= f.max; n++){
+    chips += '<button class="chip' + (n === size ? " on" : "") + '" data-act="boxsizeset" data-n="' + n + '">' +
+      n + '箱</button>';
+  }
+  return '<div class="bpick" data-id="' + id + '">' +
+      '<span class="lb">箱の数</span>' + chips +
+      '<span class="lb">' + boxTime(size) + '</span>' +
+    '</div>';
+}
+
 /* ================= 描画：今日の箱の列 =================
    ▼ 2026-08-15 に「残り○箱」の帯（#boxBar）をやめて、この中に畳んだ。
      平日／休みの切り替えは見出しの右、箱の ＋− は最後の箱の下（.bfoot）。
@@ -1594,6 +1621,12 @@ function renderBoxes(){
   const d = getDay();
   const cur = currentGroup();
   const el = $("boxList");
+
+  // 開いたままの選択列が、もう選べない相手（終わった・箱から出た・消えた）になっていたら閉じる
+  if(sizePickId){
+    const pt = taskById(sizePickId);
+    if(!pt || doneOn(pt) || !d.slots.includes(sizePickId)) sizePickId = null;
+  }
 
   // 画像は箱に隠れていて、終わった箱から透けてくる。やり切ったら「いま、これ」へ移る
   const img = dayImage();
@@ -1660,16 +1693,12 @@ function renderBoxes(){
     return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
         (size > 1 ? " span2" : "") + '" data-id="' + t.id + '" data-i="' + g.from + '"' +
         (done ? "" : ' draggable="true"') + '>' + clock +
-      '<span class="bi">' + no + '</span>' +
+      // 番号を押すと箱の数を変えられる。終わったものは押せない
+      // （数を変えると、達成した量＝usedBoxes まで動いてしまう）
+      '<span class="bi' + (done ? '' : ' pick') + '"' +
+        (done ? '' : ' data-act="boxsize" title="箱の数を変える"') + '>' + no + '</span>' +
       '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
       '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
-      // 箱の数の直し。終わったものには出さない（数を変えると達成した量まで動いてしまう）
-      (done ? '' :
-        '<span class="bsize">' +
-          '<button class="iconbtn" data-act="boxless" title="この箱を1つ減らす">−</button>' +
-          '<b>' + size + '</b>' +
-          '<button class="iconbtn" data-act="boxmore" title="この箱を1つ増やす">＋</button>' +
-        '</span>') +
       (linksOf(t).length
         ? '<button class="iconbtn" data-act="openall" title="' + esc(linksOf(t).map(linkLabel).join(" / ")) + '">🔗' +
           (linksOf(t).length > 1 ? '<span class="badge">' + linksOf(t).length + '</span>' : '') + '</button>'
@@ -1677,7 +1706,7 @@ function renderBoxes(){
       (done
         ? '<button class="iconbtn" data-act="boxundo" title="取り消す">↩</button>'
         : '<button class="iconbtn" data-act="boxout" title="箱から出す">✕</button>') +
-    '</div>';
+    '</div>' + sizePickHTML(t.id, size, d);
   }).join("");
 
   el.innerHTML = head + rows +
@@ -1689,13 +1718,22 @@ function renderBoxes(){
 }
 $("boxList").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
+  // 箱の数の選択列は行の外（行のすぐ下）にあるので、行を探す前に片づける
+  if(btn.dataset.act === "boxsizeset"){
+    const pick = btn.closest(".bpick"); if(!pick) return;
+    setPlacedSize(pick.dataset.id, parseInt(btn.dataset.n, 10));
+    return;
+  }
   const row = e.target.closest(".boxrow"); if(!row || !row.dataset.id) return;
   const id = row.dataset.id;
+  if(btn.dataset.act === "boxsize"){          // 開け閉めだけ。中身は変わらないので描き直しは箱だけ
+    sizePickId = (sizePickId === id ? null : id);
+    renderBoxes();
+    return;
+  }
   if(btn.dataset.act === "boxdo")   doTask(id);
   if(btn.dataset.act === "boxout")  unplace(id);
   if(btn.dataset.act === "boxundo") undoToday(id);
-  if(btn.dataset.act === "boxless") resizePlaced(id, -1);
-  if(btn.dataset.act === "boxmore") resizePlaced(id, +1);
 });
 
 /* ================= ドラッグで箱に入れる ================= */

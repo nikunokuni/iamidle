@@ -239,22 +239,22 @@ body.now-fixed .side #rouletteBox{
 }
 .boxrow .bt{flex:1;min-width:0;font-size:15px;word-break:break-word}
 .boxrow .bs{font-size:11px;color:var(--fg-faint);margin-top:2px}
-/* 箱の数の直し。ふだんは控えめで、行に触れたときだけはっきりする */
-.bsize{
-  flex:none;display:flex;align-items:center;gap:1px;
-  opacity:.45;transition:opacity .15s;
+/* 箱の数の直し。行に部品を足さず、もともとある左の番号を押させる。
+   ＋− を行に並べると、すぐ下の「その日の箱の ＋−」と取り違えるので置かない */
+/* 押せると気づけるように、点線を薄く敷いておく（番号は目立たせすぎない） */
+.boxrow .bi.pick{
+  cursor:pointer;border-radius:9px 0 0 9px;
+  text-decoration:underline dotted rgba(255,255,255,.28);text-underline-offset:3px;
 }
-.boxrow:hover .bsize,.boxrow.current .bsize{opacity:1}
-.bsize button{font-size:14px;padding:4px 6px;line-height:1}
-.bsize b{
-  font-size:12px;color:var(--fg-dim);font-variant-numeric:tabular-nums;
-  min-width:12px;text-align:center;
+.boxrow .bi.pick:hover{color:var(--accent);background:var(--card2)}
+/* 押したときに行の下へ出る選択列 */
+.bpick{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  margin:-2px 0 6px;padding:8px 10px;
+  background:var(--card2);border:1px solid var(--line);border-radius:11px;
 }
-/* 指で使う画面には hover が無いので、いつも見えるようにする */
-@media (hover:none){
-  .bsize{opacity:1}
-  .bsize button{padding:8px 10px;font-size:15px}
-}
+.bpick .lb{font-size:11px;color:var(--fg-faint);flex:none}
+.bpick .chip{padding:5px 12px;font-size:12px;font-variant-numeric:tabular-nums}
 .boxrow.empty{border-style:dashed;background:none}
 .boxrow.empty .bt{color:var(--fg-faint);font-size:13px}
 /* ドラッグ中の受け皿 */
