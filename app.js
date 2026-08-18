@@ -1571,10 +1571,10 @@ function renderBoxes(){
   const filled = d.slots.filter(x => x !== null).length;   // やりたいことが入っている箱
   const restCls = rest === 0 ? " zero" : (rest <= 2 ? " low" : "");
 
-  // 空き箱にかける膜の濃さ。「入れた箱のうち、どれだけ終わったか」で薄くする。
-  // 全部の箱ではなく入れた箱を分母にするのが肝。そうしないと、
-  // 埋め切れなかった日は何をやっても薄くならず、画像にたどり着けない
-  const ratio = filled ? Math.min(1, usedBoxes(d) / filled) : 0;
+  // 空き箱にかける膜の濃さ。「今日の箱のうち、どれだけ終わったか」で薄くする。
+  // 分母は入れた箱ではなく**全部の箱**。1箱やるごとに薄くなる量がいつも同じになり、
+  // たくさん入れてたくさんやるほど見えていく
+  const ratio = d.count ? Math.min(1, usedBoxes(d) / d.count) : 0;
   el.style.setProperty("--emptyveil", (0.88 - 0.70 * ratio).toFixed(3));
   const head =
     '<div class="bhead">' +
