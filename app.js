@@ -552,6 +552,40 @@ function unplace(id, key){
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
   save(); renderAll(); toast("箱から出した");
 }
+/* 箱に入れたあとで、占めている箱の数を直す。
+   これまでは「必要な箱」を変えると箱から追い出されて入れ直しだったが、
+   やってみて「思ったより長い／短い」と気づくのは箱に入れたあとなので、
+   その場で伸び縮みさせる。
+   ▼ t.size も必ず合わせること。ずれたままにすると、次にドラッグで動かしたときに
+     placeTaskAt() が t.size を見て、直したはずの長さが元に戻ってしまう */
+function resizePlaced(id, delta, key){
+  const d = getDay(key);
+  const t = taskById(id); if(!t) return;
+  const at = [];
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) at.push(i);
+  if(!at.length) return;
+  if(doneOn(t)){ toast("終わったものの箱は変えられません"); return; }
+  const from = at[0], to = at[at.length-1], size = at.length;
+
+  if(delta < 0){
+    if(size <= 1){ toast("1箱より短くはできません"); return; }
+    d.slots[to] = null;
+  }else{
+    if(size >= 16){ toast("これ以上は増やせません"); return; }
+    // まず下へ伸ばす。下がふさがっていれば上へ（どちらに伸びたかは下の toast で分かる）
+    if(to + 1 < d.slots.length && d.slots[to+1] === null)  d.slots[to+1] = id;
+    else if(from - 1 >= 0 && d.slots[from-1] === null)     d.slots[from-1] = id;
+    else { toast("となりに空き箱がありません。先に箱を増やしてください"); return; }
+  }
+
+  // 直したあとの実際の位置から数え直す（上へ伸びた場合も正しく拾える）
+  const now = [];
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) now.push(i);
+  t.size = now.length;
+  save(); renderAll();
+  toast(t.text + " は 箱 " + (now[0]+1) + (now.length > 1 ? "–" + (now[now.length-1]+1) : "") +
+    "（" + boxTime(now.length) + "）");
+}
 function addBox(key){
   const d = getDay(key);
   if(d.count >= 48){ toast("これ以上は増やせません"); return; }
@@ -1629,6 +1663,13 @@ function renderBoxes(){
       '<span class="bi">' + no + '</span>' +
       '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
       '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
+      // 箱の数の直し。終わったものには出さない（数を変えると達成した量まで動いてしまう）
+      (done ? '' :
+        '<span class="bsize">' +
+          '<button class="iconbtn" data-act="boxless" title="この箱を1つ減らす">−</button>' +
+          '<b>' + size + '</b>' +
+          '<button class="iconbtn" data-act="boxmore" title="この箱を1つ増やす">＋</button>' +
+        '</span>') +
       (linksOf(t).length
         ? '<button class="iconbtn" data-act="openall" title="' + esc(linksOf(t).map(linkLabel).join(" / ")) + '">🔗' +
           (linksOf(t).length > 1 ? '<span class="badge">' + linksOf(t).length + '</span>' : '') + '</button>'
@@ -1653,6 +1694,8 @@ $("boxList").addEventListener("click", e => {
   if(btn.dataset.act === "boxdo")   doTask(id);
   if(btn.dataset.act === "boxout")  unplace(id);
   if(btn.dataset.act === "boxundo") undoToday(id);
+  if(btn.dataset.act === "boxless") resizePlaced(id, -1);
+  if(btn.dataset.act === "boxmore") resizePlaced(id, +1);
 });
 
 /* ================= ドラッグで箱に入れる ================= */
