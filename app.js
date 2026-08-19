@@ -641,8 +641,9 @@ function fixedFor(key){
     if(t.fixed.dow !== null && t.fixed.dow !== dow) return false;
     if(isDone(t)) return false;
     if(t.remindAt && t.remindAt > key) return false;
+    if(!fitsDayType(t, key)) return false;                  // 仕事の日だけ／休みの日だけ
     // その期間ぶんの回数を、もう置ききっているなら足さない
-    if(t.freq.unit !== "day" && remainingToPlan(t, key) <= 0) return false;
+    if(!isDaily(t.freq) && remainingToPlan(t, key) <= 0) return false;
     return true;
   }).sort((a,b) => boxIndexForTime(key, a.fixed.time) - boxIndexForTime(key, b.fixed.time));
 }
@@ -679,7 +680,8 @@ function autoPlaceAhead(id){
     if(!Array.isArray(d.slots) || d.slots.includes(t.id)) return;
     if(t.fixed.dow !== null && dayStart(k).getDay() !== t.fixed.dow) return;
     if(isDone(t) || (t.remindAt && t.remindAt > k)) return;
-    if(t.freq.unit !== "day" && remainingToPlan(t, k) <= 0) return;
+    if(!fitsDayType(t, k)) return;                            // 仕事の日だけ／休みの日だけ
+    if(!isDaily(t.freq) && remainingToPlan(t, k) <= 0) return;
     const size = Math.max(1, t.size || 1);
     const at = boxIndexForTime(k, t.fixed.time);
     let ok = at + size <= d.slots.length;
@@ -799,14 +801,27 @@ function dayImage(){
 }
 
 /* ================= 頻度モデル =================
-   freq = { unit: "once" | "day" | "week" | "month" | "days", count, n }
+   freq = { unit: "once" | "day" | "work" | "off" | "week" | "month" | "days", count, n }
    期間の区切りも午前2時に合わせる
+
+   ▼ work（仕事の日）と off（休みの日）は、day（毎日）の仲間。
+     期間はどれも「今日1日」で、違うのは**その日に出るかどうか**だけ。
+     平日／休みは曜日ではなく、その日の holiday フラグで決まる（本人が手で切り替える）
 ================================================ */
+const DAILY = ["day", "work", "off"];
+const isDaily = f => DAILY.includes(f.unit);
+/* 仕事の日だけ／休みの日だけのものが、その日に当てはまるか。
+   ほかのくり返しはいつでも当てはまる */
+function fitsDayType(t, key){
+  const u = t.freq.unit;
+  if(u !== "work" && u !== "off") return true;
+  return isHoliday(key || dayKey()) === (u === "off");
+}
 function periodOf(f, key){
   const k = key || dayKey(), s0 = dayStartTs(k);
   // 単発は期限が無い。通算で goal 回ぶんやったら達成
   if(f.unit === "once") return { start: 0, end: Infinity, label: "通算" };
-  if(f.unit === "day") return { start: s0, end: s0 + DAY, label: "今日" };
+  if(isDaily(f)) return { start: s0, end: s0 + DAY, label: "今日" };
   if(f.unit === "week"){
     const s = dayStartTs(weekStartKey(k));            // 日曜はじまり
     return { start: s, end: s + 7*DAY, label: "今週" };
@@ -823,6 +838,8 @@ function periodOf(f, key){
 function freqLabel(f){
   if(f.unit === "once")  return "単発";
   if(f.unit === "day")   return f.count === 1 ? "毎日" : "1日" + f.count + "回";
+  if(f.unit === "work")  return f.count === 1 ? "仕事の日" : "仕事の日に" + f.count + "回";
+  if(f.unit === "off")   return f.count === 1 ? "休みの日" : "休みの日に" + f.count + "回";
   if(f.unit === "week")  return "週" + f.count + "回";
   if(f.unit === "month") return "月" + f.count + "回";
   return f.n + "日に" + f.count + "回";
@@ -863,7 +880,7 @@ function streakOf(t){
 }
 
 /* ================= 「今日のやりたいこと」の判定 ================= */
-const canSkip = t => t.freq.unit !== "day";
+const canSkip = t => !isDaily(t.freq);
 const whenOf  = t => (t.when === "am" || t.when === "pm") ? t.when : "any";
 function slotBonus(t){
   const w = whenOf(t);
@@ -897,6 +914,7 @@ function remainingToPlan(t, key){
 }
 function todayNeed(t){
   const k = dayKey();
+  if(!fitsDayType(t, k)) return null;                         // 仕事の日だけ／休みの日だけ。今日は違う
   if(t.remindAt && t.remindAt > k) return null;               // 遠い予定。まだ隠しておく
   if(canSkip(t) && t.skipDay === k) return null;              // 今日は見送り
   if(isDone(t)) return null;                                  // 単発をやり切った
@@ -904,7 +922,7 @@ function todayNeed(t){
   if(st.met) return null;
   if(remainingToPlan(t) <= 0) return null;                    // 置ききった（「入れきったら、もう終わり」）
   if(t.freq.unit === "once") return { urgency: 2, st };
-  if(t.freq.unit === "day")  return { urgency: 1, st };
+  if(isDaily(t.freq))        return { urgency: 1, st };
   if(t.freq.unit === "days") return { urgency: 3, st };
   const needed = st.count - st.actual;
   const daysLeft = Math.max(1, st.remainDays);
@@ -2252,7 +2270,8 @@ function syncFreqLine(){
   const line = $("freqLine");
   line.style.display = "flex";
   // 単発も回数を持てる（期限なしの総回数。やり切ったら「達成したもの」へ）
-  $("freqPre").textContent = { once:"全部で", day:"1日に", week:"1週間に", month:"1か月に", days:"" }[freqUnit];
+  $("freqPre").textContent = { once:"全部で", day:"1日に", work:"仕事の日に", off:"休みの日に",
+    week:"1週間に", month:"1か月に", days:"" }[freqUnit];
   $("freqN").style.display   = freqUnit === "days" ? "" : "none";
   $("freqMid").style.display = freqUnit === "days" ? "" : "none";
 }
@@ -2312,6 +2331,8 @@ function actualHint(t){
 const GROUPS = [
   { key:"once",  title:"単発のやりたいこと" },
   { key:"day",   title:"毎日" },
+  { key:"work",  title:"仕事の日" },
+  { key:"off",   title:"休みの日" },
   { key:"week",  title:"今週" },
   { key:"month", title:"今月" },
   { key:"days",  title:"◯日ごと" }
@@ -2379,8 +2400,9 @@ function farRow(t){
 }
 function repeatRow(t){
   const st = statOf(t);
-  // 「遅れ」は期間のあるもの（週/月/N日ごと）だけ。毎日は未実行なだけなので出さない
-  const late = !st.met && st.deficit >= 1 && t.freq.unit !== "day";
+  // 「遅れ」は期間のあるもの（週/月/N日ごと）だけ。
+  // 毎日・仕事の日・休みの日は、その日にまだやっていないだけなので出さない
+  const late = !st.met && st.deficit >= 1 && !isDaily(t.freq);
   const streak = streakOf(t);
   const meta = '<b>' + st.actual + '/' + st.count + '</b>' +
     (st.remainDays ? ' ・残' + st.remainDays + '日' : '') +
@@ -2426,7 +2448,8 @@ function openTaskEditor(id){
   edTaskId = id;
   const f = t.freq;
   const units = [
-    ["once","単発"], ["day","毎日"], ["week","週に"], ["month","月に"], ["days","N日に"]
+    ["once","単発"], ["day","毎日"], ["work","仕事の日"], ["off","休みの日"],
+    ["week","週に"], ["month","月に"], ["days","N日に"]
   ];
   const cnt = f.unit === "once" ? goalOf(t) : Math.max(1, f.count || 1);
   $("edBody").innerHTML =
@@ -2485,7 +2508,8 @@ function edUnitNow(){
 }
 function syncEdCount(){
   const u = edUnitNow();
-  $("edCountPre").textContent = { once:"全部で", day:"1日に", week:"1週間に", month:"1か月に", days:"" }[u];
+  $("edCountPre").textContent = { once:"全部で", day:"1日に", work:"仕事の日に", off:"休みの日に",
+    week:"1週間に", month:"1か月に", days:"" }[u];
   $("edN").style.display   = u === "days" ? "" : "none";
   $("edMid").style.display = u === "days" ? "" : "none";
 }
@@ -3448,9 +3472,9 @@ function renderStats(){
   renderCutStats();
   const once = S.tasks.filter(t => t.freq.unit === "once");
   const rep  = S.tasks.filter(t => t.freq.unit !== "once");
-  // 「遅れ」の数え方は一覧と揃える（毎日のやりたいことは未実行なだけなので数えない）
+  // 「遅れ」の数え方は一覧と揃える（毎日ぶんは、その日にまだやっていないだけなので数えない）
   const late = rep.filter(t => {
-    if(t.freq.unit === "day") return false;
+    if(isDaily(t.freq)) return false;
     const s = statOf(t);
     return !s.met && s.deficit >= 1;
   }).length;
