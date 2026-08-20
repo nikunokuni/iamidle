@@ -303,6 +303,9 @@ body.now-fixed .side #rouletteBox{
 .iconbtn.faint{opacity:.28}
 .iconbtn.put{color:var(--accent);font-weight:700;font-size:13px;border:1px solid var(--line)}
 .iconbtn.put:hover{border-color:var(--accent);background:rgba(91,156,255,.1)}
+/* 複製（同じものを、その日にもう1つ）。「増やす」操作なので ✕ と色で見分ける */
+.iconbtn.dup{font-size:13px}
+.iconbtn.dup:hover{color:var(--accent);background:rgba(91,156,255,.12)}
 
 /* ---------- progress ---------- */
 .prog{display:flex;align-items:center;gap:8px;margin-top:6px}
@@ -752,6 +755,7 @@ kbd{
   font-size:10px;padding:0 2px;flex:none;opacity:0;
 }
 .wkbox:hover .wkx{opacity:1}
+.wkbox .wkx.dup:hover{color:var(--accent)}
 /* 時刻の線。全部の箱には出さず、ちょうど◯時のところだけ */
 .wkclock{
   position:absolute;left:0;right:0;top:-1px;height:0;

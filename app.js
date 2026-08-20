@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-16.2";
+const APP_VERSION = "2026-08-20.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -63,7 +63,8 @@ const DEFAULTS = {
   cheers: SEED_CHEERS.map((t,i) => ({ id: "cheer" + i, text: t })),
   routines: [],       // { id, text, slot:"am"|"pm" }
   routineDone: {},    // { "2026-08-09": [routineId, ...] }
-  // { "2026-08-09": { count, holiday, slots:[taskId|null], cuts:[{at,label}], roulette:[taskId] } }
+  // { "2026-08-09": { count, holiday, slots:[名札|null], cuts:[{at,label}], roulette:[taskId] } }
+  //   slots が持つのは名札（"tk1" / "tk1#1" …）。baseId() を通してIDにする
   days: {},
   base: { weekday: 8, holiday: 12 },
   // 1箱目の開始時刻。箱は時刻を持たないが、何番目が何時かの見当をつけるために使う
@@ -404,8 +405,10 @@ function getDay(key){
   while(d.slots.length < d.count) d.slots.push(null);
   if(d.slots.length > d.count) d.slots.length = d.count;
   // 消えたやりたいことが箱やルーレットに残っていたら片付ける
+  // ▼ slots は名札（"tk1#1"）なので baseId() を通すこと。通し忘れると
+  //   複製した箱が「知らないやりたいこと」として黙って消える
   for(let i = 0; i < d.slots.length; i++){
-    if(d.slots[i] && !taskById(d.slots[i])) d.slots[i] = null;
+    if(d.slots[i] && !taskById(baseId(d.slots[i]))) d.slots[i] = null;
   }
   d.roulette = d.roulette.filter(id => taskById(id));
   return d;
@@ -475,49 +478,91 @@ function dayLabel(key){
   return (d.getMonth()+1) + "/" + d.getDate() + "（" + WD[d.getDay()] + "）";
 }
 
-/* その日のうちに完了したか（単発は done、くり返しは log） */
-function doneOn(t, key){
+/* その日のうちに完了した回数（単発もくり返しも log に積んである） */
+function doneCountOn(t, key){
   const from = dayStartTs(key || dayKey()), to = from + DAY;
-  return (t.log || []).some(ts => ts >= from && ts < to);
+  return (t.log || []).filter(ts => ts >= from && ts < to).length;
 }
-/* 箱の列を「連続した同じやりたいこと」でまとめる */
+/* その日のうちに1回でも完了したか */
+function doneOn(t, key){ return doneCountOn(t, key) > 0; }
+
+/* ================= 箱の名札 =================
+   同じやりたいことを同じ日に何度も置けるようにするため、
+   d.slots が持つのは「やりたいことのID」ではなく**名札**になっている。
+     1つ目 … "tk1"      （＝IDそのもの。昔のデータはこの形だけ）
+     2つ目 … "tk1#1"
+     3つ目 … "tk1#2"
+   日記の保存キー（"2026-08-15#1755230400000"）と同じ手で、
+   **先頭がそのままIDなので、# の無い古いデータはそのまま読める**（移行が要らない）。
+   同期も day を丸ごと預けているだけなので、そのまま通る。
+   ▼ slots の中身をやりたいことのIDとして使うときは、必ず baseId() を通すこと。
+     通し忘れると taskById() が null を返し、getDay() の掃除がその箱を黙って空にする */
+function baseId(tag){ return String(tag == null ? "" : tag).split("#")[0]; }
+/* その日でまだ使っていない名札を作る */
+function newTag(d, tid){
+  const used = new Set(d.slots.filter(x => x && baseId(x) === tid));
+  if(!used.has(tid)) return tid;
+  for(let n = 1; n < 200; n++){ const tag = tid + "#" + n; if(!used.has(tag)) return tag; }
+  return tid + "#" + Date.now().toString(36);
+}
+
+/* 箱の列を「連続した同じ名札」でまとめる。
+   ▼ まとめる相手は名札であってIDではない。ここをIDで見ると
+     「2箱のX」と「1箱のXが2つ」が区別できなくなる（見た目が黙って化ける）
+   g.id  … 名札（"tk1#1"）。行の data-id はこれ
+   g.tid … やりたいことのID（"tk1"）
+   g.ord … その日の、同じやりたいことの中で上から何番目か（0はじまり）*/
 function boxGroups(d){
-  const g = [];
+  const g = [], seen = {};
   for(let i = 0; i < d.slots.length; i++){
-    const id = d.slots[i], last = g[g.length-1];
-    if(id && last && last.id === id && last.to === i-1) last.to = i;
-    else g.push({ id, from: i, to: i });
+    const tag = d.slots[i], last = g[g.length-1];
+    if(tag && last && last.id === tag && last.to === i-1){ last.to = i; continue; }
+    const tid = tag ? baseId(tag) : null;
+    const ord = tid ? (seen[tid] = (seen[tid] === undefined ? 0 : seen[tid] + 1)) : 0;
+    g.push({ id: tag, tid, ord, from: i, to: i });
   }
   return g;
 }
+/* その塊が終わっているか。
+   ▼ 箱ごとに「終わった」を持たせていない。その日に n 回やったなら、
+     **上から n 個目までの塊が終わり**、と順番で決める。
+     こうすると保存するものが増えず、同期の突き合わせ（log の足し算）も増えない。
+     代償は「下の箱を先にやっても、✓ は上の箱に付く」こと。合計は正しい */
+function groupDone(g, key){
+  const t = g.tid && taskById(g.tid);
+  return !!t && g.ord < doneCountOn(t, key);
+}
 const emptyBoxes = d => d.slots.filter(x => x === null).length;
 /* 残り箱数 ＝ まだ消費していない箱（完了した箱を引いたもの） */
-function usedBoxes(d){
+function usedBoxes(d, key){
   let n = 0;
-  boxGroups(d).forEach(g => {
-    const t = g.id && taskById(g.id);
-    if(t && doneOn(t)) n += g.to - g.from + 1;
-  });
+  boxGroups(d).forEach(g => { if(groupDone(g, key)) n += g.to - g.from + 1; });
   return n;
 }
-const remainBoxes = d => Math.max(0, d.count - usedBoxes(d));
+const remainBoxes = (d, key) => Math.max(0, d.count - usedBoxes(d, key));
 /* 箱を使い切った ＝ 箱があって、空きが無く、全部完了している */
-function dayFinished(d){
-  return d.count > 0 && emptyBoxes(d) === 0 && remainBoxes(d) === 0;
+function dayFinished(d, key){
+  return d.count > 0 && emptyBoxes(d) === 0 && remainBoxes(d, key) === 0;
 }
 
+/* 連続した size 箱の空きを、from から下、それでも無ければ先頭から探す */
+function findFit(d, size, from){
+  const fits = i => {
+    if(i < 0 || i + size > d.slots.length) return false;
+    for(let k = 0; k < size; k++) if(d.slots[i+k] !== null) return false;
+    return true;
+  };
+  for(let i = Math.max(0, from || 0); i + size <= d.slots.length; i++) if(fits(i)) return i;
+  for(let i = 0; i + size <= d.slots.length; i++) if(fits(i)) return i;
+  return -1;
+}
 /* 上から順に、空いている連続した箱へ入れる */
 function placeTask(id){
   const t = taskById(id); if(!t) return;
   const d = getDay();
-  if(d.slots.includes(id)){ toast("すでに箱に入っています"); return; }
+  if(d.slots.some(x => x && baseId(x) === id)){ toast("すでに箱に入っています"); return; }
   const size = Math.max(1, t.size || 1);
-  let at = -1;
-  for(let i = 0; i + size <= d.slots.length; i++){
-    let ok = true;
-    for(let k = 0; k < size; k++) if(d.slots[i+k] !== null){ ok = false; break; }
-    if(ok){ at = i; break; }
-  }
+  const at = findFit(d, size, 0);
   if(at < 0){
     toast(size > 1 ? "連続した" + size + "箱の空きがありません" : "空き箱がありません");
     return;
@@ -526,13 +571,16 @@ function placeTask(id){
   save(); renderAll();
   toast("箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
 }
-/* 落とした位置に入れる（すでに箱にあるものは、そこへ動かす） */
-function placeTaskAt(id, at, key){
-  const t = taskById(id); if(!t) return false;
+/* 落とした位置に入れる（すでに箱にあるものは、そこへ動かす）。
+   tag は名札。箱の中の行をドラッグしたときは "tk1#1" のこともある。
+   ▼ どけるのは「同じ名札」だけ。ここを baseId でどけると、
+     複製したもう一方まで一緒に動いてしまう */
+function placeTaskAt(tag, at, key){
+  const t = taskById(baseId(tag)); if(!t) return false;
   const d = getDay(key);
   const size = Math.max(1, t.size || 1);
   const prev = d.slots.slice();
-  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;  // 動かす前にどける
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === tag) d.slots[i] = null;  // 動かす前にどける
   at = Math.max(0, Math.min(at, d.slots.length - 1));
   let ok = at + size <= d.slots.length;
   if(ok) for(let k = 0; k < size; k++) if(d.slots[at+k] !== null){ ok = false; break; }
@@ -541,15 +589,39 @@ function placeTaskAt(id, at, key){
     toast(size > 1 ? "そこには入りません（連続した" + size + "箱が必要）" : "その箱はふさがっています");
     return false;
   }
-  for(let k = 0; k < size; k++) d.slots[at+k] = id;
+  for(let k = 0; k < size; k++) d.slots[at+k] = tag;
   save(); renderAll();
   toast(dayLabel(key) + "の箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") + " に入れた");
   return true;
 }
-function unplace(id, key){
+/* ================= 箱に入れたものを複製する =================
+   「同じことを、同じ日にもう1回」。別のやりたいことを作るのではなく、
+   同じやりたいことの名札を1つ増やすだけなので、記録も集計も1つにまとまったまま。
+   ▼ 置くのは「そのすぐ下の空き」。無ければ上へ回る。箱は勝手に増やさない
+   ▼ 終わった箱からも複製できる（「もう1回やる」がいちばん自然な流れ） */
+function duplicatePlaced(tag, key){
   const d = getDay(key);
-  if(!d.slots.includes(id)) return;
-  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
+  const g = boxGroups(d).find(x => x.id === tag);
+  if(!g || !g.tid) return;
+  const t = taskById(g.tid); if(!t) return;
+  const size = g.to - g.from + 1;                 // いま占めている箱ぶん（t.size ではない）
+  const at = findFit(d, size, g.to + 1);
+  if(at < 0){
+    toast(size > 1 ? "連続した" + size + "箱の空きがありません" : "空き箱がありません");
+    return;
+  }
+  const tag2 = newTag(d, g.tid);
+  for(let k = 0; k < size; k++) d.slots[at+k] = tag2;
+  save(); renderAll();
+  const n = boxGroups(d).filter(x => x.tid === g.tid).length;
+  toast(t.text + " を " + dayLabel(key) + "の箱 " + (at+1) + (size > 1 ? "–" + (at+size) : "") +
+    " にもう1つ入れた（今日 " + n + " 個目）", { label: "取り消す", run: ()=> unplace(tag2, key) });
+}
+/* 名札1つぶんだけ箱から出す */
+function unplace(tag, key){
+  const d = getDay(key);
+  if(!d.slots.includes(tag)) return;
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === tag) d.slots[i] = null;
   save(); renderAll(); toast("箱から出した");
 }
 /* ================= 箱に入れたあとの、箱の数の直し =================
@@ -562,12 +634,13 @@ function unplace(id, key){
      押して変える先として意味がずれない
    ▼ t.size も必ず合わせること。ずれたままにすると、次にドラッグで動かしたときに
      placeTaskAt() が t.size を見て、直したはずの長さが元に戻ってしまう */
-let sizePickId = null;      // 選択列を開いている行。メモリだけに持つ
+let sizePickId = null;      // 選択列を開いている行の名札。メモリだけに持つ
 
-/* いま占めている箱と、その上下に続く空き箱。ここから選べる最大数が決まる */
-function fitRange(d, id){
+/* いま占めている箱と、その上下に続く空き箱。ここから選べる最大数が決まる。
+   ▼ 見るのは名札。複製したもう一方は別の名札なので、ここには入ってこない */
+function fitRange(d, tag){
   const at = [];
-  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) at.push(i);
+  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === tag) at.push(i);
   if(!at.length) return null;
   const from = at[0], to = at[at.length-1];
   let down = 0, up = 0;
@@ -577,11 +650,12 @@ function fitRange(d, id){
 }
 
 /* 箱の数をちょうど n にする。伸ばす先は下が優先で、下が足りないぶんだけ上へ回る */
-function setPlacedSize(id, n){
+function setPlacedSize(tag, n){
   const d = getDay();
-  const t = taskById(id); if(!t) return;
-  if(doneOn(t)){ toast("終わったものの箱は変えられません"); return; }
-  const f = fitRange(d, id); if(!f) return;
+  const g = boxGroups(d).find(x => x.id === tag); if(!g || !g.tid) return;
+  const t = taskById(g.tid); if(!t) return;
+  if(groupDone(g)){ toast("終わったものの箱は変えられません"); return; }
+  const f = fitRange(d, tag); if(!f) return;
   n = Math.max(1, Math.min(f.max, n));
   sizePickId = null;
   if(n === f.size){ renderBoxes(); return; }
@@ -590,7 +664,7 @@ function setPlacedSize(id, n){
   const lowEnd = f.to + f.down;                            // 下へ使える一番下の箱
   let start = f.from;
   if(start + n - 1 > lowEnd) start = lowEnd - n + 1;       // はみ出るぶんだけ上へずらす
-  for(let k = 0; k < n; k++) d.slots[start+k] = id;
+  for(let k = 0; k < n; k++) d.slots[start+k] = tag;
   t.size = n;
   save(); renderAll();
   toast(t.text + " は 箱 " + (start+1) + (n > 1 ? "–" + (start+n) : "") +
@@ -652,7 +726,7 @@ function autoPlace(key){
   const d = S.days[key]; if(!d) return;
   const bad = [];
   fixedFor(key).forEach(t => {
-    if(d.slots.includes(t.id)) return;
+    if(d.slots.some(x => x && baseId(x) === t.id)) return;
     const size = Math.max(1, t.size || 1);
     const at = boxIndexForTime(key, t.fixed.time);
     let ok = at >= 0 && at + size <= d.slots.length;
@@ -677,7 +751,7 @@ function autoPlaceAhead(id){
   Object.keys(S.days).sort().forEach(k => {
     if(k < k0) return;
     const d = S.days[k];
-    if(!Array.isArray(d.slots) || d.slots.includes(t.id)) return;
+    if(!Array.isArray(d.slots) || d.slots.some(x => x && baseId(x) === t.id)) return;
     if(t.fixed.dow !== null && dayStart(k).getDay() !== t.fixed.dow) return;
     if(isDone(t) || (t.remindAt && t.remindAt > k)) return;
     if(!fitsDayType(t, k)) return;                            // 仕事の日だけ／休みの日だけ
@@ -899,7 +973,7 @@ function plannedAhead(t, key){
   Object.keys(S.days).forEach(dk => {
     const ts = dayStartTs(dk);
     if(ts < from || ts >= to) return;
-    if(!(S.days[dk].slots || []).includes(t.id)) return;
+    if(!(S.days[dk].slots || []).some(x => x && baseId(x) === t.id)) return;
     // すでにやった日の箱は「これから来る箱」ではない。
     // ここを数えると、やった数と二重に引いて残りが負になる
     if(doneOn(t, dk)) return;
@@ -939,7 +1013,7 @@ function todayTasks(){
 /* まだ箱に入れていない、今日やるべきもの */
 function unplacedTasks(){
   const d = getDay();
-  return todayTasks().filter(o => !d.slots.includes(o.t.id) && !doneOn(o.t));
+  return todayTasks().filter(o => !d.slots.some(x => x && baseId(x) === o.t.id) && !doneOn(o.t));
 }
 
 /* ================= 記録する / 取り消す ================= */
@@ -947,12 +1021,17 @@ function doTask(id){
   const t = taskById(id); if(!t) return;
   const d = getDay();
   const stamp = Date.now();
+  // ▼ いま終わる塊は「上から数えて、まだ終わっていない最初のもの」。
+  //   log を積む前に見ておくこと（積んでから数えると1つ先を指す）。
+  //   同じものを2つ置いてある日に slots の数をそのまま数えると、
+  //   1回で2箱ぶんの実績にしてしまう
+  const g = boxGroups(d).find(x => x.tid === id && x.ord === doneCountOn(t));
+  const planned = g ? g.to - g.from + 1 : 0;
   // 単発もくり返しも同じ log に積む。単発は goal 回ぶんで達成
   t.log = t.log || [];
   t.log.push(stamp);
   if(t.log.length > 1000) t.log = t.log.slice(-1000);
   // 箱に入れてやったものだけ、実績の器を用意する（入力は任意）
-  const planned = d.slots.filter(x => x === id).length;
   if(planned > 0){
     t.actuals = t.actuals || [];
     t.actuals.push({ ts: stamp, day: dayKey(), planned, actual: null });
@@ -1004,13 +1083,13 @@ function undoDo(id){
 }
 function skipToday(id){
   const t = taskById(id); if(!t || !canSkip(t)) return;
-  if(getDay().slots.includes(id)) unplaceSilent(id);
+  if(getDay().slots.some(x => x && baseId(x) === id)) unplaceSilent(id);
   t.skipDay = dayKey();
   save(); renderAll(); toast("今日は見送り。明日また出ます");
 }
 function unplaceSilent(id){
   const d = getDay();
-  for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === id) d.slots[i] = null;
+  for(let i = 0; i < d.slots.length; i++) if(baseId(d.slots[i]) === id) d.slots[i] = null;
 }
 /* 今日以降の箱から全部どける（箱数が変わったとき・消したとき） */
 function unplaceEverywhere(id){
@@ -1018,7 +1097,7 @@ function unplaceEverywhere(id){
   Object.keys(S.days).forEach(dk => {
     if(dk < k0) return;                       // 過ぎた日は記録なので触らない
     const sl = S.days[dk].slots || [];
-    for(let i = 0; i < sl.length; i++) if(sl[i] === id) sl[i] = null;
+    for(let i = 0; i < sl.length; i++) if(baseId(sl[i]) === id) sl[i] = null;
   });
 }
 function unskip(id){
@@ -1035,10 +1114,7 @@ function skippedToday(){
 let cursor = 0;
 /* 箱に入っていて、まだ終わっていないもの */
 function pendingGroups(){
-  return boxGroups(getDay()).filter(g => {
-    const t = g.id && taskById(g.id);
-    return t && !doneOn(t);
-  });
+  return boxGroups(getDay()).filter(g => g.tid && taskById(g.tid) && !groupDone(g));
 }
 function currentGroup(){
   const gs = pendingGroups();
@@ -1280,7 +1356,7 @@ document.addEventListener("click", e => {
   const a = e.target.closest('[data-act="openall"]'); if(!a) return;
   e.preventDefault();
   const row = a.closest("[data-id]");
-  const id = a.dataset.taskId || (row ? row.dataset.id : "");
+  const id = baseId(a.dataset.taskId || (row ? row.dataset.id : ""));
   if(id) openTask(id);
 });
 
@@ -1573,12 +1649,15 @@ function renderNow(){
     return;
   }
 
-  const t = taskById(g.id);
+  const t = taskById(g.tid);
   const size = g.to - g.from + 1;
   const st = t.freq.unit === "once" ? null : statOf(t);
   const w = whenOf(t);
   const parts = [];
   parts.push("箱 " + (g.from+1) + (size > 1 ? "–" + (g.to+1) : "") + "（" + boxTime(size) + "）");
+  // 同じものを今日いくつ置いてあるか。1つだけのときは出さない
+  const dup = boxGroups(d).filter(x => x.tid === t.id).length;
+  if(dup > 1) parts.push((g.ord+1) + "/" + dup + "つ目");
   if(w !== "any") parts.push(SLOT[w].icon + SLOT[w].label);
   parts.push(t.freq.unit === "once"
     ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発のやりたいこと")
@@ -1617,15 +1696,15 @@ function renderNow(){
 /* 番号を押したときに、その行の下へ出す選択列。
    入らない数は最初から出さないので、選んで失敗することがない。
    「1箱 2箱」と字を添えるのは、下にある「その日の箱の ＋−」と意味を見分けるため */
-function sizePickHTML(id, size, d){
-  if(sizePickId !== id) return '';
-  const f = fitRange(d, id); if(!f) return '';
+function sizePickHTML(tag, size, d){
+  if(sizePickId !== tag) return '';
+  const f = fitRange(d, tag); if(!f) return '';
   let chips = '';
   for(let n = 1; n <= f.max; n++){
     chips += '<button class="chip' + (n === size ? " on" : "") + '" data-act="boxsizeset" data-n="' + n + '">' +
       n + '箱</button>';
   }
-  return '<div class="bpick" data-id="' + id + '">' +
+  return '<div class="bpick" data-id="' + esc(tag) + '">' +
       '<span class="lb">箱の数</span>' + chips +
       '<span class="lb">' + boxTime(size) + '</span>' +
     '</div>';
@@ -1642,8 +1721,8 @@ function renderBoxes(){
 
   // 開いたままの選択列が、もう選べない相手（終わった・箱から出た・消えた）になっていたら閉じる
   if(sizePickId){
-    const pt = taskById(sizePickId);
-    if(!pt || doneOn(pt) || !d.slots.includes(sizePickId)) sizePickId = null;
+    const pg = boxGroups(d).find(x => x.id === sizePickId);
+    if(!pg || !taskById(pg.tid) || groupDone(pg)) sizePickId = null;
   }
 
   // 画像は箱に隠れていて、終わった箱から透けてくる。やり切ったら「いま、これ」へ移る
@@ -1692,7 +1771,10 @@ function renderBoxes(){
     return;
   }
   const key = dayKey();
-  const rows = boxGroups(d).map(g => {
+  const groups = boxGroups(d);
+  const dupCount = {};
+  groups.forEach(g => { if(g.tid) dupCount[g.tid] = (dupCount[g.tid] || 0) + 1; });
+  const rows = groups.map(g => {
     const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
     // 時刻はちょうど◯時のところだけ。箱は順番だけを持つので、これは目安
     const clock = isClockMark(key, g.from) ? '<span class="bclock">' + boxClock(key, g.from) + '</span>' : '';
@@ -1702,14 +1784,17 @@ function renderBoxes(){
         '<div class="bt">空き　（右からドラッグして入れる）</div>' +
       '</div>';
     }
-    const t = taskById(g.id);
+    const t = taskById(g.tid);
     const size = g.to - g.from + 1;
-    const done = doneOn(t);
+    const done = groupDone(g);
     const isCur = cur && cur.from === g.from;
     const sub = [boxTime(size), freqLabel(t.freq)];
     if(whenOf(t) !== "any") sub.unshift(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
+    // 同じものを今日いくつ置いてあるか。1つだけのときは何も足さない
+    const dup = dupCount[g.tid] || 0;
+    if(dup > 1) sub.push((g.ord+1) + "/" + dup + "つ目");
     return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
-        (size > 1 ? " span2" : "") + '" data-id="' + t.id + '" data-i="' + g.from + '"' +
+        (size > 1 ? " span2" : "") + '" data-id="' + esc(g.id) + '" data-i="' + g.from + '"' +
         (done ? "" : ' draggable="true"') + '>' + clock +
       // 番号を押すと箱の数を変えられる。終わったものは押せない
       // （数を変えると、達成した量＝usedBoxes まで動いてしまう）
@@ -1721,10 +1806,11 @@ function renderBoxes(){
         ? '<button class="iconbtn" data-act="openall" title="' + esc(linksOf(t).map(linkLabel).join(" / ")) + '">🔗' +
           (linksOf(t).length > 1 ? '<span class="badge">' + linksOf(t).length + '</span>' : '') + '</button>'
         : '') +
+      '<button class="iconbtn dup" data-act="boxdup" title="同じものを、もう1つ空き箱に入れる">⧉</button>' +
       (done
         ? '<button class="iconbtn" data-act="boxundo" title="取り消す">↩</button>'
         : '<button class="iconbtn" data-act="boxout" title="箱から出す">✕</button>') +
-    '</div>' + sizePickHTML(t.id, size, d);
+    '</div>' + sizePickHTML(g.id, size, d);
   }).join("");
 
   el.innerHTML = head + rows +
@@ -1743,14 +1829,16 @@ $("boxList").addEventListener("click", e => {
     return;
   }
   const row = e.target.closest(".boxrow"); if(!row || !row.dataset.id) return;
-  const id = row.dataset.id;
+  // ▼ data-id は名札（"tk1#1"）。やりたいこと自体を指すときは baseId() を通すこと
+  const tag = row.dataset.id, id = baseId(tag);
   if(btn.dataset.act === "boxsize"){          // 開け閉めだけ。中身は変わらないので描き直しは箱だけ
-    sizePickId = (sizePickId === id ? null : id);
+    sizePickId = (sizePickId === tag ? null : tag);
     renderBoxes();
     return;
   }
+  if(btn.dataset.act === "boxdup")  duplicatePlaced(tag);
   if(btn.dataset.act === "boxdo")   doTask(id);
-  if(btn.dataset.act === "boxout")  unplace(id);
+  if(btn.dataset.act === "boxout")  unplace(tag);
   if(btn.dataset.act === "boxundo") undoToday(id);
 });
 
@@ -1792,7 +1880,7 @@ $("boxList").addEventListener("drop", e => {
   const row = e.target.closest(".boxrow");
   const id = draggedId(e);
   dragEnd();
-  if(!row || !id || !taskById(id)) return;
+  if(!row || !id || !taskById(baseId(id))) return;
   placeTaskAt(id, parseInt(row.dataset.i, 10) || 0);
 });
 
@@ -1840,12 +1928,14 @@ function renderWeek(){
         return '<div class="wkbox empty" data-i="' + g.from + '" data-day="' + k + '">' +
           mark + '<span class="wkno">' + no + '</span></div>';
       }
-      const t = taskById(g.id);
-      const done = doneOn(t, k);
+      const t = taskById(g.tid);
+      const done = groupDone(g, k);
       return '<div class="wkbox' + (done ? " done" : "") + '" data-i="' + g.from + '" data-day="' + k +
-          '" data-id="' + t.id + '"' + (past || done ? "" : ' draggable="true"') + '>' +
+          '" data-id="' + esc(g.id) + '"' + (past || done ? "" : ' draggable="true"') + '>' +
         mark + '<span class="wkno">' + no + '</span>' +
         '<span class="wktxt">' + esc(t.text) + '</span>' +
+        // 過ぎた日は記録なので触らない。それ以外は終わった箱からも複製できる
+        (past ? '' : '<button class="wkx dup" data-act="wkdup" title="同じものを、もう1つ空き箱に入れる">⧉</button>') +
         (past || done ? '' : '<button class="wkx" data-act="wkout" title="箱から出す">✕</button>') +
       '</div>';
     }).join("");
@@ -1936,9 +2026,11 @@ $("weekWrap").addEventListener("click", e => {
   if(act === "wktype")  { setDayType(!getDay(k).holiday, k); return; }
   if(act === "wkplus")  { addBox(k); return; }
   if(act === "wkminus") { removeBox(k); return; }
-  if(act === "wkout"){
+  if(act === "wkout" || act === "wkdup"){
     const row = e.target.closest(".wkbox");
-    if(row && row.dataset.id) unplace(row.dataset.id, k);
+    if(!row || !row.dataset.id) return;
+    if(act === "wkout") unplace(row.dataset.id, k);
+    else duplicatePlaced(row.dataset.id, k);
   }
 });
 $("weekSide").addEventListener("click", e => {
@@ -1971,7 +2063,7 @@ $("weekWrap").addEventListener("drop", e => {
   const b = e.target.closest(".wkbox");
   const id = draggedId(e);
   dragEnd();
-  if(!b || !id || !taskById(id)) return;
+  if(!b || !id || !taskById(baseId(id))) return;
   const k = b.dataset.day;
   if(k < dayKey()){ toast("過ぎた日には入れられません"); return; }
   placeTaskAt(id, parseInt(b.dataset.i, 10) || 0, k);
@@ -2153,7 +2245,7 @@ $("rouletteBox").addEventListener("click", e => {
   if(act === "rwin" && winner){
     const id = winner;
     placeTask(id);
-    if(getDay().slots.includes(id)){ removeFromRoulette(id); renderAll(); }
+    if(getDay().slots.some(x => x && baseId(x) === id)){ removeFromRoulette(id); renderAll(); }
   }
 });
 $("rouletteBox").addEventListener("dragover", e => {
@@ -2171,7 +2263,7 @@ $("rouletteBox").addEventListener("drop", e => {
   const id = draggedId(e);
   dragEnd();
   const drop = $("rouDrop"); if(drop) drop.classList.remove("over");
-  if(id && taskById(id)) addToRoulette(id);
+  if(id && taskById(baseId(id))) addToRoulette(baseId(id));
 });
 
 /* ================= 完了したときの一言（ドーン） ================= */
@@ -2708,7 +2800,7 @@ $("taskList").addEventListener("change", e => {
   const t = taskById(id); if(!t) return;
   const before = t.size;
   t.size = Math.min(16, Math.max(1, parseInt(inp.value, 10) || 1));
-  if(t.size !== before && getDay().slots.includes(id)) unplaceSilent(id);   // 箱の占有が変わるので入れ直し
+  if(t.size !== before && getDay().slots.some(x => x && baseId(x) === id)) unplaceSilent(id);   // 箱の占有が変わるので入れ直し
   save(); renderAll();
   toast(t.text + " は " + t.size + "箱（" + boxTime(t.size) + "）");
 });
@@ -3653,7 +3745,7 @@ document.addEventListener("keydown", e => {
   if(tag === "input" || tag === "textarea" || tag === "select") return;
   if(!$("sec-now").classList.contains("on")) return;
 
-  if(e.key === " " || e.key === "Enter"){ e.preventDefault(); const g = currentGroup(); if(g) doTask(g.id); }
+  if(e.key === " " || e.key === "Enter"){ e.preventDefault(); const g = currentGroup(); if(g) doTask(g.tid); }
   else if(e.key === "n" || e.key === "N" || e.key === "ArrowDown"){ e.preventDefault(); moveCursor(1); }
   else if(e.key === "p" || e.key === "P" || e.key === "ArrowUp"){ e.preventDefault(); moveCursor(-1); }
   else if(e.key === "+" || e.key === "=" ){ e.preventDefault(); addBox(); }
