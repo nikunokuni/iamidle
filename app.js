@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-20.1";
+const APP_VERSION = "2026-08-22.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1779,9 +1779,11 @@ function renderBoxes(){
     // 時刻はちょうど◯時のところだけ。箱は順番だけを持つので、これは目安
     const clock = isClockMark(key, g.from) ? '<span class="bclock">' + boxClock(key, g.from) + '</span>' : '';
     if(!g.id){
-      return '<div class="boxrow empty" data-i="' + g.from + '">' + clock +
+      // 押すと、その箱に新しいやりたいことを入れられる（data-act は行そのものに付く）
+      return '<div class="boxrow empty tap" data-i="' + g.from + '" data-act="newhere" ' +
+          'title="押して、この箱に予定を入れる">' + clock +
         '<span class="bi">' + no + '</span>' +
-        '<div class="bt">空き　（右からドラッグして入れる）</div>' +
+        '<div class="bt">空き　（押して入れる・ドラッグでも）</div>' +
       '</div>';
     }
     const t = taskById(g.tid);
@@ -1826,6 +1828,11 @@ $("boxList").addEventListener("click", e => {
   if(btn.dataset.act === "boxsizeset"){
     const pick = btn.closest(".bpick"); if(!pick) return;
     setPlacedSize(pick.dataset.id, parseInt(btn.dataset.n, 10));
+    return;
+  }
+  // 空き箱を押したとき。ここは data-id を持たないので、下の行探しより先に受ける
+  if(btn.dataset.act === "newhere"){
+    openNewBoxTask(dayKey(), parseInt(btn.dataset.i, 10) || 0);
     return;
   }
   const row = e.target.closest(".boxrow"); if(!row || !row.dataset.id) return;
@@ -1925,7 +1932,9 @@ function renderWeek(){
       const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
       const mark = isClockMark(k, g.from) ? '<span class="wkclock">' + boxClock(k, g.from) + '</span>' : '';
       if(!g.id){
-        return '<div class="wkbox empty" data-i="' + g.from + '" data-day="' + k + '">' +
+        // 過ぎた日は記録なので触らない。それ以外は押すと、その箱に予定を入れられる
+        return '<div class="wkbox empty' + (past ? "" : " tap") + '" data-i="' + g.from + '" data-day="' + k + '"' +
+          (past ? "" : ' data-act="wknew" title="押して、この箱に予定を入れる"') + '>' +
           mark + '<span class="wkno">' + no + '</span></div>';
       }
       const t = taskById(g.tid);
@@ -2010,7 +2019,7 @@ function renderWeekSide(){
       '<div class="ph">' +
         '<span>この週に置くもの</span>' +
         '<span class="cnt">' + list.length + ' 件</span>' +
-        '<span class="tip">下の箱へドラッグ ・ <b>週に何回</b>のものは ＋− で' +
+        '<span class="tip">下の箱へドラッグ ・ <b>空き箱を押す</b>と、その場で予定を入れられます ・ <b>週に何回</b>のものは ＋− で' +
           (isNextWeek() ? "来週" : "今週") + 'だけ回数を変えられます（翌週はもとに戻ります）</span>' +
       '</div>' +
       body +
@@ -2026,6 +2035,11 @@ $("weekWrap").addEventListener("click", e => {
   if(act === "wktype")  { setDayType(!getDay(k).holiday, k); return; }
   if(act === "wkplus")  { addBox(k); return; }
   if(act === "wkminus") { removeBox(k); return; }
+  if(act === "wknew"){
+    if(k < dayKey()){ toast("過ぎた日には入れられません"); return; }
+    openNewBoxTask(k, parseInt(btn.dataset.i, 10) || 0);
+    return;
+  }
   if(act === "wkout" || act === "wkdup"){
     const row = e.target.closest(".wkbox");
     if(!row || !row.dataset.id) return;
@@ -2532,21 +2546,29 @@ function fixedLabel(t){
 
 /* ================= やりたいことの編集 =================
    名前・頻度・回数・箱数・午前午後・曜日と時刻・遠い予定を、あとから直せる。
-   他の機能がどれも「後から直せること」を前提にしているので、これが全部の前提になる
+   他の機能がどれも「後から直せること」を前提にしているので、これが全部の前提になる。
+
+   ▼ 同じ入力欄を、空き箱を押して新しく作るときにも使う（openNewBoxTask）。
+     作るときは名前だけ見せて、細かいところは「詳細」を押したときに開く。
+     欄を組み立てるところ（buildTaskForm）と読み取るところ（readTaskForm）は
+     1か所にまとめてある。**2つに分けないこと。** 片方だけ直すと黙って食い違う
 ====================================================== */
-let edTaskId = "";
-function openTaskEditor(id){
-  const t = taskById(id); if(!t) return;
-  edTaskId = id;
-  const f = t.freq;
+let edTaskId = "";       // 直しているやりたいことのID。新しく作るときは空
+let edNewAt  = null;     // 空き箱から作るとき { key, i }。ふつうの編集では null
+
+/* 入力欄を組み立てて、動きをつける。
+   v … 初期値 { text, freq, goal, size, when, fixed, remindAt }
+   isNew … true なら名前だけ見せて、あとは「詳細」を押すまで畳んでおく */
+function buildTaskForm(v, isNew){
+  const f = v.freq || { unit: "once" };
   const units = [
     ["once","単発"], ["day","毎日"], ["work","仕事の日"], ["off","休みの日"],
     ["week","週に"], ["month","月に"], ["days","N日に"]
   ];
-  const cnt = f.unit === "once" ? goalOf(t) : Math.max(1, f.count || 1);
-  $("edBody").innerHTML =
-    '<label class="edrow"><span>名前</span>' +
-      '<input id="edText" autocomplete="off" value="' + esc(t.text) + '"></label>' +
+  const cnt = f.unit === "once" ? Math.max(1, v.goal || 1) : Math.max(1, f.count || 1);
+  const size = Math.max(1, v.size || 1);
+  // 名前より下は、まとめて畳めるように1つの枠に入れてある
+  const more =
     '<div class="edrow"><span>くり返し</span><div class="chips" id="edUnit">' +
       units.map(([u,l]) => '<button class="chip' + (f.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
         l + '</button>').join("") + '</div></div>' +
@@ -2555,27 +2577,37 @@ function openTaskEditor(id){
       '<span id="edMid">日に</span>' +
       '<input type="number" id="edCount" min="1" max="99" value="' + cnt + '"><span>回</span></div>' +
     '<label class="edrow"><span>必要な箱</span>' +
-      '<input type="number" id="edSize" min="1" max="16" value="' + t.size + '">' +
-      '<span class="fnote" id="edSizeNote">' + boxTime(t.size) + '</span></label>' +
+      '<input type="number" id="edSize" min="1" max="16" value="' + size + '">' +
+      '<span class="fnote" id="edSizeNote">' + boxTime(size) + '</span></label>' +
     '<div class="edrow"><span>いつ</span><div class="chips" id="edWhen">' +
       [["any","いつでも"],["am","☀ 午前"],["pm","🌙 午後"]].map(([w,l]) =>
-        '<button class="chip' + (whenOf(t) === w ? " on" : "") + '" data-when="' + w + '">' + l + '</button>'
+        '<button class="chip' + (v.when === w ? " on" : "") + '" data-when="' + w + '">' + l + '</button>'
       ).join("") + '</div></div>' +
     '<div class="edrow"><span>決まった時間</span>' +
-      '<label class="edchk"><input type="checkbox" id="edFixOn"' + (t.fixed ? " checked" : "") + '> 決める</label>' +
+      '<label class="edchk"><input type="checkbox" id="edFixOn"' + (v.fixed ? " checked" : "") + '> 決める</label>' +
       '<select id="edDow">' +
         '<option value="">毎日</option>' +
         WD.map((w,i) => '<option value="' + i + '">毎週' + w + '曜</option>').join("") +
       '</select>' +
-      '<input type="time" id="edTime" value="' + esc((t.fixed && t.fixed.time) || "18:00") + '"></div>' +
+      '<input type="time" id="edTime" value="' + esc((v.fixed && v.fixed.time) || "18:00") + '"></div>' +
     '<div class="empty-note" style="padding:0 2px 6px">' +
       '決めておくと、1週間ページでその日が作られたときに<b>自動で箱に入ります</b>。' +
       '入ったあとは自由に動かせます（アプリは置き直しません）。</div>' +
     '<label class="edrow"><span>まだ先の予定</span>' +
-      '<input type="date" id="edRemind" value="' + esc(t.remindAt || "") + '">' +
+      '<input type="date" id="edRemind" value="' + esc(v.remindAt || "") + '">' +
       '<span class="fnote">この日まで隠す</span></label>';
 
-  if(t.fixed && t.fixed.dow !== null) $("edDow").value = String(t.fixed.dow);
+  $("edBody").innerHTML =
+    '<label class="edrow"><span>名前</span>' +
+      '<input id="edText" autocomplete="off" value="' + esc(v.text || "") + '"></label>' +
+    (isNew
+      ? '<div class="edrow"><button class="btn ghost" id="edMoreBtn">詳細</button>' +
+          '<span class="fnote edmorenote">くり返し・箱数・決まった時間など。' +
+          'ふだんは押さなくてよく、そのまま入れれば<b>単発の1回</b>になります</span></div>'
+      : '') +
+    '<div id="edMore"' + (isNew ? ' style="display:none"' : '') + '>' + more + '</div>';
+
+  if(v.fixed && v.fixed.dow !== null) $("edDow").value = String(v.fixed.dow);
   $("edUnit").onclick = e => {
     const c = e.target.closest(".chip"); if(!c) return;
     $("edUnit").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
@@ -2589,10 +2621,100 @@ function openTaskEditor(id){
     const n = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
     $("edSizeNote").textContent = boxTime(n);
   };
+  // 名前の欄で Enter を押したら、そのまま決定（新規のときは、これが一番多い流れ）
+  $("edText").onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); $("edOk").click(); } };
+  if(isNew) $("edMoreBtn").onclick = ()=>{
+    $("edMore").style.display = "";
+    $("edMoreBtn").parentNode.remove();      // 一度開いたら閉じない（閉じると設定が見えなくなる）
+  };
   syncEdCount();
+}
+/* 入力欄の中身を読む。名前が空なら null（呼んだ側は、そのまま何もしない）*/
+function readTaskForm(){
+  const text = $("edText").value.trim();
+  if(!text){ toast("名前を入れてください"); return null; }
+  const u = edUnitNow();
+  const count = Math.min(99, Math.max(1, parseInt($("edCount").value, 10) || 1));
+  const n     = Math.min(365, Math.max(1, parseInt($("edN").value, 10) || 1));
+  const size  = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
+  const when  = ($("edWhen").querySelector(".chip.on") || {}).dataset?.when || "any";
+  let freq, goal;
+  if(u === "once"){ freq = { unit: "once" }; goal = count; }   // 単発の総回数（期限なし）
+  else{
+    freq = { unit: u, count };
+    if(u === "days") freq.n = n;
+    goal = 1;
+  }
+  let fixed = null;
+  if($("edFixOn").checked){
+    const dow = $("edDow").value;
+    fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
+  }
+  const rm = $("edRemind").value;
+  return { text, size, when, freq, goal, fixed,
+           remindAt: /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "" };
+}
+function openTaskEditor(id){
+  const t = taskById(id); if(!t) return;
+  edTaskId = id; edNewAt = null;
+  buildTaskForm({ text: t.text, freq: t.freq, goal: goalOf(t), size: t.size,
+                  when: whenOf(t), fixed: t.fixed, remindAt: t.remindAt }, false);
   $("edTitle").textContent = "「" + t.text + "」を直す";
+  $("edOk").textContent = "保存";
   $("editModal").classList.add("on");
   setTimeout(()=> $("edText").focus(), 30);
+}
+/* ================= 空き箱を押して、その場に予定を入れる =================
+   今日タブ・1週間タブの空き箱から呼ぶ。**基本は単発の1回・1箱。**
+   細かいことを決めたいときだけ「詳細」を押す（中身は編集と同じ）
+====================================================================== */
+function openNewBoxTask(key, i){
+  key = okKey(key);
+  if(key < dayKey()){ toast("過ぎた日には入れられません"); return; }
+  edTaskId = ""; edNewAt = { key, i: Math.max(0, i || 0) };
+  buildTaskForm({ text:"", freq:{ unit:"once" }, goal:1, size:1,
+                  when:"any", fixed:null, remindAt:"" }, true);
+  $("edTitle").textContent =
+    dayLabel(key) + "の箱 " + (edNewAt.i + 1) + "（" + boxClock(key, edNewAt.i) + "ごろ）に入れる";
+  $("edOk").textContent = "入れる";
+  $("editModal").classList.add("on");
+  setTimeout(()=> $("edText").focus(), 30);
+}
+/* 新しく作って、押した箱に入れる。
+   ▼ 入るかどうかを先に見てから S.tasks に足すこと。
+     先に足すと、入らなかったときに宙ぶらりんのやりたいことが残る */
+function saveNewBoxTask(){
+  const at = edNewAt; if(!at){ closeTaskEditor(); return; }
+  const v = readTaskForm(); if(!v) return;
+  const key = at.key;
+  if(key < dayKey()){                       // 開いたまま日付をまたいだとき
+    toast("過ぎた日には入れられません"); closeTaskEditor(); return;
+  }
+  const d = getDay(key);
+  // 押した箱から下へ、それでも無ければ先頭から探す（詳細で2箱以上にすると、その場に入らないことがある）
+  const pos = findFit(d, v.size, at.i);
+  if(pos < 0){
+    toast(v.size > 1 ? "連続した" + v.size + "箱の空きがありません" : "空き箱がありません");
+    return;
+  }
+  const t = { id: uid(), text: v.text, links: [], when: v.when, freq: v.freq, size: v.size,
+              goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
+              log: [], actuals: [], createdAt: Date.now() };
+  S.tasks.push(t);
+  for(let k = 0; k < v.size; k++) d.slots[pos+k] = t.id;
+  // 決まった時間を持たせたぶんは、もう作られている先の日にも入れる（編集と同じ扱い）
+  const put = t.fixed ? autoPlaceAhead(t.id) : 0;
+  closeTaskEditor();
+  save(); renderAll();
+  toast(dayLabel(key) + "の箱 " + (pos+1) + (v.size > 1 ? "–" + (pos+v.size) : "") + " に入れた" +
+    (put ? "／ほかに " + put + "日ぶん入れました" : ""), {
+      label: "取り消す",
+      run: ()=>{
+        unplaceEverywhere(t.id);
+        S.tasks = S.tasks.filter(x => x.id !== t.id);
+        save(); renderAll(); toast("取り消した");
+      }
+    });
 }
 function edUnitNow(){
   const on = $("edUnit").querySelector(".chip.on");
@@ -2605,34 +2727,21 @@ function syncEdCount(){
   $("edN").style.display   = u === "days" ? "" : "none";
   $("edMid").style.display = u === "days" ? "" : "none";
 }
-function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; }
+function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; edNewAt = null; }
 function saveTaskEditor(){
   const t = taskById(edTaskId); if(!t){ closeTaskEditor(); return; }
-  const text = $("edText").value.trim();
-  if(!text){ toast("名前を入れてください"); return; }
-  const u = edUnitNow();
-  const count = Math.min(99, Math.max(1, parseInt($("edCount").value, 10) || 1));
-  const n     = Math.min(365, Math.max(1, parseInt($("edN").value, 10) || 1));
-  const size  = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
-  const sizeChanged = size !== t.size;
-
-  t.text = text;
-  t.size = size;
-  t.when = ($("edWhen").querySelector(".chip.on") || {}).dataset?.when || "any";
-  if(u === "once"){ t.freq = { unit: "once" }; t.goal = count; }
-  else{
-    t.freq = { unit: u, count };
-    if(u === "days") t.freq.n = n;
-    t.goal = 1;
-  }
+  const v = readTaskForm(); if(!v) return;
+  const sizeChanged = v.size !== t.size;
   const wasFixed = t.fixed ? fixedLabel(t) : "";
-  if($("edFixOn").checked){
-    const dow = $("edDow").value;
-    t.fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
-  }else t.fixed = null;
+
+  t.text = v.text;
+  t.size = v.size;
+  t.when = v.when;
+  t.freq = v.freq;
+  t.goal = v.goal;
+  t.fixed = v.fixed;
+  t.remindAt = v.remindAt;
   const fixChanged = (t.fixed ? fixedLabel(t) : "") !== wasFixed;
-  const rm = $("edRemind").value;
-  t.remindAt = /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "";
 
   // 箱の占有が変わったら入れ直してもらう
   if(sizeChanged) unplaceEverywhere(t.id);
@@ -2643,7 +2752,7 @@ function saveTaskEditor(){
   toast("直しました" + (sizeChanged ? "／箱数が変わったので入れ直してください" : "") +
     (put ? "／" + put + "日ぶん箱に入れました" : ""));
 }
-$("edOk").onclick     = saveTaskEditor;
+$("edOk").onclick     = ()=> edNewAt ? saveNewBoxTask() : saveTaskEditor();
 $("edCancel").onclick = closeTaskEditor;
 $("editModal").onclick = e => { if(e.target === $("editModal")) closeTaskEditor(); };
 

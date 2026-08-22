@@ -257,6 +257,10 @@ body.now-fixed .side #rouletteBox{
 .bpick .chip{padding:5px 12px;font-size:12px;font-variant-numeric:tabular-nums}
 .boxrow.empty{border-style:dashed;background:none}
 .boxrow.empty .bt{color:var(--fg-faint);font-size:13px}
+/* 押すと、その箱に予定を入れられる空き箱 */
+.boxrow.empty.tap{cursor:pointer}
+.boxrow.empty.tap:hover{border-color:var(--accent);background:rgba(91,156,255,.08)}
+.boxrow.empty.tap:hover .bt{color:var(--accent)}
 /* ドラッグ中の受け皿 */
 .boxrow.over{border-color:var(--accent);border-style:solid;background:rgba(91,156,255,.12)}
 .boxrow.over .bt{color:var(--accent)}
@@ -560,6 +564,10 @@ kbd{
 .boxarea.has-img .boxrow.empty .bi{
   color:rgba(255,255,255,.74);text-shadow:0 1px 8px rgba(0,0,0,.95);
 }
+/* 押せる空き箱も、膜より強く出す（そうしないと押せることが見えない） */
+.boxarea.has-img .boxrow.empty.tap:hover{
+  background:rgba(91,156,255,.22);border-color:var(--accent);transition:none;
+}
 /* ドラッグ中の受け皿は、膜より強く出す。
    ここを書かないと上の2つに負けて、落とし先がどこか分からなくなる */
 .boxarea.has-img .boxrow.empty.over{
@@ -744,6 +752,9 @@ kbd{
   background:var(--card);border:1px solid transparent;
 }
 .wkbox.empty{border:1px dashed var(--line);background:none}
+/* 押すと、その箱に予定を入れられる空き箱（過ぎた日には付かない） */
+.wkbox.empty.tap{cursor:pointer}
+.wkbox.empty.tap:hover{border-color:var(--accent);background:rgba(91,156,255,.1)}
 .wkbox.done{opacity:.45}
 .wkbox.done .wktxt{text-decoration:line-through}
 .wkbox.over{border-color:var(--accent);background:rgba(91,156,255,.16)}
@@ -854,6 +865,10 @@ kbd{
   font-size:13px;color:var(--fg-dim);cursor:pointer;
 }
 .edchk input{width:auto;margin:0}
+/* 新しく作るときだけ出る「詳細」。押すと下の設定が全部出る */
+#edMoreBtn{padding:6px 14px;font-size:13px}
+/* 説明は狭い画面で折り返す（.fnote は flex:none なので、ここで上書きする）*/
+#edBody .edmorenote{flex:1 1 220px;min-width:0;line-height:1.6}
 /* まだ先の予定は、ふだんのリストに出ないので控えめに見せる */
 .item.far{opacity:.72}
 
