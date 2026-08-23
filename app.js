@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-22.1";
+const APP_VERSION = "2026-08-22.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1635,10 +1635,10 @@ function renderNow(){
 
   if(!g){
     let msg;
-    if(d.count === 0)              msg = "今日は箱がありません。\n右上の ＋ で足せます。";
+    if(d.count === 0)              msg = "今日は箱がありません。";
     else if(dayFinished(d))        msg = "箱を使い切りました。今日は終了。\n" + SLEEP_LINE;
-    else if(emptyBoxes(d) === d.count) msg = "箱にやりたいことを入れてください。\n右の一覧からクリックで入ります。";
-    else                           msg = "入れたぶんは終わりました。\n空き箱にまだ入れられます。";
+    else if(emptyBoxes(d) === d.count) msg = "箱にやりたいことを入れてください。";
+    else                           msg = "入れたぶんは終わりました。";
     el.innerHTML =
       bareBtn +
       '<div class="label">いま、これ</div>' +
@@ -1731,9 +1731,8 @@ function renderBoxes(){
   el.className = "boxarea" + (showHere ? " has-img" : "");
   el.style.backgroundImage = showHere ? 'url("' + img.data + '")' : "";
 
-  const rest = remainBoxes(d), empty = emptyBoxes(d);
+  const empty = emptyBoxes(d);
   const filled = d.slots.filter(x => x !== null).length;   // やりたいことが入っている箱
-  const restCls = rest === 0 ? " zero" : (rest <= 2 ? " low" : "");
 
   // 空き箱にかける膜の濃さ。「今日の箱のうち、どれだけ終わったか」で薄くする。
   // 分母は入れた箱ではなく**全部の箱**。1箱やるごとに薄くなる量がいつも同じになり、
@@ -1742,10 +1741,8 @@ function renderBoxes(){
   el.style.setProperty("--emptyveil", (0.88 - 0.70 * ratio).toFixed(3));
   const head =
     '<div class="bhead">' +
-      '<h2>今日の箱（1箱 ＝ 30分）</h2>' +
-      (d.count ? '<span class="bcount' + restCls + '">残り <b>' + rest + '</b> ・ 空き ' + empty + '</span>' : '') +
+      '<h2>今日の箱</h2>' +
       '<div class="sp"></div>' +
-      (showHere ? '<span class="bhint">終わった箱から見えてきます</span>' : '') +
       (dayFinished(d) ? '<span class="bend">今日は終了</span>' : '') +
       '<button class="daytype' + (d.holiday ? " off" : "") + '" id="dayType" ' +
         'title="平日／休みを切り替える">' + (d.holiday ? "休み" : "平日") + '</button>' +
@@ -1783,7 +1780,7 @@ function renderBoxes(){
       return '<div class="boxrow empty tap" data-i="' + g.from + '" data-act="newhere" ' +
           'title="押して、この箱に予定を入れる">' + clock +
         '<span class="bi">' + no + '</span>' +
-        '<div class="bt">空き　（押して入れる・ドラッグでも）</div>' +
+        '<div class="bt">空き</div>' +
       '</div>';
     }
     const t = taskById(g.tid);
@@ -2019,8 +2016,6 @@ function renderWeekSide(){
       '<div class="ph">' +
         '<span>この週に置くもの</span>' +
         '<span class="cnt">' + list.length + ' 件</span>' +
-        '<span class="tip">下の箱へドラッグ ・ <b>空き箱を押す</b>と、その場で予定を入れられます ・ <b>週に何回</b>のものは ＋− で' +
-          (isNextWeek() ? "来週" : "今週") + 'だけ回数を変えられます（翌週はもとに戻ります）</span>' +
       '</div>' +
       body +
     '</div>';
@@ -2117,7 +2112,6 @@ function renderUnplaced(){
       '<div class="ph"><span>箱に入れていないやりたいこと</span><span class="cnt">' +
         list.length + ' 件 ・ 空き ' + emptyBoxes(d) + ' 箱</span></div>' +
       body +
-      (list.length ? '<div class="empty-note" style="padding:10px 2px 0">左の箱か、下のルーレットへドラッグ。</div>' : '') +
     '</div>';
 }
 $("unplaced").addEventListener("click", e => {
@@ -2143,12 +2137,7 @@ function toggleRoutine(id){
 function renderRoutines(){
   const list = routinesNow();
   const s = nowSlot();
-  if(!list.length){
-    $("routineBox").innerHTML =
-      '<div class="panel"><div class="ph"><span>' + SLOT[s].icon + ' ' + SLOT[s].label + 'のルーティーン</span></div>' +
-      '<div class="empty-note">「やりたいこと」タブの下から登録できます。箱は消費しません。</div></div>';
-    return;
-  }
+  if(!list.length){ $("routineBox").innerHTML = ""; return; }
   const done = routineDoneIds();
   $("routineBox").innerHTML =
     '<div class="panel">' +
@@ -2234,9 +2223,7 @@ function renderRoulette(){
   $("rouletteBox").innerHTML =
     '<div class="panel roulette">' +
       '<div class="ph"><span>🎲 ルーレット</span><span class="cnt">' + ids.length + ' 件</span></div>' +
-      '<div class="drop" id="rouDrop">' +
-        (ids.length ? 'ここにドラッグして候補を足す' : '決められないときは、ここにやりたいことをドラッグ') +
-      '</div>' +
+      '<div class="drop" id="rouDrop">ここへドラッグ</div>' +
       cands + face +
       (ids.length >= 2
         ? '<button class="spinbtn" id="spinBtn"' + (spinning ? ' disabled' : '') + '>' +
@@ -2459,9 +2446,7 @@ function renderTasks(){
   });
   // 遠い予定。その日が近づくまで、ふだんのリストには出さない
   if(far.length){
-    html += '<h2>まだ先の予定（' + far.length + '）</h2>' +
-      '<div class="empty-note" style="padding-top:0">その日が来るまで「やることリスト」には出ません。</div>' +
-      far.map(farRow).join("");
+    html += '<h2>まだ先の予定（' + far.length + '）</h2>' + far.map(farRow).join("");
   }
   if(done.length){
     html += '<h2>達成したもの（' + done.length + '）</h2>' + done.map(onceRow).join("");
@@ -2590,9 +2575,6 @@ function buildTaskForm(v, isNew){
         WD.map((w,i) => '<option value="' + i + '">毎週' + w + '曜</option>').join("") +
       '</select>' +
       '<input type="time" id="edTime" value="' + esc((v.fixed && v.fixed.time) || "18:00") + '"></div>' +
-    '<div class="empty-note" style="padding:0 2px 6px">' +
-      '決めておくと、1週間ページでその日が作られたときに<b>自動で箱に入ります</b>。' +
-      '入ったあとは自由に動かせます（アプリは置き直しません）。</div>' +
     '<label class="edrow"><span>まだ先の予定</span>' +
       '<input type="date" id="edRemind" value="' + esc(v.remindAt || "") + '">' +
       '<span class="fnote">この日まで隠す</span></label>';
@@ -2600,11 +2582,7 @@ function buildTaskForm(v, isNew){
   $("edBody").innerHTML =
     '<label class="edrow"><span>名前</span>' +
       '<input id="edText" autocomplete="off" value="' + esc(v.text || "") + '"></label>' +
-    (isNew
-      ? '<div class="edrow"><button class="btn ghost" id="edMoreBtn">詳細</button>' +
-          '<span class="fnote edmorenote">くり返し・箱数・決まった時間など。' +
-          'ふだんは押さなくてよく、そのまま入れれば<b>単発の1回</b>になります</span></div>'
-      : '') +
+    (isNew ? '<div class="edrow"><button class="btn ghost" id="edMoreBtn">詳細</button></div>' : '') +
     '<div id="edMore"' + (isNew ? ' style="display:none"' : '') + '>' + more + '</div>';
 
   if(v.fixed && v.fixed.dow !== null) $("edDow").value = String(v.fixed.dow);
@@ -2976,7 +2954,7 @@ function addPhilo(){
 $("philoAdd").onclick = addPhilo;
 function renderPhilos(){
   const el = $("philoList");
-  if(!S.philos.length){ el.innerHTML = '<div class="empty-note">迷ったときに立ち返る言葉を書いておくと、上に表示されます。</div>'; return; }
+  if(!S.philos.length){ el.innerHTML = ""; return; }
   el.innerHTML = S.philos.map(p =>
     '<div class="philo-item" data-id="' + p.id + '">' +
       '<div class="t">' + esc(p.text) + '</div>' +
@@ -3015,7 +2993,7 @@ $("cheerInput").addEventListener("keydown", e => { if(e.key === "Enter") addChee
 function renderCheers(){
   const el = $("cheerList");
   if(!S.cheers.length){
-    el.innerHTML = '<div class="empty-note">一言が無いときは、何も出ません。</div>';
+    el.innerHTML = "";
     return;
   }
   el.innerHTML = S.cheers.map(c =>
@@ -3268,9 +3246,7 @@ function renderDiaryPast(){
   const head = $("diaryPastHead");
   if(!all.length){
     head.style.display = "none";
-    el.innerHTML = '<div class="empty-note">「保存する」を押すと、この下に新しい順で並びます。' +
-      '同じ日に何度書いても、それぞれ別の1件として残ります。' +
-      '同じ月日に書いたものが去年までにあれば、いちばん上に出ます。</div>';
+    el.innerHTML = "";
     return;
   }
   head.style.display = "";
@@ -3479,7 +3455,7 @@ function renderImages(){
   $("btnAddImg").disabled = atLimit;
   $("btnAddImg").style.opacity = atLimit ? ".45" : "";
   if(!S.images.length){
-    el.innerHTML = '<div class="empty-note">画像を入れると、箱を終えるたびに少しずつ見えてきます。</div>';
+    el.innerHTML = "";
     return;
   }
   el.innerHTML = '<div class="imgs">' + S.images.map(x =>
@@ -3631,17 +3607,14 @@ function renderSound(){
   $("btnResetSnd").disabled = !s;
   $("btnResetSnd").style.opacity = s ? "" : ".45";
   if(!s){
-    el.innerHTML = '<div class="empty-note">いまは既定の「ピッピッピッ」です' +
-      '（1.5秒おきに' + RING_TIMES + '回）。</div>';
+    el.innerHTML = "";
     return;
   }
   el.innerHTML =
     '<div class="kv"><span>' + esc(s.name || "音") + '</span><span>' +
       s.sec + '秒 ・ 約' + Math.round(s.data.length/1024) + 'KB' +
       (s.rate ? ' ・ ' + Math.round(s.rate/1000) + 'kHz に粗くしました' : ' ・ そのまま') +
-    '</span></div>' +
-    '<div class="empty-note">0になると、この音が' + RING_SEC + '秒だけ鳴ります。' +
-      (s.sec < RING_SEC ? s.sec + '秒しかないので、その間くり返します。' : '') + '</div>';
+    '</span></div>';
 }
 
 /* 今月、何で箱が潰れたか */
@@ -4221,7 +4194,7 @@ function renderSync(){
   $("syncGo").style.opacity = on ? "" : ".45";
   $("syncOff").style.display = on ? "" : "none";
   el.innerHTML = !on
-    ? '<div class="empty-note">まだ設定していません。この端末のデータは、この端末の中だけにあります。</div>'
+    ? ''
     : '<div class="kv"><span>' + esc(SY.name) + ' として同期</span><span>' +
         (SY.at ? "最後に合わせたのは " + hhmm(SY.at) : "まだ合わせていません") + '</span></div>' +
       (syncNote ? '<div class="empty-note">' + esc(syncNote) + '</div>' : '');

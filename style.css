@@ -62,7 +62,6 @@ header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:sp
 }
 .philo-bar .label{font-size:11px;letter-spacing:.14em;color:var(--accent2);opacity:.8}
 .philo-bar .text{font-size:16px;line-height:1.7;margin-top:5px;white-space:pre-wrap}
-.philo-bar .hint{font-size:11px;color:var(--fg-faint);margin-top:6px}
 
 /* ---------- tabs（4つのまま） ---------- */
 nav{
@@ -377,11 +376,6 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .routine:last-child{border-bottom:none}
 .routine .rt{flex:1;min-width:0;font-size:14px;word-break:break-word}
 .routine.on .rt{text-decoration:line-through;color:var(--fg-faint)}
-.keyhelp{
-  border:1px dashed var(--line);border-radius:var(--radius);
-  padding:12px 14px;font-size:12px;color:var(--fg-faint);line-height:1.9;
-}
-.keyhelp b{display:block;color:var(--fg-dim);font-size:11px;letter-spacing:.1em;margin-bottom:4px}
 kbd{
   background:var(--card2);border:1px solid var(--line);border-radius:5px;
   padding:1px 6px;font-size:11px;font-family:inherit;color:var(--fg-dim);
@@ -505,11 +499,6 @@ kbd{
 .bhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:9px}
 .bhead h2{margin:0}
 .bhead .sp{margin-left:auto}
-.bcount{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
-.bcount b{font-size:15px;color:var(--accent);font-weight:700;padding:0 1px}
-.bcount.low b{color:var(--warn)}
-.bcount.zero b{color:var(--danger)}
-.bhint{font-size:11px;color:var(--fg-faint)}
 .bend{
   font-size:11px;font-weight:700;color:var(--ok);flex:none;
   background:rgba(78,203,143,.14);padding:3px 11px;border-radius:99px;
@@ -805,10 +794,6 @@ kbd{
   background:rgba(22,26,33,.94);backdrop-filter:blur(10px);
 }
 .weekside .panel .ph{justify-content:flex-start;gap:10px;margin-bottom:7px;flex-wrap:wrap}
-.weekside .panel .ph .tip{
-  margin-left:auto;letter-spacing:0;font-size:11px;color:var(--fg-faint);
-}
-.weekside .panel .ph .tip b{color:var(--fg-dim);font-weight:700}
 .wksidelist{
   display:flex;flex-wrap:wrap;gap:6px;
   max-height:94px;                     /* ちょうど2段ぶん（1件43px＋すきま6px）。3段目からは縦に転がる */
@@ -834,7 +819,6 @@ kbd{
 
 @media (max-width:900px){
   .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .weekside .panel .ph .tip{display:none}
 }
 /* 指で押す画面では、箱を増やす／減らすボタンが小さすぎて当たらない。大きくする */
 @media (max-width:900px), (hover:none){
@@ -867,8 +851,6 @@ kbd{
 .edchk input{width:auto;margin:0}
 /* 新しく作るときだけ出る「詳細」。押すと下の設定が全部出る */
 #edMoreBtn{padding:6px 14px;font-size:13px}
-/* 説明は狭い画面で折り返す（.fnote は flex:none なので、ここで上書きする）*/
-#edBody .edmorenote{flex:1 1 220px;min-width:0;line-height:1.6}
 /* まだ先の予定は、ふだんのリストに出ないので控えめに見せる */
 .item.far{opacity:.72}
 

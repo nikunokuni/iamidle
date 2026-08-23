@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-22.1">
+<meta name="app-version" content="2026-08-22.2">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-22.1">
+<link rel="stylesheet" href="style.css?v=2026-08-22.2">
 </head>
 <body>
 
@@ -39,7 +39,6 @@
         <div class="philo-bar" id="philoBar">
           <div class="label">今日の指針</div>
           <div class="text" id="philoText">哲学タブから、大事にしたい言葉を登録してください。</div>
-          <div class="hint">クリックで次の言葉へ</div>
         </div>
         <div class="now" id="nowCard"></div>
         <div id="boxList"></div>
@@ -50,12 +49,6 @@
         <div id="rouletteBox"></div>
         <div id="unplaced"></div>
         <div id="routineBox"></div>
-        <div class="keyhelp">
-          <b>キーボード</b>
-          <div><kbd>Space</kbd> いま、これを完了</div>
-          <div><kbd>N</kbd> 次の箱へ　<kbd>P</kbd> 前の箱へ</div>
-          <div><kbd>+</kbd> 箱を増やす　<kbd>-</kbd> 箱を減らす</div>
-        </div>
       </aside>
     </div>
   </section>
@@ -74,10 +67,6 @@
       <input id="taskInput" placeholder="やりたいことを入力" autocomplete="off">
       <input class="mt8" id="taskUrl" placeholder="リンク（任意） https://..." autocomplete="off" inputmode="url" list="taskUrlList">
       <datalist id="taskUrlList"></datalist>
-      <div class="empty-note" style="padding:6px 2px 0">
-        リンクは<b>何本でも</b>持てます。2本目からは、下の一覧の🔗ボタンから。
-        やりたいことの名前の🔗を押すと<b>全部まとめて開きます</b>。PCのアプリも登録できます。
-      </div>
       <div class="row mt10">
         <span class="flabel">必要な箱</span>
         <input type="number" id="taskSize" min="1" max="16" value="1">
@@ -112,9 +101,6 @@
     <div id="taskList"></div>
 
     <h2>ルーティーン</h2>
-    <div class="empty-note" style="padding-top:0">
-      箱を消費しない、毎日の小さな決めごと。いまの時間帯のものだけが「今日」に出ます。
-    </div>
     <div class="form">
       <input id="routineInput" placeholder="例: 机の上を片付ける" autocomplete="off">
       <div class="chips mt10" id="routineSlotChips">
@@ -188,9 +174,6 @@
     <div id="philoList"></div>
 
     <h2>やったときの一言</h2>
-    <div class="empty-note" style="padding-top:0">
-      やりたいことを終えたとき、この中から1つがドーンと出ます。
-    </div>
     <button class="addtoggle" data-form="cheerForm">＋ 一言を追加</button>
     <div class="form" id="cheerForm" style="display:none">
       <input id="cheerInput" placeholder="例: やったぜ！" autocomplete="off">
@@ -381,9 +364,6 @@
 <div class="modal" id="linkModal">
   <div class="sheet wide">
     <div class="mtitle" id="lkTitle"></div>
-    <div class="mdesc">
-      やりたいことの名前の🔗を押すと、ここに並べたものが上から順にまとめて開きます。
-    </div>
     <div id="lkRows"></div>
     <div class="row mt10 lkadd">
       <button class="btn ghost" id="lkAddUrl">＋ リンク</button>
@@ -398,6 +378,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-22.1"></script>
+<script src="app.js?v=2026-08-22.2"></script>
 </body>
 </html>
