@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-22.2">
+<meta name="app-version" content="2026-08-22.3">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-22.2">
+<link rel="stylesheet" href="style.css?v=2026-08-22.3">
 </head>
 <body>
 
@@ -185,10 +185,7 @@
 
     <h2>お気に入りの画像</h2>
     <div class="empty-note" style="padding-top:0">
-      「今日の箱」の背景になります。最初はやりたいことの箱に隠れていて、<br>
-      終わった箱から透けて見え、やり切ると「いま、これ」に大きく出ます。<br>
-      その日に出る1枚は、保存した中から毎日ランダムに選ばれます。<br>
-      保存できるのは<b>8枚まで</b>（各400KB以下に自動で圧縮されます）。
+      <b>8枚まで。</b>その日の1枚が「今日の箱」の背景になります。
     </div>
     <div class="row">
       <button class="btn ghost" id="btnAddImg">画像を追加</button>
@@ -212,18 +209,9 @@
         <input type="number" id="baseHoliday" min="0" max="48">
         <span class="fnote">箱</span>
       </div>
-      <div class="empty-note">
-        どの日も<b>平日（仕事）</b>から始まります。休みの日は、上の「平日／休み」を押して切り替えてください。<br>
-        ＋−でその日だけ増減できます。翌日はまた平日の基本値に戻ります。
-      </div>
     </div>
 
     <h2>箱が始まる時刻（目安）</h2>
-    <div class="empty-note" style="padding-top:0">
-      箱は<b>順番だけ</b>を持ちます。ここで決めるのは「何番目がだいたい何時か」の見当だけです。<br>
-      1週間ページと今日の箱に、ちょうど◯時のところだけ線が出ます。<br>
-      休憩を挟めば実際の時間はずれていきます。<b>あくまで目安</b>として使ってください。
-    </div>
     <div class="form">
       <div class="row">
         <span class="flabel">平日</span>
@@ -240,9 +228,6 @@
 
     <h2>ほかの端末と同期</h2>
     <div class="empty-note" style="padding-top:0">
-      スマホとパソコンで、<b>やりたいこと・箱・日記</b>を合わせます。<br>
-      <b>画像とタイマーの音は同期しません</b>（重いので、端末ごとに持ちます）。<br>
-      中身は<b>この端末で暗号化してから</b>送ります。合言葉はどこにも送りません。<br>
       <b>合言葉を忘れると、預けたものは二度と開けません。</b>紙に控えておいてください。
     </div>
     <div class="form">
@@ -272,10 +257,7 @@
 
     <h2>タイマーの音</h2>
     <div class="empty-note" style="padding-top:0">
-      今日タブの「いま、これ」のタイマーが0になったときに鳴る音です。<br>
-      何も入れなければ<b>既定の「ピッピッピッ」</b>。好きな音を入れると、そちらが鳴ります。<br>
-      入れた音は<b>10秒だけ</b>鳴ります（10秒に足りなければ、その間くり返します）。<br>
-      長い曲は<b>最初の10秒だけ</b>を取り込みます。それでも重いときは音を粗くして、<b>400KB以下</b>（画像1枚ぶん）に収めます。
+      <b>最初の10秒だけ</b>鳴ります。
     </div>
     <div class="row">
       <button class="btn ghost" id="btnAddSnd">音を選ぶ</button>
@@ -287,11 +269,7 @@
 
     <h2>ブラウザの場所（起動ファイル用）</h2>
     <div class="empty-note" style="padding-top:0">
-      「Chromeで開く」のようなリンクは、起動ファイル(.bat)から
-      <b>その exe を直に叩いて</b>開きます。ふつうの入れ方なら自動で見つかるので、
-      ここは<b>空のままでかまいません</b>。<br>
-      起動ファイルに「◯◯が見つかりませんでした」と出たときだけ、ここに場所を入れてください。<br>
-      調べ方：そのブラウザのショートカットを右クリック →「プロパティ」→「リンク先」。
+      ふつうは<b>空のままでかまいません</b>。起動ファイルに「見つかりませんでした」と出たときだけ入れてください。
     </div>
     <div class="form" id="browserPaths"></div>
 
@@ -378,6 +356,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-22.2"></script>
+<script src="app.js?v=2026-08-22.3"></script>
 </body>
 </html>

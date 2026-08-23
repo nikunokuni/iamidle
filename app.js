@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-22.2";
+const APP_VERSION = "2026-08-22.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1589,9 +1589,7 @@ function timerHTML(){
       : done
         ? '<button class="tgo" id="timerGo">もう一回</button>'
         : '<button class="tgo" id="timerGo">始めるよ</button>') +
-    '<span class="tnote">' +
-      (done ? "時間になりました" : run ? "1分ずつ増減できます" : "1箱ぶん＝30分。＋−で1分ずつ") +
-    '</span>' +
+    (done ? '<span class="tnote">時間になりました</span>' : '') +
     (done ? '<button class="tquiet" id="timerQuiet">音を止める</button>' : '') +
   '</div>';
 }
@@ -1682,8 +1680,7 @@ function renderNow(){
       '<button class="skip" id="nowNext">次の箱へ</button>' +
       (canSkip(t) ? '<button class="skip" id="nowSkip">今日はやらない</button>' : '') +
     '</div>' +
-    timerHTML() +
-    '<div class="kbd">Space で完了 ／ N で次の箱へ</div>';
+    timerHTML();
 
   bindTimer();
   $("nowDone").onclick = ()=> doTask(t.id);
@@ -2804,10 +2801,7 @@ function lkHint(){
   const bat = lkDraft.some(d => d.kind === "app" && !isScheme(String(d.path||"").trim())) ||
               lkDraft.some(d => d.kind === "url" && d.browser);
   return '上から順に開きます。' +
-    (bat ? '<br><b>この組み合わせは「起動ファイル(.bat)」からでないと言ったとおりに開きません。</b>' +
-           'ブラウザには exe を起動する手段も、開くブラウザを選ぶ手段もありません。' : '') +
-    '<br>アプリ欄には <b>exe のパス</b>のほか、<b>steam://rungameid/…</b> や <b>discord://</b> のような' +
-    '独自スキームも書けます。スキームならブラウザからそのまま起動できます。';
+    (bat ? '<br><b>この組み合わせは「起動ファイル(.bat)」からでないと開きません。</b>' : '');
 }
 $("lkRows").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
@@ -3793,11 +3787,7 @@ function renderVersion(){
     '<div class="row mt8" style="margin-top:14px">' +
       '<button class="btn ghost" id="btnUpdate">キャッシュを消して最新に更新</button>' +
     '</div>' +
-    '<div class="empty-note">' +
-      'GitHub Pages では、更新しても10分ほど古い版が表示されることがあります。<br>' +
-      '新しくしたのに変わらないときは、これを押してください。<br>' +
-      '<b>やりたいこと・画像・哲学などのデータは消えません。</b>' +
-    '</div>';
+    '<div class="empty-note">変わらないときは、これを押してください。<b>データは消えません。</b></div>';
   $("btnUpdate").onclick = hardReload;
   $("updateBar").classList.toggle("on", stale);
 }
