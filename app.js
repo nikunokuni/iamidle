@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-22.3";
+const APP_VERSION = "2026-08-27.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -3043,30 +3043,61 @@ document.querySelectorAll(".addtoggle").forEach(b => b.onclick = ()=>{
      押すたびに新しい1件として足すので、同じ日に何件でも置ける
 ========================================== */
 const DKEY = "jiko-kanri-diary-v1";
-/* 欄の定義。key が保存名、id が textarea、id+"Wrap" が包み。fold=false の欄は常に開いている */
+/* ▼ 決まった欄の定義。key が保存名、id が textarea、id+"Wrap" が包み。
+     fold=false の欄は常に開いている。
+   ▼ gone:true は「もう書けないが、書いてあるぶんは出す」欄（2026-08-27 の もやもや）。
+     今日の入力欄にも ＋ の並びにも出さず、過去の日記の表示と書き直しにだけ出る。
+     消してしまうと、書いてあったものが画面から消え、書き直したときに黙って落ちる */
 const DIARY_FIELDS = [
   { key:"done",   id:"dDone",   label:"今日できたこと",             fold:false },
-  { key:"mood",   id:"dMood",   label:"いま、もやもやしていること", fold:true  },
+  { key:"mood",   id:"",        label:"いま、もやもやしていること", fold:true, gone:true },
   { key:"gripe",  id:"dGripe",  label:"今日の気持ち",               fold:true  },
   { key:"thanks", id:"dThanks", label:"日常に感謝",                 fold:true  }
 ];
+/* いま書ける欄。$(f.id) を触るところは必ずこちらを回すこと（gone の欄に textarea は無い） */
+const DIARY_LIVE = DIARY_FIELDS.filter(f => !f.gone);
+
+/* ▼ タグ（自分で足す欄）。2026-08-27 追加。
+     保存名は "#筋トレ" のように、名前の頭に "#" を付けただけのもの。こうしてある理由：
+       - 決まった欄（done / mood / gripe / thanks）とも at とも、ぶつからない
+       - 見出しが保存名そのものなので、タグを消しても過去の日記はそのまま読める
+       - 別表を引かないので、移行も要らない（日記のデータ版は上げていない）
+     ▼ 名前の一覧（D.tags）は「いま ＋ の並びに出すもの」でしかない。
+       過去の日記が持っている中身とは無関係で、消しても書いたものは消えない */
+const TAG_LEN  = 14;      // 名前の長さ。＋ の並びからはみ出さない程度
+const TAG_MAX  = 12;      // 数。増やしすぎると入力欄の下が ＋ だらけになる
+const tagKey    = name => "#" + name;
+const isTagKey  = k => String(k).charAt(0) === "#";
+const tagLabel  = k => String(k).slice(1);
+const normTagName = s => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, TAG_LEN);
+function normTags(x){
+  if(!Array.isArray(x)) return [];
+  const out = [];
+  x.forEach(v => {
+    const n = normTagName(v);
+    if(n && out.indexOf(n) < 0) out.push(n);
+  });
+  return out.slice(0, TAG_MAX);
+}
+/* その日記が持っているタグの保存名。書いた順（＝キーの並び順）で出す */
+const entryTagKeys = e => Object.keys(e || {}).filter(isTagKey);
 
 let diaryFailed = "";
 function loadDiary(){
   let raw = null;
   try{
     raw = localStorage.getItem(DKEY);
-    if(!raw) return { v:1, entries:{} };
+    if(!raw) return { v:1, entries:{}, tags:[] };
     const d = JSON.parse(raw);
     if(!d || typeof d !== "object" || !d.entries || typeof d.entries !== "object") throw new Error("形が違う");
-    return { v:1, entries: d.entries };
+    return { v:1, entries: d.entries, tags: normTags(d.tags) };
   }catch(e){
     /* 本体の load() と同じ考え方。消える前に必ず横へ退避する */
     if(raw){
       try{ localStorage.setItem(DKEY + "-broken", raw); }catch(_){}
       diaryFailed = String((e && e.message) || e);
     }
-    return { v:1, entries:{} };
+    return { v:1, entries:{}, tags:[] };
   }
 }
 let D = loadDiary();
@@ -3120,12 +3151,17 @@ function diaryMonthSpan(){
   return ms.length ? { min: ms[0], max: ms[ms.length-1] } : null;
 }
 
-/* 入力欄の中身。空白だけの欄は「書いていない」とみなす */
+/* 入力欄の中身。空白だけの欄は「書いていない」とみなす。
+   タグの欄も同じ扱い（書いていなければ、その保存名ごと持たない） */
 function collectDiary(){
   const e = {};
-  DIARY_FIELDS.forEach(f => {
+  DIARY_LIVE.forEach(f => {
     const v = ($(f.id).value || "").replace(/\s+$/, "");
     if(v.trim()) e[f.key] = v;
+  });
+  tagAreas().forEach(t => {
+    const v = (t.value || "").replace(/\s+$/, "");
+    if(v.trim()) e[tagKey(t.dataset.tag)] = v;
   });
   return e;
 }
@@ -3141,7 +3177,8 @@ function saveNewDiary(){
   // 入りきらなかったときは足さなかったことにする。打ったものは欄に残す（消さない）
   if(!saveDiary()){ delete D.entries[key]; return; }
   diarySavedAt = Date.now();
-  DIARY_FIELDS.forEach(f => { $(f.id).value = ""; });
+  DIARY_LIVE.forEach(f => { $(f.id).value = ""; });
+  tagAreas().forEach(t => { t.value = ""; });
   diaryOpened = {};
   // 古い月でしぼりこんだままだと、いま保存したものが下に出ない。しぼりこみは解く
   diaryMonth = ""; diaryShow = 20;
@@ -3161,29 +3198,142 @@ function renderDiaryState(){
   }
   el.textContent = ""; el.className = "dstate";
 }
-/* 中身のある欄と、その場で開いた欄だけを見せる */
+/* ---- タグの欄（自分で足したもの） ---- */
+const tagAreas = () => [...document.querySelectorAll("#diaryTags [data-tag]")];
+const tagArea  = name => tagAreas().find(t => t.dataset.tag === name) || null;
+const kidFor   = (box, at, name) => [...box.children].find(el => el.dataset[at] === name) || null;
+
+/* ▼ タグの欄と ＋ の並びを組み立てる。名前は自由な文字なので静的には置けない。
+     ただし作り直すと打ちかけが消えるので、並びが変わったときだけ作り直し、
+     残るタグの中身は移し替える。年月の入力を作り直さないのと同じ理由 */
+let tagFieldsSig = "";
+function renderDiaryTagFields(){
+  const box = $("diaryTags"), togs = $("diaryTagTogs");
+  if(!box || !togs) return;
+  const sig = D.tags.join(" ");
+  if(sig === tagFieldsSig) return;
+  const keep = {};
+  tagAreas().forEach(t => { keep[t.dataset.tag] = t.value; });
+  box.innerHTML = D.tags.map(name =>
+    '<div class="dfield" data-tagwrap="' + esc(name) + '" style="display:none">' +
+      '<label>' + esc(name) +
+        '<button class="dtagx" data-tagdel="' + esc(name) + '" title="このタグを消す">✕</button>' +
+      '</label>' +
+      '<textarea data-tag="' + esc(name) + '"></textarea>' +
+    '</div>').join("");
+  togs.innerHTML = D.tags.map(name =>
+    '<span class="dtogwrap" data-tagtog="' + esc(name) + '">' +
+      '<button class="dtog" data-open="' + esc(tagKey(name)) + '">＋ ' + esc(name) + '</button>' +
+      '<button class="dtogx" data-tagdel="' + esc(name) + '" title="このタグを消す">✕</button>' +
+    '</span>').join("");
+  tagAreas().forEach(t => { if(keep[t.dataset.tag] != null) t.value = keep[t.dataset.tag]; });
+  tagFieldsSig = sig;
+}
+
+/* 中身のある欄と、その場で開いた欄だけを見せる（決まった欄も、タグの欄も同じ扱い） */
 function syncDiaryFolds(){
-  DIARY_FIELDS.forEach(f => {
+  const show = (wrap, tog, on) => {
+    if(wrap) wrap.style.display = on ? "" : "none";
+    if(tog)  tog.style.display  = on ? "none" : "";
+  };
+  DIARY_LIVE.forEach(f => {
     if(!f.fold) return;
-    const wrap = $(f.id + "Wrap");
-    const btn  = document.querySelector('.dtog[data-open="' + f.key + '"]');
-    const on   = !!diaryOpened[f.key] || !!($(f.id).value || "").trim();
-    wrap.style.display = on ? "" : "none";
-    if(btn) btn.style.display = on ? "none" : "";
+    show($(f.id + "Wrap"), document.querySelector('.dtog[data-open="' + f.key + '"]'),
+         !!diaryOpened[f.key] || !!($(f.id).value || "").trim());
   });
+  const box = $("diaryTags"), togs = $("diaryTagTogs");
+  if(!box || !togs) return;
+  D.tags.forEach(name => {
+    const wrap = kidFor(box, "tagwrap", name);
+    const ta   = wrap && wrap.querySelector("[data-tag]");
+    show(wrap, kidFor(togs, "tagtog", name),
+         !!diaryOpened[tagKey(name)] || !!((ta && ta.value) || "").trim());
+  });
+}
+/* 欄を開いて、そこへカーソルを置く。key は決まった欄の保存名か、タグなら "#名前" */
+function openDiaryField(key){
+  diaryOpened[key] = true;
+  syncDiaryFolds();
+  const ta = isTagKey(key) ? tagArea(tagLabel(key))
+                           : (DIARY_LIVE.find(f => f.key === key) || {}).id;
+  const el = typeof ta === "string" ? $(ta) : ta;
+  if(el) el.focus();
 }
 /* ▼ 入力欄の中身には触らない。ここは「保存前の下書き」であって、保存したものの写しではない。
      値を入れ直すと、タブを行き来しただけで打ちかけが消える。触っていいのは保存した直後だけ */
 function renderDiaryHead(){
   $("diaryTitle").textContent = diaryDateLabel(dayKey()) + " の日記";
+  renderDiaryTagFields();
   syncDiaryFolds();
 }
 
+/* ▼ タグを足す。名前がそのまま保存名になるので、名前を決めるのはここ1か所だけ */
+async function addDiaryTag(){
+  if(D.tags.length >= TAG_MAX){ toast("タグは" + TAG_MAX + "個までです"); return; }
+  const raw = await askInput("新しいタグ", "", "例：筋トレ");
+  if(raw === null) return;
+  const name = normTagName(raw);
+  if(!name) return;
+  if(D.tags.indexOf(name) >= 0){ toast("「" + name + "」はもうあります"); openDiaryField(tagKey(name)); return; }
+  if(DIARY_FIELDS.some(f => f.label === name)){ toast("決まった欄と同じ名前は付けられません"); return; }
+  D.tags.push(name);
+  if(!saveDiary()){ D.tags.pop(); return; }      // 入りきらなかったら足さなかったことにする
+  renderDiaryHead();
+  openDiaryField(tagKey(name));
+}
+/* ▼ タグを消す。消えるのは「これから ＋ に出すかどうか」だけで、
+     過去の日記が持っている中身には触らない（保存名に名前が入っているので、そのまま読める） */
+async function removeDiaryTag(name){
+  const i = D.tags.indexOf(name); if(i < 0) return;
+  const ta = tagArea(name);
+  const draft = ta ? ta.value : "";
+  const ok = await askConfirm("タグ「" + name + "」を消しますか？", "削除",
+    "これまでに書いたものは消えません。過去の日記にはそのまま残ります" +
+    (draft.trim() ? "（いま打っているぶんは消えます）" : ""));
+  if(!ok) return;
+  D.tags.splice(i, 1);
+  delete diaryOpened[tagKey(name)];
+  saveDiary();
+  renderDiaryHead();
+  toast("「" + name + "」を消しました", ()=>{
+    D.tags.splice(i, 0, name);
+    saveDiary();
+    if(draft.trim()) diaryOpened[tagKey(name)] = true;
+    renderDiaryHead();
+    const back = tagArea(name);
+    if(back && draft) back.value = draft;
+    syncDiaryFolds();
+    toast("戻しました");
+  });
+}
+
+/* 保存した1件の中身。決まった欄（もう書けない もやもや も、書いてあれば出す）→ タグの欄の順 */
+function diaryParts(e){
+  const out = [];
+  DIARY_FIELDS.forEach(f => {
+    if(String(e[f.key] || "").trim()) out.push({ key: f.key, label: f.label, val: e[f.key] });
+  });
+  entryTagKeys(e).forEach(k => {
+    if(String(e[k] || "").trim()) out.push({ key: k, label: tagLabel(k), val: e[k] });
+  });
+  return out;
+}
 function diaryBody(e){
-  return DIARY_FIELDS.filter(f => (e[f.key] || "").trim()).map(f =>
-    '<div class="dsec"><div class="dlab">' + f.label + '</div>' +
-    '<div class="dtxt">' + esc(e[f.key]) + '</div></div>'
+  return diaryParts(e).map(p =>
+    '<div class="dsec"><div class="dlab">' + esc(p.label) + '</div>' +
+    '<div class="dtxt">' + esc(p.val) + '</div></div>'
   ).join("");
+}
+/* 書き直しのときに出す欄。いま書けるもの ＋ その日記が持っているもの。
+   持っているぶんを出さないと、書き直した瞬間に黙って落ちる */
+function diaryEditFields(e){
+  const out = DIARY_FIELDS
+    .filter(f => !f.gone || String(e[f.key] || "").trim())
+    .map(f => ({ key: f.key, label: f.label }));
+  const keys = D.tags.map(tagKey);
+  entryTagKeys(e).forEach(k => { if(keys.indexOf(k) < 0) keys.push(k); });
+  keys.forEach(k => out.push({ key: k, label: tagLabel(k) }));
+  return out;
 }
 /* 保存した1件。書き直し中はその場が入力欄に変わる。
    同じ日に何件も並ぶので、日付のとなりに保存した時刻を出して見分けられるようにしてある */
@@ -3197,9 +3347,9 @@ function diaryCard(key, agoYears){
   if(diaryEditKey === key){
     return '<article class="dcard editing' + (agoYears ? ' same' : '') + '" data-key="' + key + '">' +
       head + '</div>' +
-      DIARY_FIELDS.map(f =>
-        '<div class="dfield"><label>' + f.label + '</label>' +
-        '<textarea data-fld="' + f.key + '">' + esc(e[f.key] || "") + '</textarea></div>'
+      diaryEditFields(e).map(f =>
+        '<div class="dfield"><label>' + esc(f.label) + '</label>' +
+        '<textarea data-fld="' + esc(f.key) + '">' + esc(e[f.key] || "") + '</textarea></div>'
       ).join("") +
       '<div class="row" style="justify-content:flex-end">' +
         '<button class="btn ghost" data-act="dcancel">やめる</button>' +
@@ -3288,11 +3438,18 @@ function renderDiary(){
 }
 
 $("diarySaveBtn").onclick = saveNewDiary;
-document.querySelectorAll(".dtog").forEach(b => b.onclick = ()=>{
-  diaryOpened[b.dataset.open] = true;
-  syncDiaryFolds();
-  const f = DIARY_FIELDS.find(x => x.key === b.dataset.open);
-  if(f) $(f.id).focus();
+$("diaryTagNew").onclick  = addDiaryTag;
+/* ▼ ＋ の並びは、タグのぶんが出たり消えたりする。1つずつ繋ぐと繋ぎ直しが要るので、
+     並び全体で受ける。タグの欄そのものにも ✕ があるので、そちらも同じ手で受ける */
+$("diaryMore").addEventListener("click", e => {
+  const del = e.target.closest("[data-tagdel]");
+  if(del){ removeDiaryTag(del.dataset.tagdel); return; }
+  const b = e.target.closest(".dtog[data-open]");
+  if(b) openDiaryField(b.dataset.open);
+});
+$("diaryTags").addEventListener("click", e => {
+  const del = e.target.closest("[data-tagdel]");
+  if(del) removeDiaryTag(del.dataset.tagdel);
 });
 /* 自動保存をやめたので、押さずに閉じると打ったものは消える。ここで一度だけ引き止める */
 window.addEventListener("beforeunload", e => {
@@ -3687,7 +3844,8 @@ $("fileInput").onchange = e => {
     }catch(err){ toast("読み込めませんでした"); return; }
     // 日記が入っていない古い書き出しで、いまの日記を消してしまわないこと
     const inDiary = (d.diary && typeof d.diary === "object" && d.diary.entries &&
-                     typeof d.diary.entries === "object") ? { v:1, entries: d.diary.entries } : null;
+                     typeof d.diary.entries === "object")
+                    ? { v:1, entries: d.diary.entries, tags: normTags(d.diary.tags) } : null;
     const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
       "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます。" +
       (inDiary ? "日記も、読み込むほうに置き換わります（" + Object.keys(inDiary.entries).length + "件）"
@@ -3957,6 +4115,9 @@ function localRecords(){
   Object.keys(S.weekOverrides).forEach(w => add("wkov", w, S.weekOverrides[w]));
   add("set", "base", S.base);
   add("set", "boxStart", S.boxStart);
+  // 日記のタグ（＋ の並びに出す名前）。中身は日記1件ずつが持っているので、これは名前だけ。
+  // set にしてあるのは、古い版の端末が墓標を送ってきても消えないため（下の applyRecord）
+  add("set", "dtags", D.tags);
   Object.keys(D.entries).forEach(k => add("diary", k, D.entries[k]));
   return out;
 }
@@ -4008,6 +4169,7 @@ function applyRecord(kind, id, body){
     if(gone) return;                          // 設定は消さない
     if(id === "base") S.base = body;
     if(id === "boxStart") S.boxStart = body;
+    if(id === "dtags") D.tags = normTags(body);
     return;
   }
   const list = kind === "routine" ? S.routines : kind === "philo" ? S.philos : kind === "cheer" ? S.cheers : null;

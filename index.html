@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-08-22.3">
+<meta name="app-version" content="2026-08-27.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-08-22.3">
+<link rel="stylesheet" href="style.css?v=2026-08-27.1">
 </head>
 <body>
 
@@ -125,10 +125,6 @@
         <label for="dDone">今日できたこと</label>
         <textarea id="dDone" placeholder="小さいことでいい。ひとつ書ければ十分"></textarea>
       </div>
-      <div class="dfield" id="dMoodWrap" style="display:none">
-        <label for="dMood">いま、もやもやしていること</label>
-        <textarea id="dMood" placeholder="言葉にすると、輪郭が出る"></textarea>
-      </div>
       <div class="dfield" id="dGripeWrap" style="display:none">
         <label for="dGripe">今日の気持ち</label>
         <textarea id="dGripe" placeholder="誰にも見せない。好きに書く"></textarea>
@@ -137,10 +133,14 @@
         <label for="dThanks">日常に感謝</label>
         <textarea id="dThanks" placeholder="あたりまえの中から、ひとつ"></textarea>
       </div>
+      <!-- 自分で足したタグの欄。名前は自由なので app.js が組み立てる。
+           打ちかけを消さないよう、並びが変わったときだけ作り直している -->
+      <div id="diaryTags"></div>
       <div class="dmore" id="diaryMore">
-        <button class="dtog" data-open="mood">＋ もやもや</button>
         <button class="dtog" data-open="gripe">＋ 今日の気持ち</button>
         <button class="dtog" data-open="thanks">＋ 日常に感謝</button>
+        <span id="diaryTagTogs"></span>
+        <button class="dtog dtognew" id="diaryTagNew">＋ タグ</button>
       </div>
       <div class="dsave">
         <button class="btn" id="diarySaveBtn">保存する</button>
@@ -356,6 +356,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-08-22.3"></script>
+<script src="app.js?v=2026-08-27.1"></script>
 </body>
 </html>
