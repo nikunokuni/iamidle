@@ -487,6 +487,13 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   background:rgba(255,209,102,.14);border-radius:99px;padding:1px 9px;flex:none;
 }
 .dchead .sp{margin-left:auto}
+/* 日付を1日ずつ動かす。書き直し（✎）を開いているときだけ出る */
+.datemv{
+  background:none;border:1px solid var(--line);color:var(--fg-dim);
+  border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;flex:none;
+}
+.datemv:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.datemv:disabled{opacity:.3;cursor:default}
 .dsec{margin-top:10px}
 .dlab{font-size:11px;letter-spacing:.08em;color:var(--fg-faint)}
 .dtxt{white-space:pre-wrap;line-height:1.75;margin-top:3px;word-break:break-word}

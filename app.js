@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-08-27.1";
+const APP_VERSION = "2026-09-02.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -3126,6 +3126,26 @@ function newDiaryKey(){
   while(D.entries[day + "#" + ts]) ts++;   // 同じミリ秒に2回入っても、前のぶんを潰さない
   return day + "#" + ts;
 }
+/* その日から n 日ずらした日付キー。dayStart() は午前2時ちょうどを返すので、
+   日をまたぐ足し引きでも夏時間のような時刻のずれを拾わない */
+function shiftDayKey(key, n){
+  const d = dayStart(diaryDateOf(key));
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+}
+/* ▼ その日記を、別の日付の1件として置き直すときのキー。
+     日付はキーの先頭10文字そのものなので、日付を変える＝キーを付け替えること。
+   ▼ 後ろの時刻は、いまのキーが持っているものをそのまま引き継ぐ（＝並び順が変わらない）。
+     古い形（"2026-08-13"）には後ろが無いので、そのときだけ at か、いまの時刻から作る。
+     動かした1件だけがいまの形になるだけで、動かしていない古い日記はそのまま */
+function movedDiaryKey(key, day){
+  const e = D.entries[key] || {};
+  const i = String(key).indexOf("#");
+  let ts = i >= 0 ? Number(String(key).slice(i + 1)) : NaN;
+  if(!isFinite(ts)) ts = e.at || Date.now();
+  while(D.entries[day + "#" + ts]) ts++;   // 同じ時刻の1件が先にあっても潰さない
+  return day + "#" + ts;
+}
 
 /* 「2026年8月13日（木）」 */
 function diaryDateLabel(key){
@@ -3307,6 +3327,60 @@ async function removeDiaryTag(name){
   });
 }
 
+/* ---- 日付を動かす（2026-09-02 追加） ----
+   書いた記事の保存を押し忘れて、翌日に押してしまったときに前の日へ戻すためのもの。
+   入口は書き直し（✎）の中だけ。ふだんのカードには出さない */
+
+/* 書き直しの途中で日付を動かすと、カードを作り直すことになる。
+   打ちかけが消えないように、写して、作り直したあとに戻す */
+function diaryDraftOf(card){
+  const out = {};
+  if(card) card.querySelectorAll("[data-fld]").forEach(t => { out[t.dataset.fld] = t.value; });
+  return out;
+}
+function fillDiaryDraft(draft){
+  if(!draft) return;
+  const card = document.querySelector("#sec-diary .dcard.editing"); if(!card) return;
+  card.querySelectorAll("[data-fld]").forEach(t => {
+    if(draft[t.dataset.fld] != null) t.value = draft[t.dataset.fld];
+  });
+}
+/* ▼ 日記1件を n 日ずらす。日付はキーの先頭10文字そのものなので、
+     中身には触らず、キーだけ付け替える。
+   ▼ at（保存を押した時刻）は付け替えない。書き直しで付け替えないのと同じ理由で、
+     at は「いつ書いたか」ではなく「いつ保存したか」の記録だから
+   ▼ 押した瞬間に確定する（「保存」を押さなくても動く）。戻すのはトーストの「取り消す」
+   ▼ 同期はこれで通る。キーがそのままIDなので「古いIDの墓標＋新しいID1件」として送られる */
+function moveDiaryDate(key, n){
+  const e = D.entries[key]; if(!e) return;
+  const day = shiftDayKey(key, n);
+  if(day > dayKey()) return;                 // 未来には置かない（ボタンも出していないが、念のため）
+  const next = movedDiaryKey(key, day);
+  if(next === key) return;
+
+  const draft = (diaryEditKey === key) ? diaryDraftOf(document.querySelector("#sec-diary .dcard.editing")) : null;
+
+  delete D.entries[key];
+  D.entries[next] = e;
+  // 入りきらなかったときは動かさなかったことにする
+  if(!saveDiary()){ delete D.entries[next]; D.entries[key] = e; return; }
+  if(diaryEditKey === key) diaryEditKey = next;
+  // 月をまたいだのに古い月でしぼりこんだままだと、動かしたカードが消えて見失う
+  if(diaryMonth && diaryMonth !== day.slice(0,7)){ diaryMonth = ""; diaryShow = 20; }
+  renderDiaryPast(); renderStats();
+  fillDiaryDraft(draft);
+
+  toast(diaryDateLabel(next) + " にしました", ()=>{
+    const back = (diaryEditKey === next) ? diaryDraftOf(document.querySelector("#sec-diary .dcard.editing")) : null;
+    delete D.entries[next];
+    D.entries[key] = e;
+    if(diaryEditKey === next) diaryEditKey = key;
+    saveDiary(); renderDiaryPast(); renderStats();
+    fillDiaryDraft(back);
+    toast("戻しました");
+  });
+}
+
 /* 保存した1件の中身。決まった欄（もう書けない もやもや も、書いてあれば出す）→ タグの欄の順 */
 function diaryParts(e){
   const out = [];
@@ -3345,8 +3419,16 @@ function diaryCard(key, agoYears){
     (agoYears ? '<div class="dcago">' + agoYears + '年前</div>' : '') +
     '<div class="sp"></div>';
   if(diaryEditKey === key){
+    /* ▼ 日付を動かすのは、この書き直しの中だけ。1日ずつ動かし、今日より後には進めない。
+         押した瞬間に確定する（本文とは別。本文はこれまでどおり「保存」を押したときだけ） */
+    const ahead = shiftDayKey(key, 1) > dayKey();
     return '<article class="dcard editing' + (agoYears ? ' same' : '') + '" data-key="' + key + '">' +
-      head + '</div>' +
+      head +
+      '<button class="datemv" data-act="dprev" title="' +
+        esc(diaryDateLabel(shiftDayKey(key, -1))) + ' にする">‹ 前の日</button>' +
+      '<button class="datemv" data-act="dnext"' + (ahead ? ' disabled title="今日より後にはできません"' :
+        ' title="' + esc(diaryDateLabel(shiftDayKey(key, 1))) + ' にする"') + '>翌日 ›</button>' +
+      '</div>' +
       diaryEditFields(e).map(f =>
         '<div class="dfield"><label>' + esc(f.label) + '</label>' +
         '<textarea data-fld="' + esc(f.key) + '">' + esc(e[f.key] || "") + '</textarea></div>'
@@ -3468,6 +3550,8 @@ $("sec-diary").addEventListener("click", async e => {
 
   if(act === "dedit"){ diaryEditKey = key; renderDiaryPast(); return; }
   if(act === "dcancel"){ diaryEditKey = ""; renderDiaryPast(); return; }
+  if(act === "dprev"){ moveDiaryDate(key, -1); return; }
+  if(act === "dnext"){ moveDiaryDate(key,  1); return; }
   if(act === "dsave"){
     const next = {};
     card.querySelectorAll("[data-fld]").forEach(t => {
