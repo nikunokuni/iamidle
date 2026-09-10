@@ -17,6 +17,11 @@
   --ok:#4ecb8f;
   --warn:#ffa552;
   --danger:#ff6b6b;
+  /* カテゴリー（せきにん／ごほうび／おきらく）。app.js の CATS と1対1 */
+  --cat-resp:#6ea8fe;
+  --cat-reward:#ffd166;
+  --cat-easy:#4ecb8f;
+  --cat-none:#6b7688;
   --radius:14px;
   --navh:64px;          /* 下のタブ帯の高さ。今日タブの枠を固定するときに使う */
 }
@@ -323,6 +328,44 @@ body.now-fixed .side #rouletteBox{
 .tag.freq{background:var(--card2);color:var(--fg-faint)}
 .tag.now{background:rgba(91,156,255,.18);color:var(--accent)}
 .tag.box{background:rgba(255,209,102,.14);color:var(--accent2)}
+
+/* ---------- カテゴリー（せきにん／ごほうび／おきらく） ----------
+   組ごとに --cat を差し替えるだけ。見出しも札もチップも、同じ1色から作る */
+.cat-resp  {--cat:var(--cat-resp)}
+.cat-reward{--cat:var(--cat-reward)}
+.cat-easy  {--cat:var(--cat-easy)}
+.cat-none  {--cat:var(--cat-none)}
+/* まとまりの見出し（今日タブ・1週間タブのリスト） */
+.cathead{
+  display:flex;align-items:center;gap:6px;
+  font-size:11px;letter-spacing:.08em;color:var(--fg-dim);
+  margin:12px 0 6px;
+}
+.cathead:first-child{margin-top:0}
+.cathead .catdot{width:8px;height:8px;border-radius:50%;background:var(--cat,var(--cat-none));flex:none}
+.cathead .cn{color:var(--fg-faint);font-size:10px;font-variant-numeric:tabular-nums}
+/* 一覧の行に付く札（「やりたいこと」タブ）。付けていないものには出さない */
+.cattag{
+  font-size:11px;font-weight:600;flex:none;
+  padding:1px 8px;border-radius:99px;
+  color:var(--cat,var(--cat-none));
+  border:1px solid var(--cat,var(--line));
+  background:var(--card2);
+}
+/* リストの行。見出しから離れても、左の色帯で組が分かる */
+#unplaced .item,.wksidelist .item{border-left:3px solid var(--cat,transparent)}
+/* 選ぶチップ。選んでいない間も、頭の丸で色が分かる */
+.chips.cats .chip::before{
+  content:"";display:inline-block;vertical-align:middle;
+  width:8px;height:8px;border-radius:50%;margin-right:7px;
+  background:var(--cat,var(--cat-none));
+}
+.chips.cats .chip:hover{border-color:var(--cat,var(--accent))}
+.chips.cats .chip.on{
+  background:var(--cat,var(--accent));border-color:var(--cat,var(--accent));
+  color:#0b1017;font-weight:700;
+}
+.chips.cats .chip.on::before{background:#0b1017;opacity:.45}
 
 /* ---------- forms ---------- */
 .form{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:14px}
@@ -817,10 +860,19 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .weekside .panel .ph{justify-content:flex-start;gap:10px;margin-bottom:7px;flex-wrap:wrap}
 .wksidelist{
   display:flex;flex-wrap:wrap;gap:6px;
-  max-height:94px;                     /* ちょうど2段ぶん（1件43px＋すきま6px）。3段目からは縦に転がる */
+  /* もとは2段ぶん（94px）だった。カテゴリーの見出しが段のあいだに入るので、
+     「見出し18px ＋ すきま6px ＋ 1段43px ＋ すきま6px ＋ 見出しの上の空き4px＝77px」を
+     3つぶんで 230px。ちょうど区切りで終わるので、下の段が半端に切れない。
+     入りきらないぶんは、これまでどおり縦に転がる。
+     ▼ 1件の丈や見出しの丈を変えたら、ここも数え直すこと */
+  max-height:230px;
   overflow-y:auto;overflow-x:hidden;
   padding:1px 4px 1px 1px;scrollbar-width:thin;
 }
+/* カテゴリーの見出しは、この並びの中で幅いっぱいを取って改行させる。
+   別の枠に分けると帯が縦に伸びるので、1つの並びのまま区切っている */
+.wksidelist .cathead{flex:0 0 100%;margin:4px 0 0}
+.wksidelist .cathead:first-child{margin-top:0}
 .wksidelist .item{
   margin-bottom:0;flex:0 0 auto;width:206px;
   gap:6px;padding:5px 8px;border-radius:9px;
@@ -840,6 +892,8 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 
 @media (max-width:900px){
   .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* 画面が狭いときは帯を浅くする。深いと、下の7日ぶんが押し出されて見えなくなる */
+  .wksidelist{max-height:148px}
 }
 /* 指で押す画面では、箱を増やす／減らすボタンが小さすぎて当たらない。大きくする */
 @media (max-width:900px), (hover:none){

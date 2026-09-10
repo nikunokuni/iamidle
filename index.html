@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-09-02.1">
+<meta name="app-version" content="2026-09-10.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-09-02.1">
+<link rel="stylesheet" href="style.css?v=2026-09-10.1">
 </head>
 <body>
 
@@ -72,6 +72,8 @@
         <input type="number" id="taskSize" min="1" max="16" value="1">
         <span class="fnote" id="taskSizeNote">箱 ＝ 30分</span>
       </div>
+      <!-- タグ（せきにん／ごほうび／おきらく）。中身は app.js の CATS から組み立てる -->
+      <div class="chips cats mt10" id="catChips"></div>
       <div class="chips mt10" id="whenChips">
         <button class="chip on" data-when="any">いつでも</button>
         <button class="chip" data-when="am">☀ 午前</button>
@@ -356,6 +358,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-09-02.1"></script>
+<script src="app.js?v=2026-09-10.1"></script>
 </body>
 </html>

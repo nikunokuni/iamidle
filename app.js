@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-09-02.1";
+const APP_VERSION = "2026-09-10.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -271,6 +271,74 @@ function nowSlot(){
 }
 const SLOT = { am:{label:"午前", icon:"☀"}, pm:{label:"午後", icon:"🌙"}, any:{label:"いつでも", icon:"・"} };
 const WD = ["日","月","火","水","木","金","土"];
+
+/* ================= カテゴリー（タグ） =================
+   やりたいことを「せきにん／ごほうび／おきらく」の3つに分ける。
+   今日タブの「箱に入れていないやりたいこと」と、1週間タブの「この週に置くもの」を、
+   このまとまりごとに見出しで分けて出す。
+
+   ▼ 選ばなくてよい。付けていないものは「タグなし」のまとまりに、いちばん下へ出る。
+     だから古いデータもそのまま読める（データ版は v7 のまま。migrate は要らない）
+   ▼ ここが色と名前の元。画面のチップも見出しも、全部 CATS から作る。
+     追加フォームの `#catChips` も JS が組み立てるので、index.html に名前を書き写さないこと
+====================================================== */
+const CATS = [
+  { key:"resp",   label:"せきにん" },
+  { key:"reward", label:"ごほうび" },
+  { key:"easy",   label:"おきらく" }
+];
+const CAT_NONE = { key:"", label:"タグなし" };
+const CAT_KEYS = CATS.map(c => c.key);
+/* 保存されている値を読む。知らない値・未設定は "" （タグなし）にそろえる */
+const catOf = t => (t && CAT_KEYS.includes(t.cat)) ? t.cat : "";
+const catInfo = k => CATS.find(c => c.key === k) || CAT_NONE;
+/* CSS の色を引くための組名。タグなしは cat-none */
+const catClass = k => "cat-" + (k || "none");
+/* カテゴリーごとに分ける。空のまとまりは返さない（見出しだけが残ると壊れて見える）。
+   of … 要素からカテゴリーを取り出す関数。リストが { t, ... } のときに使う */
+function byCat(list, of){
+  const pick = of || (x => catOf(x));
+  return [...CATS, CAT_NONE]
+    .map(c => ({ cat: c, list: list.filter(x => pick(x) === c.key) }))
+    .filter(g => g.list.length);
+}
+/* まとまりの見出し。件数を添える */
+const catHead = (c, n) => '<div class="cathead ' + catClass(c.key) + '">' +
+  '<span class="catdot"></span>' + esc(c.label) + '<span class="cn">' + n + '</span></div>';
+/* まとまりごとに見出しを立てて並べる。row … 1件ぶんのHTMLを作る関数
+   ▼ ぜんぶタグなしのときは、見出しを出さない。
+     何も分かれていないのに「タグなし」の見出しだけが立つのは、ただの飾りになる */
+function catSections(list, of, row){
+  const gs = byCat(list, of);
+  const bare = gs.length === 1 && gs[0].cat.key === "";
+  return gs.map(g => (bare ? "" : catHead(g.cat, g.list.length)) + g.list.map(row).join("")).join("");
+}
+/* 一覧の行に付ける小さな札。付けていないものには何も出さない */
+function catTag(t){
+  const k = catOf(t);
+  return k ? '<span class="cattag ' + catClass(k) + '">' + esc(catInfo(k).label) + '</span>' : '';
+}
+/* 選ぶチップ。追加フォーム（index.html の #catChips）と編集画面で、同じものを使う */
+function catChipsBtns(cur){
+  const now = catOf({ cat: cur });
+  return '<button class="chip ' + catClass("") + (now === "" ? " on" : "") + '" data-cat="">なし</button>' +
+    CATS.map(c => '<button class="chip ' + catClass(c.key) + (now === c.key ? " on" : "") +
+      '" data-cat="' + c.key + '">' + esc(c.label) + '</button>').join("");
+}
+const catChipsHTML = (cur, id) => '<div class="chips cats" id="' + id + '">' + catChipsBtns(cur) + '</div>';
+/* チップの並びを押したときの受け取り。選ばれている値を返す */
+function bindCatChips(id, onPick){
+  const box = $(id); if(!box) return;
+  box.onclick = e => {
+    const c = e.target.closest(".chip"); if(!c) return;
+    box.querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
+    if(onPick) onPick(c.dataset.cat || "");
+  };
+}
+const catChipsValue = id => {
+  const on = $(id) && $(id).querySelector(".chip.on");
+  return on ? (on.dataset.cat || "") : "";
+};
 
 /* ================= 週（日曜はじまり） =================
    アプリ全体で週は日曜はじまりにそろえる。1週間ページも「週に何回」の集計も同じ。
@@ -1981,32 +2049,35 @@ function renderWeekSide(){
     })
     .filter(Boolean);
 
+  const row = o => {
+    const t = o.t;
+    const sub = [t.size > 1 ? t.size + "箱" : "1箱"];
+    sub.push(t.freq.unit === "once" ? "単発" : freqLabel(t.freq));
+    if(t.fixed) sub.push(fixedLabel(t));
+    const ovr = t.freq.unit === "week" && hasOverride(t, key);
+    // ▼ 名前と下の行は1行で打ち切る（CSS の .nm / .s）。ここが折り返すと丈が揃わず、
+    //   2段に収めた枠から溢れる。全部読みたいときのために title で出しておく
+    const full = t.text + "（あと" + o.left + "回 ・ " + sub.join(" ・ ") + "）";
+    return '<div class="item ' + catClass(catOf(t)) + '" data-id="' + t.id + '" draggable="true" title="' + esc(full) + '">' +
+      '<span class="grip" title="ドラッグして箱へ">⠿</span>' +
+      '<div class="grow">' +
+        '<div class="nm">' + esc(t.text) + '</div>' +
+        '<div class="s">あと' + o.left + '回 ・ ' + esc(sub.join(" ・ ")) + '</div>' +
+      '</div>' +
+      (t.freq.unit === "week"
+        ? '<span class="wkov' + (ovr ? " on" : "") + '">' +
+            '<button data-act="ovminus" title="今週だけ1回減らす">−</button>' +
+            '<b>' + countFor(t, key) + '</b>' +
+            '<button data-act="ovplus" title="今週だけ1回増やす">＋</button>' +
+          '</span>'
+        : '') +
+    '</div>';
+  };
+  // ▼ カテゴリーの見出しは、この折り返す並びの中に**幅いっぱいの1件**として入れてある
+  //   （CSS の .wksidelist .cathead）。別の枠に分けると、帯が縦に伸びて画面を食う
   const body = !list.length
     ? '<div class="empty-note" style="padding:4px 2px">この週に置くものは、もうありません。</div>'
-    : '<div class="wksidelist">' + list.map(o => {
-        const t = o.t;
-        const sub = [t.size > 1 ? t.size + "箱" : "1箱"];
-        sub.push(t.freq.unit === "once" ? "単発" : freqLabel(t.freq));
-        if(t.fixed) sub.push(fixedLabel(t));
-        const ovr = t.freq.unit === "week" && hasOverride(t, key);
-        // ▼ 名前と下の行は1行で打ち切る（CSS の .nm / .s）。ここが折り返すと丈が揃わず、
-        //   2段に収めた枠から溢れる。全部読みたいときのために title で出しておく
-        const full = t.text + "（あと" + o.left + "回 ・ " + sub.join(" ・ ") + "）";
-        return '<div class="item" data-id="' + t.id + '" draggable="true" title="' + esc(full) + '">' +
-          '<span class="grip" title="ドラッグして箱へ">⠿</span>' +
-          '<div class="grow">' +
-            '<div class="nm">' + esc(t.text) + '</div>' +
-            '<div class="s">あと' + o.left + '回 ・ ' + esc(sub.join(" ・ ")) + '</div>' +
-          '</div>' +
-          (t.freq.unit === "week"
-            ? '<span class="wkov' + (ovr ? " on" : "") + '">' +
-                '<button data-act="ovminus" title="今週だけ1回減らす">−</button>' +
-                '<b>' + countFor(t, key) + '</b>' +
-                '<button data-act="ovplus" title="今週だけ1回増やす">＋</button>' +
-              '</span>'
-            : '') +
-        '</div>';
-      }).join("") + '</div>';
+    : '<div class="wksidelist">' + catSections(list, o => catOf(o.t), row) + '</div>';
 
   el.innerHTML =
     '<div class="panel">' +
@@ -2085,24 +2156,27 @@ function renderUnplaced(){
       '<div class="empty-note">まだやりたいことがありません。「やりたいこと」タブから追加してください。</div></div>';
     return;
   }
+  // ▼ カテゴリー（せきにん／ごほうび／おきらく）ごとに見出しを立てて分ける。
+  //   並びは todayTasks() の順（急ぎの順）のまま。まとまりの中でだけ並ぶ
+  const row = o => {
+    const t = o.t, st = o.st;
+    const late = o.urgency >= 4;
+    const sub = [];
+    if(whenOf(t) !== "any") sub.push(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
+    sub.push(t.size > 1 ? t.size + "箱" : "1箱");
+    sub.push(t.freq.unit === "once"
+      ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
+      : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
+    return '<div class="item ' + catClass(catOf(t)) + '" data-id="' + t.id + '" draggable="true">' +
+      '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
+      '<div class="grow">' + taskTitle(t) + '<div class="s">' + esc(sub.join(" ・ ")) + '</div></div>' +
+      (late ? '<span class="tag late">遅れ</span>' : '') +
+      (canSkip(t) ? '<button class="iconbtn" data-act="skip" title="今日はやらない">⏭</button>' : '') +
+    '</div>';
+  };
   const body = !list.length
     ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
-    : list.map(o => {
-        const t = o.t, st = o.st;
-        const late = o.urgency >= 4;
-        const sub = [];
-        if(whenOf(t) !== "any") sub.push(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
-        sub.push(t.size > 1 ? t.size + "箱" : "1箱");
-        sub.push(t.freq.unit === "once"
-          ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
-          : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
-        return '<div class="item" data-id="' + t.id + '" draggable="true">' +
-          '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
-          '<div class="grow">' + taskTitle(t) + '<div class="s">' + esc(sub.join(" ・ ")) + '</div></div>' +
-          (late ? '<span class="tag late">遅れ</span>' : '') +
-          (canSkip(t) ? '<button class="iconbtn" data-act="skip" title="今日はやらない">⏭</button>' : '') +
-        '</div>';
-      }).join("");
+    : catSections(list, o => catOf(o.t), row);
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
@@ -2343,6 +2417,11 @@ $("skippedList").addEventListener("click", e => {
 });
 
 /* ================= やりたいこと追加フォーム ================= */
+/* タグ（せきにん／ごほうび／おきらく）。中身は CATS から組み立てる。
+   一度選んだら、そのまま次の追加にも残る（同じ種類を続けて足すことが多いので） */
+let taskCat = "";
+$("catChips").innerHTML = catChipsBtns(taskCat);
+bindCatChips("catChips", k => { taskCat = k; });
 let taskWhen = "any";
 $("whenChips").addEventListener("click", e => {
   const c = e.target.closest(".chip"); if(!c) return;
@@ -2386,7 +2465,7 @@ function addTask(){
   const first = normLink({ kind: "url", url: $("taskUrl").value });
   S.tasks.push({
     id: uid(), text: v, links: first ? [first] : [],
-    when: taskWhen, freq, size, goal, fixed: null, remindAt: "",
+    when: taskWhen, cat: taskCat, freq, size, goal, fixed: null, remindAt: "",
     log: [], actuals: [], createdAt: Date.now()
   });
   $("taskInput").value = ""; $("taskUrl").value = "";
@@ -2468,7 +2547,7 @@ function onceRow(t){
       '<div class="s">' + boxTime(t.size) + (goal > 1 ? ' ・ 全' + goal + '回' : '') + esc(actualHint(t)) +
         (linksOf(t).length ? ' ・ ' + esc(linkSummary(t)) : '') + '</div>' +
     '</div>' +
-    sizeBox(t) +
+    catTag(t) + sizeBox(t) +
     (done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>') +
     (!done && n > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
     whenBtn(t) + editBtn(t) + linkBtn(t) +
@@ -2482,7 +2561,7 @@ function farRow(t){
     '<div class="grow">' + taskTitle(t) +
       '<div class="s">' + esc(t.remindAt) + ' から出てきます ・ ' + boxTime(t.size) + '</div>' +
     '</div>' +
-    editBtn(t) + linkBtn(t) +
+    catTag(t) + editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -2508,7 +2587,7 @@ function repeatRow(t){
       '<div class="s">' + esc(freqLabel(t.freq)) + ' ・ ' + esc(st.period.label) + ' ・ ' + boxTime(t.size) +
       (t.fixed ? ' ・ ' + esc(fixedLabel(t)) : '') + esc(actualHint(t)) + '</div>' +
     '</div>' +
-    sizeBox(t) +
+    catTag(t) + sizeBox(t) +
     (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
     whenBtn(t) + editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
@@ -2539,7 +2618,7 @@ let edTaskId = "";       // 直しているやりたいことのID。新しく�
 let edNewAt  = null;     // 空き箱から作るとき { key, i }。ふつうの編集では null
 
 /* 入力欄を組み立てて、動きをつける。
-   v … 初期値 { text, freq, goal, size, when, fixed, remindAt }
+   v … 初期値 { text, cat, freq, goal, size, when, fixed, remindAt }
    isNew … true なら名前だけ見せて、あとは「詳細」を押すまで畳んでおく */
 function buildTaskForm(v, isNew){
   const f = v.freq || { unit: "once" };
@@ -2551,6 +2630,7 @@ function buildTaskForm(v, isNew){
   const size = Math.max(1, v.size || 1);
   // 名前より下は、まとめて畳めるように1つの枠に入れてある
   const more =
+    '<div class="edrow"><span>タグ</span>' + catChipsHTML(v.cat, "edCat") + '</div>' +
     '<div class="edrow"><span>くり返し</span><div class="chips" id="edUnit">' +
       units.map(([u,l]) => '<button class="chip' + (f.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
         l + '</button>').join("") + '</div></div>' +
@@ -2592,6 +2672,7 @@ function buildTaskForm(v, isNew){
     const c = e.target.closest(".chip"); if(!c) return;
     $("edWhen").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
   };
+  bindCatChips("edCat");
   $("edSize").oninput = ()=>{
     const n = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
     $("edSizeNote").textContent = boxTime(n);
@@ -2613,6 +2694,7 @@ function readTaskForm(){
   const n     = Math.min(365, Math.max(1, parseInt($("edN").value, 10) || 1));
   const size  = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
   const when  = ($("edWhen").querySelector(".chip.on") || {}).dataset?.when || "any";
+  const cat   = catChipsValue("edCat");
   let freq, goal;
   if(u === "once"){ freq = { unit: "once" }; goal = count; }   // 単発の総回数（期限なし）
   else{
@@ -2626,13 +2708,13 @@ function readTaskForm(){
     fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
   }
   const rm = $("edRemind").value;
-  return { text, size, when, freq, goal, fixed,
+  return { text, size, when, cat, freq, goal, fixed,
            remindAt: /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "" };
 }
 function openTaskEditor(id){
   const t = taskById(id); if(!t) return;
   edTaskId = id; edNewAt = null;
-  buildTaskForm({ text: t.text, freq: t.freq, goal: goalOf(t), size: t.size,
+  buildTaskForm({ text: t.text, cat: catOf(t), freq: t.freq, goal: goalOf(t), size: t.size,
                   when: whenOf(t), fixed: t.fixed, remindAt: t.remindAt }, false);
   $("edTitle").textContent = "「" + t.text + "」を直す";
   $("edOk").textContent = "保存";
@@ -2647,7 +2729,7 @@ function openNewBoxTask(key, i){
   key = okKey(key);
   if(key < dayKey()){ toast("過ぎた日には入れられません"); return; }
   edTaskId = ""; edNewAt = { key, i: Math.max(0, i || 0) };
-  buildTaskForm({ text:"", freq:{ unit:"once" }, goal:1, size:1,
+  buildTaskForm({ text:"", cat:"", freq:{ unit:"once" }, goal:1, size:1,
                   when:"any", fixed:null, remindAt:"" }, true);
   $("edTitle").textContent =
     dayLabel(key) + "の箱 " + (edNewAt.i + 1) + "（" + boxClock(key, edNewAt.i) + "ごろ）に入れる";
@@ -2672,7 +2754,7 @@ function saveNewBoxTask(){
     toast(v.size > 1 ? "連続した" + v.size + "箱の空きがありません" : "空き箱がありません");
     return;
   }
-  const t = { id: uid(), text: v.text, links: [], when: v.when, freq: v.freq, size: v.size,
+  const t = { id: uid(), text: v.text, links: [], when: v.when, cat: v.cat, freq: v.freq, size: v.size,
               goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
               log: [], actuals: [], createdAt: Date.now() };
   S.tasks.push(t);
@@ -2712,6 +2794,7 @@ function saveTaskEditor(){
   t.text = v.text;
   t.size = v.size;
   t.when = v.when;
+  t.cat  = v.cat;
   t.freq = v.freq;
   t.goal = v.goal;
   t.fixed = v.fixed;
