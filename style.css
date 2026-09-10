@@ -23,10 +23,14 @@
   --cat-easy:#4ecb8f;
   --cat-none:#6b7688;
   --radius:14px;
-  --navh:64px;          /* 下のタブ帯の高さ。今日タブの枠を固定するときに使う */
+  --navh:58px;          /* 下のタブ帯の高さ。帯そのものにも、今日タブの下の空けにも、これ1つを使う */
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
+/* ▼ 縦スクロールバーのぶんを、出ていないタブでも空けておく。
+     空けないと、長いページ（やりたいこと・設定）に移ったときだけ画面が
+     スクロールバーのぶん狭くなり、下のタブ帯まで一緒に動く */
+html{scrollbar-gutter:stable}
 body{
   background:var(--bg);
   color:var(--fg);
@@ -68,19 +72,32 @@ header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:sp
 .philo-bar .label{font-size:11px;letter-spacing:.14em;color:var(--accent2);opacity:.8}
 .philo-bar .text{font-size:16px;line-height:1.7;margin-top:5px;white-space:pre-wrap}
 
-/* ---------- tabs（4つのまま） ---------- */
+/* ---------- tabs（6つ） ----------
+   ▼ 帯の高さは --navh で決め打ちにしてある。**中身で伸び縮みさせないこと。**
+     もとは中身なりの高さだったので、
+     ・「やりたいこと」の字が折り返す（狭い画面）
+     ・スクロールバーが出て帯が少し狭くなり、折り返す側に倒れる（長いページ）
+     この2つで、タブによって帯の高さが変わっていた。押す場所がずれるので直した（2026-09-10） */
 nav{
   position:fixed;left:0;right:0;bottom:0;z-index:50;
+  height:var(--navh);            /* 上の線こみでこの高さ（box-sizing:border-box）。
+                                    今日タブが下に空ける量と、ぴったり同じになる */
   background:rgba(15,17,21,.94);backdrop-filter:blur(12px);
   border-top:1px solid var(--line);
 }
-nav .inner{max-width:1180px;margin:0 auto;display:flex}
+nav .inner{max-width:1180px;margin:0 auto;display:flex;height:100%}
 nav button{
-  flex:1;background:none;border:none;color:var(--fg-faint);
-  padding:9px 0 11px;font-size:11px;font-family:inherit;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;gap:3px;
+  flex:1;min-width:0;background:none;border:none;color:var(--fg-faint);
+  padding:0;font-family:inherit;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  /* 折り返させない。狭い画面では字だけ小さくして、6つを1行に収める。
+     ▼ いちばん長い「やりたいこと」（6文字）が枠に収まるかで決まる。
+       枠は画面幅の 1/6。文字は 2.5vw × 6 = 15vw なので、1/6（16.7vw）に収まる。
+       この数字を上げると、狭い画面で字が枠からはみ出す */
+  white-space:nowrap;
+  font-size:clamp(8px, 2.5vw, 11px);
 }
-nav button .ic{font-size:19px;line-height:1}
+nav button .ic{font-size:clamp(16px, 4.6vw, 19px);line-height:1}
 nav button:hover{color:var(--fg-dim)}
 nav button.on{color:var(--accent)}
 
@@ -367,9 +384,29 @@ body.now-fixed .side #rouletteBox{
 }
 .chips.cats .chip.on::before{background:#0b1017;opacity:.45}
 
+/* ▼ 狭い画面では「やりたいこと」タブの行が横に収まらない
+     （✓・札・箱数・ボタン5つで、名前の幅を 0 にしてもまだ足りない）。
+     名前を1行目、操作を2行目に折り返して、横スクロールバーを出さない。
+     この折り返しは**この一覧だけ**。今日タブや1週間の帯の行は、これまでどおり1行 */
+@media (max-width:600px){
+  #taskList .item{flex-wrap:wrap;gap:6px}
+  #taskList .item .grow{flex:1 0 100%;order:-1}
+  /* 2行目（✓・札・箱数・ボタン）が、さらに3行目へこぼれないように詰める。
+     「−」が出る行（1回でも記録したもの）でも収まる幅にしてある */
+  #taskList .cattag{padding:1px 6px;font-size:10px}
+  #taskList .sizein{width:44px !important}
+  #taskList .iconbtn{padding:5px 4px}
+}
+
 /* ---------- forms ---------- */
 .form{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:14px}
 .row{display:flex;gap:8px;align-items:center}
+/* ▼ ボタンだけを並べた行（`.form` の外にある行）だけ、狭いときに折り返す。
+     折り返さないと設定タブが横にあふれ、下に横スクロールバーが出る
+     （幅400pxで12px、360pxで52px あふれていた）。
+     ▼ `.row` 全部に広げてはいけない。`.form` の中は「ラベル＋入力欄」で、
+       入力欄は width:100% なので、折り返しを許すと必ず1行ずつに割れる（実際にやった） */
+section > .row{flex-wrap:wrap}
 input,textarea,select{
   width:100%;background:var(--card);border:1px solid var(--line);color:var(--fg);
   border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;outline:none;
