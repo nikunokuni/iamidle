@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-09-10.2";
+const APP_VERSION = "2026-09-10.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -77,7 +77,9 @@ const DEFAULTS = {
   timerSound: null,   // { name, data:dataURL, sec, rate, at }
   lastOpen: "",
   foldDone: false,
-  foldSkip: false
+  foldSkip: false,
+  // 今日タブで畳んでいるカテゴリー { resp:true, ... }。"" は「タグなし」のまとまり
+  foldCat: {}
 };
 
 /* 読み込みに失敗したときの理由。起動時に知らせるために持っておく */
@@ -302,16 +304,36 @@ function byCat(list, of){
     .map(c => ({ cat: c, list: list.filter(x => pick(x) === c.key) }))
     .filter(g => g.list.length);
 }
-/* まとまりの見出し。件数を添える */
-const catHead = (c, n) => '<div class="cathead ' + catClass(c.key) + '">' +
-  '<span class="catdot"></span>' + esc(c.label) + '<span class="cn">' + n + '</span></div>';
+/* 畳んでいるまとまりを覚えておく。キーは cat の値（"" は「タグなし」） */
+const catFolded = k => !!(S.foldCat && S.foldCat[k]);
+function toggleCatFold(k){
+  S.foldCat = S.foldCat || {};
+  if(S.foldCat[k]) delete S.foldCat[k]; else S.foldCat[k] = true;
+  save();
+}
+/* まとまりの見出し。件数を添える。
+   fold … 押して畳めるようにするなら true（今日タブだけ。1週間タブの帯はただの見出しのまま） */
+function catHead(c, n, fold){
+  const inner = '<span class="catdot"></span>' + esc(c.label) + '<span class="cn">' + n + '</span>';
+  if(!fold) return '<div class="cathead ' + catClass(c.key) + '">' + inner + '</div>';
+  const shut = catFolded(c.key);
+  return '<button class="cathead ' + catClass(c.key) + (shut ? " shut" : "") + '"' +
+    ' data-catfold="' + c.key + '" aria-expanded="' + (shut ? "false" : "true") + '">' +
+    '<span class="caret">' + (shut ? "\u25b8" : "\u25be") + '</span>' + inner + '</button>';
+}
 /* まとまりごとに見出しを立てて並べる。row … 1件ぶんのHTMLを作る関数
    ▼ ぜんぶタグなしのときは、見出しを出さない。
-     何も分かれていないのに「タグなし」の見出しだけが立つのは、ただの飾りになる */
-function catSections(list, of, row){
+     何も分かれていないのに「タグなし」の見出しだけが立つのは、ただの飾りになる。
+     見出しが無いときは畳む取っかかりも無いので、アコーディオンにもしない
+   fold … 見出しを押して畳めるようにする（今日タブの「箱に入れていないやりたいこと」） */
+function catSections(list, of, row, fold){
   const gs = byCat(list, of);
   const bare = gs.length === 1 && gs[0].cat.key === "";
-  return gs.map(g => (bare ? "" : catHead(g.cat, g.list.length)) + g.list.map(row).join("")).join("");
+  if(bare) return gs[0].list.map(row).join("");
+  return gs.map(g =>
+    catHead(g.cat, g.list.length, fold) +
+    (fold && catFolded(g.cat.key) ? "" : g.list.map(row).join(""))
+  ).join("");
 }
 /* 一覧の行に付ける小さな札。付けていないものには何も出さない */
 function catTag(t){
@@ -2157,7 +2179,8 @@ function renderUnplaced(){
     return;
   }
   // ▼ カテゴリー（せきにん／ごほうび／おきらく）ごとに見出しを立てて分ける。
-  //   並びは todayTasks() の順（急ぎの順）のまま。まとまりの中でだけ並ぶ
+  //   並びは todayTasks() の順（急ぎの順）のまま。まとまりの中でだけ並ぶ。
+  //   見出しは押すと畳める（catSections の第4引数）。畳んだことは S.foldCat に残る
   const row = o => {
     const t = o.t, st = o.st;
     const late = o.urgency >= 4;
@@ -2176,7 +2199,7 @@ function renderUnplaced(){
   };
   const body = !list.length
     ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
-    : catSections(list, o => catOf(o.t), row);
+    : catSections(list, o => catOf(o.t), row, true);
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
@@ -2186,6 +2209,9 @@ function renderUnplaced(){
     '</div>';
 }
 $("unplaced").addEventListener("click", e => {
+  // まとまりの見出しを押したら、そのまとまりを畳む／開く
+  const head = e.target.closest("[data-catfold]");
+  if(head){ toggleCatFold(head.dataset.catfold); renderUnplaced(); return; }
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   const row = e.target.closest(".item"); if(!row) return;
   if(btn.dataset.act === "skip") skipToday(row.dataset.id);
@@ -2355,7 +2381,30 @@ function cheer(){
 }
 
 /* ================= 描画：見送り / 今日やったこと ================= */
+
+/* ▼ スマホ（1カラムに畳んだとき）は、今日見送ったものを画面の一番下へ送る（2026-09-10）。
+     見送りは「今日はもう出てこないもの」なので、今日の箱・やりたいこと・ルーティーンより
+     下でよい。狭い画面では縦に長くなるぶん、途中に挟まると邪魔になる。
+     PC（2カラム）では、これまでどおり左の列の「今日やったこと」の上に戻す。
+   ・つなぎ替えるのは #skippedList の箱そのもの。押したときの受け取り（unskip）は
+     この箱に付いているので、動かしても外れない
+   ・1カラムに畳む幅は style.css の 600px と同じ。片方だけ変えないこと
+   ・つなぎ替えが要らないときは何もしない（毎回動かすと、そのたび画面が跳ねる） */
+const oneCol = window.matchMedia("(max-width:600px)");
+function placeSkipped(){
+  const el = $("skippedList"), done = $("doneToday");
+  const home = document.querySelector("#sec-now .home");
+  if(!el || !done || !home) return;
+  if(oneCol.matches){
+    if(el.parentNode !== home || el.nextElementSibling) home.appendChild(el);
+  }else if(el.nextElementSibling !== done){
+    done.parentNode.insertBefore(el, done);
+  }
+}
+if(oneCol.addEventListener) oneCol.addEventListener("change", placeSkipped);
+
 function renderSkipped(){
+  placeSkipped();
   const el = $("skippedList");
   const list = skippedToday();
   if(!list.length){ el.innerHTML = ""; return; }

@@ -305,6 +305,9 @@ body.now-fixed .side #rouletteBox{
 .item.done{opacity:.45}
 .item.done .t{text-decoration:line-through}
 .item.met{opacity:.55}
+/* 中身が無いときは、枠ごと出さない。
+   スマホでは #skippedList が .home の升目になるので、空だと隙間だけが残る */
+#skippedList:empty,#doneToday:empty{display:none}
 .item.skipped{opacity:.5}
 .item.skipped .t{color:var(--fg-dim)}
 
@@ -361,6 +364,18 @@ body.now-fixed .side #rouletteBox{
 .cathead:first-child{margin-top:0}
 .cathead .catdot{width:8px;height:8px;border-radius:50%;background:var(--cat,var(--cat-none));flex:none}
 .cathead .cn{color:var(--fg-faint);font-size:10px;font-variant-numeric:tabular-nums}
+/* ▼ 今日タブの見出しは押して畳める（アコーディオン）。
+     1週間タブの帯の見出しは <div> のままなので、ここは効かない。
+     指で押せるように、見出しの上下に余白を持たせてある */
+button.cathead{
+  width:100%;background:none;border:none;font-family:inherit;
+  text-align:left;cursor:pointer;
+  padding:6px 2px 6px 0;margin:6px 0 0;
+}
+button.cathead:hover{color:var(--fg)}
+button.cathead .caret{width:11px;flex:none;color:var(--fg-faint)}
+/* 畳んでいる間は、中身が無いぶん見出しの下を詰める */
+button.cathead.shut{padding-bottom:2px}
 /* 一覧の行に付く札（「やりたいこと」タブ）。付けていないものには出さない */
 .cattag{
   font-size:11px;font-weight:600;flex:none;
@@ -389,6 +404,9 @@ body.now-fixed .side #rouletteBox{
      名前を1行目、操作を2行目に折り返して、横スクロールバーを出さない。
      この折り返しは**この一覧だけ**。今日タブや1週間の帯の行は、これまでどおり1行 */
 @media (max-width:600px){
+  /* 指で押すので、見出しの当たりを広げる */
+  button.cathead{padding:10px 2px 10px 0}
+  button.cathead.shut{padding-bottom:8px}
   #taskList .item{flex-wrap:wrap;gap:6px}
   #taskList .item .grow{flex:1 0 100%;order:-1}
   /* 2行目（✓・札・箱数・ボタン）が、さらに3行目へこぼれないように詰める。
