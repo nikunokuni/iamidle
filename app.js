@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-09-11.1";
+const APP_VERSION = "2026-09-11.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2116,14 +2116,10 @@ function renderWeekSide(){
     ? '<div class="empty-note" style="padding:4px 2px">この週に置くものは、もうありません。</div>'
     : '<div class="wksidelist">' + catSections(list, o => catOf(o.t), row) + '</div>';
 
-  el.innerHTML =
-    '<div class="panel">' +
-      '<div class="ph">' +
-        '<span>この週に置くもの</span>' +
-        '<span class="cnt">' + list.length + ' 件</span>' +
-      '</div>' +
-      body +
-    '</div>';
+  // ▼ 2026-09-11：見出しの「この週に置くもの ◯件」は消した（本人の指示）。
+  //   帯は上に貼り付いたまま7日ぶんを押し下げるので、名前と件数のぶんだけ浅くしてある。
+  //   ここに見出しを書き戻すなら、`.wksidelist` の max-height を数え直すこと
+  el.innerHTML = '<div class="panel">' + body + '</div>';
 }
 
 /* 1週間ページの操作。日付は data-day で持ち回る */

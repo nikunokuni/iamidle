@@ -909,25 +909,31 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   margin-bottom:0;padding:9px 12px;
   background:rgba(22,26,33,.94);backdrop-filter:blur(10px);
 }
-.weekside .panel .ph{justify-content:flex-start;gap:10px;margin-bottom:7px;flex-wrap:wrap}
 .wksidelist{
-  display:flex;flex-wrap:wrap;gap:6px;
-  /* もとは2段ぶん（94px）だった。カテゴリーの見出しが段のあいだに入るので、
-     「見出し18px ＋ すきま6px ＋ 1段43px ＋ すきま6px ＋ 見出しの上の空き4px＝77px」を
-     3つぶんで 230px。ちょうど区切りで終わるので、下の段が半端に切れない。
+  display:flex;flex-wrap:wrap;gap:5px;
+  /* もとは2段ぶん（94px）→ カテゴリーの見出しが段のあいだに入るので 230px（3組ぶん）。
+     2026-09-11 に、見出し「この週に置くもの ◯件」を消したうえで**1割ほど浅くした**（本人の指示）。
+     浅くしたぶんは、すきま・見出しの上の空き・1件の上下の余白から1〜2pxずつ削って作ってある。
+     **入る組の数は3つのまま。** 縮めるために組を減らすと、せきにんの下が見えなくなる。
+
+     「見出し17.6 ＋ すきま5 ＋ 1段41」＝ 63.6px のあと、2組目からは
+     「見出しの上の空き2 ＋ 見出し17.6 ＋ すきま5 ＋ 1段41 ＋ すきま5」＝ 70.6px ずつ。
+     3組で 204.8px、上下の padding 2px と余り 2px を足して 209px（もとは 230px）。
+     ちょうど区切りで終わるので、下の段が半端に切れない。
      入りきらないぶんは、これまでどおり縦に転がる。
-     ▼ 1件の丈や見出しの丈を変えたら、ここも数え直すこと */
-  max-height:230px;
+     ▼ 1件の丈・見出しの丈・すきまを変えたら、ここも数え直すこと
+       （数えるより、画面で下の段が切れていないかを見るほうが速い） */
+  max-height:209px;
   overflow-y:auto;overflow-x:hidden;
   padding:1px 4px 1px 1px;scrollbar-width:thin;
 }
 /* カテゴリーの見出しは、この並びの中で幅いっぱいを取って改行させる。
    別の枠に分けると帯が縦に伸びるので、1つの並びのまま区切っている */
-.wksidelist .cathead{flex:0 0 100%;margin:4px 0 0}
+.wksidelist .cathead{flex:0 0 100%;margin:2px 0 0}
 .wksidelist .cathead:first-child{margin-top:0}
 .wksidelist .item{
   margin-bottom:0;flex:0 0 auto;width:206px;
-  gap:6px;padding:5px 8px;border-radius:9px;
+  gap:6px;padding:4px 8px;border-radius:9px;
   font-size:13px;line-height:1.35;
 }
 /* ▼ 1行で打ち切る。折り返すと丈が揃わず、2段に収めた枠から溢れる。
@@ -944,8 +950,9 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 
 @media (max-width:900px){
   .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  /* 画面が狭いときは帯を浅くする。深いと、下の7日ぶんが押し出されて見えなくなる */
-  .wksidelist{max-height:148px}
+  /* 画面が狭いときは帯を浅くする。深いと、下の7日ぶんが押し出されて見えなくなる。
+     こちらは2組ぶん（148px → 140px）。上と同じ数え方で、下の段が半端に切れない丈 */
+  .wksidelist{max-height:140px}
 }
 /* 指で押す画面では、箱を増やす／減らすボタンが小さすぎて当たらない。大きくする */
 @media (max-width:900px), (hover:none){
