@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-09-10.2";
+const APP_VERSION = "2026-09-11.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -77,7 +77,9 @@ const DEFAULTS = {
   timerSound: null,   // { name, data:dataURL, sec, rate, at }
   lastOpen: "",
   foldDone: false,
-  foldSkip: false
+  foldSkip: false,
+  // 今日タブのリストで、畳んでいるカテゴリー { resp:true, reward:false, easy:false, none:false }
+  catFold: {}
 };
 
 /* 読み込みに失敗したときの理由。起動時に知らせるために持っておく */
@@ -274,8 +276,8 @@ const WD = ["日","月","火","水","木","金","土"];
 
 /* ================= カテゴリー（タグ） =================
    やりたいことを「せきにん／ごほうび／おきらく」の3つに分ける。
-   今日タブの「箱に入れていないやりたいこと」と、1週間タブの「この週に置くもの」を、
-   このまとまりごとに見出しで分けて出す。
+   今日タブの右のリストと、1週間タブの「この週に置くもの」を、
+   このまとまりごとに見出しで分けて出す（今日タブのほうは、見出しで畳める）。
 
    ▼ 選ばなくてよい。付けていないものは「タグなし」のまとまりに、いちばん下へ出る。
      だから古いデータもそのまま読める（データ版は v7 のまま。migrate は要らない）
@@ -302,16 +304,51 @@ function byCat(list, of){
     .map(c => ({ cat: c, list: list.filter(x => pick(x) === c.key) }))
     .filter(g => g.list.length);
 }
+/* まとまりの見出しの中身。丸・名前・件数の3つ。畳める見出しでも同じものを使う */
+const catHeadInner = (c, n) => '<span class="catdot"></span>' +
+  '<span class="ct">' + esc(c.label) + '</span><span class="cn">' + n + '</span>';
 /* まとまりの見出し。件数を添える */
 const catHead = (c, n) => '<div class="cathead ' + catClass(c.key) + '">' +
-  '<span class="catdot"></span>' + esc(c.label) + '<span class="cn">' + n + '</span></div>';
+  catHeadInner(c, n) + '</div>';
+
+/* ---------- 畳めるまとまり（今日タブのリストだけ・2026-09-11） ----------
+   せきにん／ごほうび／おきらく を、それぞれ見出しで畳めるようにした。
+
+   ▼ 畳んだときは、名前も件数も丸も消して ▼ だけを残す（本人の指示）。
+     消すのは CSS（`.cathead.shut`）の仕事で、HTML はどちらの状態でも同じものを出す。
+     ここで中身ごと出し分けると、`aria-expanded` と見た目がずれる
+   ▼ 色だけは ▼ に残してある。全部畳んだときに、どれがどれか分からなくなるため
+   ▼ 畳んだ状態は `S.catFold`（`{ resp:true, … }`）。foldDone / foldSkip と同じ扱いで、
+     この端末だけのもの。同期には載せていない（送るのは tasks／days／base／boxStart／日記だけ） */
+const catFoldKey = k => k || "none";
+const catShut = k => !!(S.catFold && S.catFold[catFoldKey(k)]);
+const catFoldHead = (c, n, shut) =>
+  '<button type="button" class="cathead catfold ' + catClass(c.key) + (shut ? " shut" : "") + '"' +
+    ' data-fold="' + catFoldKey(c.key) + '" aria-expanded="' + (shut ? "false" : "true") + '"' +
+    ' title="' + esc(c.label + " " + n + "件") + '（押すと' + (shut ? "出す" : "隠す") + '）">' +
+    '<span class="caret">' + (shut ? "▼" : "▲") + '</span>' + catHeadInner(c, n) +
+  '</button>';
+function toggleCatFold(k){
+  const kk = catFoldKey(k);
+  S.catFold = S.catFold || {};
+  S.catFold[kk] = !S.catFold[kk];
+  save(); renderUnplaced();
+}
 /* まとまりごとに見出しを立てて並べる。row … 1件ぶんのHTMLを作る関数
+   fold … 真にすると見出しが畳めるようになる（今日タブのリストだけ）
    ▼ ぜんぶタグなしのときは、見出しを出さない。
-     何も分かれていないのに「タグなし」の見出しだけが立つのは、ただの飾りになる */
-function catSections(list, of, row){
+     何も分かれていないのに「タグなし」の見出しだけが立つのは、ただの飾りになる。
+     見出しが無ければ畳む手も無いので、そのときは畳まない（中身が出たままになる） */
+function catSections(list, of, row, fold){
   const gs = byCat(list, of);
   const bare = gs.length === 1 && gs[0].cat.key === "";
-  return gs.map(g => (bare ? "" : catHead(g.cat, g.list.length)) + g.list.map(row).join("")).join("");
+  if(bare) return gs[0].list.map(row).join("");
+  return gs.map(g => {
+    const n = g.list.length;
+    if(!fold) return catHead(g.cat, n) + g.list.map(row).join("");
+    const shut = catShut(g.cat.key);
+    return catFoldHead(g.cat, n, shut) + (shut ? "" : g.list.map(row).join(""));
+  }).join("");
 }
 /* 一覧の行に付ける小さな札。付けていないものには何も出さない */
 function catTag(t){
@@ -2146,13 +2183,15 @@ $("weekWrap").addEventListener("drop", e => {
   placeTaskAt(id, parseInt(b.dataset.i, 10) || 0, k);
 });
 
-/* ================= 描画：箱に入れていないやりたいこと ================= */
+/* ================= 描画：箱に入れていないやりたいこと =================
+   ▼ 2026-09-11：見出しの「箱に入れていないやりたいこと」の表記は消した（本人の指示）。
+     件数と空き箱の数だけを残してある。ここに名前を書き戻さないこと */
 function renderUnplaced(){
   const list = unplacedTasks();
   const d = getDay();
   if(!S.tasks.length){
     $("unplaced").innerHTML =
-      '<div class="panel"><div class="ph"><span>箱に入れていないやりたいこと</span></div>' +
+      '<div class="panel">' +
       '<div class="empty-note">まだやりたいことがありません。「やりたいこと」タブから追加してください。</div></div>';
     return;
   }
@@ -2176,16 +2215,19 @@ function renderUnplaced(){
   };
   const body = !list.length
     ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
-    : catSections(list, o => catOf(o.t), row);
+    : catSections(list, o => catOf(o.t), row, true);
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
-      '<div class="ph"><span>箱に入れていないやりたいこと</span><span class="cnt">' +
+      '<div class="ph nohead"><span class="cnt">' +
         list.length + ' 件 ・ 空き ' + emptyBoxes(d) + ' 箱</span></div>' +
       body +
     '</div>';
 }
 $("unplaced").addEventListener("click", e => {
+  // 見出し（畳む／出す）は行の外にあるので、行を探すより先に受けること
+  const fold = e.target.closest("[data-fold]");
+  if(fold){ toggleCatFold(fold.dataset.fold); return; }
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   const row = e.target.closest(".item"); if(!row) return;
   if(btn.dataset.act === "skip") skipToday(row.dataset.id);

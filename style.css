@@ -361,6 +361,19 @@ body.now-fixed .side #rouletteBox{
 .cathead:first-child{margin-top:0}
 .cathead .catdot{width:8px;height:8px;border-radius:50%;background:var(--cat,var(--cat-none));flex:none}
 .cathead .cn{color:var(--fg-faint);font-size:10px;font-variant-numeric:tabular-nums}
+/* 畳める見出し（今日タブのリスト）。押すと、そのまとまりの中身が隠れる。
+   ▼ 畳んだときは名前も件数も丸も消して、▼ だけを残す（本人の指示）。
+     色は ▼ に残す。全部畳んだときに、どれがどれか分からなくなるため */
+.cathead.catfold{
+  width:100%;background:none;border:none;
+  font-family:inherit;font-size:11px;letter-spacing:.08em;
+  text-align:left;cursor:pointer;padding:5px 0;
+}
+.cathead.catfold:hover{color:var(--fg)}
+.cathead .caret{color:var(--cat,var(--cat-none));font-size:9px;line-height:1;flex:none}
+/* 畳んだぶんは詰めて出す。ただしスマホで押せる高さは残す */
+.cathead.shut{margin:2px 0}
+.cathead.shut .catdot,.cathead.shut .ct,.cathead.shut .cn{display:none}
 /* 一覧の行に付く札（「やりたいこと」タブ）。付けていないものには出さない */
 .cattag{
   font-size:11px;font-weight:600;flex:none;
@@ -448,6 +461,8 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   font-size:12px;letter-spacing:.1em;color:var(--fg-faint);margin-bottom:10px;
 }
 .side .panel .ph .cnt{font-size:11px}
+/* 見出しの名前を出さない帯（今日タブのリスト）。件数だけなので左に寄せる */
+.side .panel .ph.nohead{justify-content:flex-start;margin-bottom:8px}
 .routine{
   display:flex;align-items:center;gap:10px;
   padding:8px 0;border-bottom:1px solid var(--line);
