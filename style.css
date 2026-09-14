@@ -987,6 +987,15 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 #edMoreBtn{padding:6px 14px;font-size:13px}
 /* まだ先の予定は、ふだんのリストに出ないので控えめに見せる */
 .item.far{opacity:.72}
+/* 今はまだ。リストの下のほうに、ひっそり置いておくだけのもの。
+   まだ先の予定よりさらに薄い（こちらは日付でも明けないので） */
+h2.quiet{color:var(--fg-faint);opacity:.6}
+.item.later{opacity:.55;background:none}
+.item.later:hover{opacity:.85}
+.item.later .grip{cursor:default}
+/* 行の 💤。ふだんは押さないので控えめに。faint(.28) では絵文字が潰れて読めない */
+.iconbtn.laterbtn{opacity:.45}
+.iconbtn.laterbtn:hover{opacity:1}
 
 /* ---------- リンクとアプリの編集 ---------- */
 #lkRows{margin-top:14px}

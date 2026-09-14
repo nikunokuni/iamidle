@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-09-11.2";
+const APP_VERSION = "2026-09-14.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -819,6 +819,7 @@ function fixedFor(key){
     if(!t.fixed) return false;
     if(t.fixed.dow !== null && t.fixed.dow !== dow) return false;
     if(isDone(t)) return false;
+    if(isLater(t)) return false;                            // 今はまだ。自動配置もしない
     if(t.remindAt && t.remindAt > key) return false;
     if(!fitsDayType(t, key)) return false;                  // 仕事の日だけ／休みの日だけ
     // その期間ぶんの回数を、もう置ききっているなら足さない
@@ -858,7 +859,7 @@ function autoPlaceAhead(id){
     const d = S.days[k];
     if(!Array.isArray(d.slots) || d.slots.some(x => x && baseId(x) === t.id)) return;
     if(t.fixed.dow !== null && dayStart(k).getDay() !== t.fixed.dow) return;
-    if(isDone(t) || (t.remindAt && t.remindAt > k)) return;
+    if(isDone(t) || isLater(t) || (t.remindAt && t.remindAt > k)) return;
     if(!fitsDayType(t, k)) return;                            // 仕事の日だけ／休みの日だけ
     if(!isDaily(t.freq) && remainingToPlan(t, k) <= 0) return;
     const size = Math.max(1, t.size || 1);
@@ -1059,6 +1060,11 @@ function streakOf(t){
 }
 
 /* ================= 「今日のやりたいこと」の判定 ================= */
+/* 「今はまだ」。やりたいことリストの下にひっそり残るだけで、
+   今日タブにも1週間タブにも出ない。自動配置も止まる。本人が戻すまでアプリは何もしない。
+   見送り（skipDay）は1日で明ける／まだ先の予定（remindAt）は日付で明けるが、
+   これは**日付で明けない**。戻すのは本人の手だけ */
+const isLater = t => !!(t && t.later);
 const canSkip = t => !isDaily(t.freq);
 const whenOf  = t => (t.when === "am" || t.when === "pm") ? t.when : "any";
 function slotBonus(t){
@@ -1093,6 +1099,7 @@ function remainingToPlan(t, key){
 }
 function todayNeed(t){
   const k = dayKey();
+  if(isLater(t)) return null;                                 // 今はまだ。本人が戻すまで出さない
   if(!fitsDayType(t, k)) return null;                         // 仕事の日だけ／休みの日だけ。今日は違う
   if(t.remindAt && t.remindAt > k) return null;               // 遠い予定。まだ隠しておく
   if(canSkip(t) && t.skipDay === k) return null;              // 今日は見送り
@@ -1199,16 +1206,36 @@ function unplaceSilent(id){
 /* 今日以降の箱から全部どける（箱数が変わったとき・消したとき） */
 function unplaceEverywhere(id){
   const k0 = dayKey();
+  let n = 0;
   Object.keys(S.days).forEach(dk => {
     if(dk < k0) return;                       // 過ぎた日は記録なので触らない
     const sl = S.days[dk].slots || [];
-    for(let i = 0; i < sl.length; i++) if(baseId(sl[i]) === id) sl[i] = null;
+    for(let i = 0; i < sl.length; i++) if(baseId(sl[i]) === id){ sl[i] = null; n++; }
   });
+  return n;                                   // どけた箱の数（「今はまだ」のトーストで知らせる）
 }
 function unskip(id){
   const t = taskById(id); if(!t) return;
   delete t.skipDay;
   save(); renderAll();
+}
+/* 「今はまだ」にする／やめる。
+   ▼ にするときは、今日以降の箱とルーレットからどける。**過ぎた日には触らない**（記録なので）。
+     どけた箱は戻せないので、取り消しは付けずに、外した数をトーストで知らせるだけにしてある */
+function setLater(id, on){
+  const t = taskById(id); if(!t) return;
+  if(on){
+    t.later = true;
+    const n = unplaceEverywhere(id);
+    const d = S.days[dayKey()];
+    if(d && Array.isArray(d.roulette)) d.roulette = d.roulette.filter(x => x !== id);
+    save(); renderAll();
+    toast("「今はまだ」にしました" + (n ? "（箱から " + n + " つ外しました）" : ""));
+  }else{
+    delete t.later;
+    save(); renderAll();
+    toast("やりたいことに戻しました");
+  }
 }
 function skippedToday(){
   const k = dayKey();
@@ -2080,6 +2107,7 @@ function renderWeekSide(){
   const list = S.tasks
     .map(t => {
       if(isDone(t)) return null;
+      if(isLater(t)) return null;                  // 今はまだ
       if(t.remindAt && t.remindAt > dayKey()) return null;
       const left = remainingToPlan(t, key);
       return left > 0 ? { t, left } : null;
@@ -2549,9 +2577,12 @@ function renderTasks(){
   if(!S.tasks.length){ el.innerHTML = '<div class="empty-note">やりたいことはまだありません。</div>'; return; }
   const k = dayKey();
   const isFar = t => !!t.remindAt && t.remindAt > k;
-  const far  = S.tasks.filter(t => isFar(t) && !isDone(t));
-  const done = S.tasks.filter(isDone);
-  const live = S.tasks.filter(t => !isDone(t) && !isFar(t));
+  const done  = S.tasks.filter(isDone);
+  // 「今はまだ」は、まだ先の予定より先に見る（どちらも持っていたら「今はまだ」のまとまりへ）。
+  // 日付で明けないほうを優先しないと、その日が来た瞬間にふつうのリストへ戻ってきてしまう
+  const later = S.tasks.filter(t => !isDone(t) && isLater(t));
+  const far   = S.tasks.filter(t => !isDone(t) && !isLater(t) && isFar(t));
+  const live  = S.tasks.filter(t => !isDone(t) && !isLater(t) && !isFar(t));
   let html = "";
   GROUPS.forEach(g => {
     const list = live.filter(t => t.freq.unit === g.key);
@@ -2561,6 +2592,10 @@ function renderTasks(){
   // 遠い予定。その日が近づくまで、ふだんのリストには出さない
   if(far.length){
     html += '<h2>まだ先の予定（' + far.length + '）</h2>' + far.map(farRow).join("");
+  }
+  // 今はまだ。今日タブにも1週間タブにも出ないので、ここに控えめに置いておくだけ
+  if(later.length){
+    html += '<h2 class="quiet">今はまだ（' + later.length + '）</h2>' + later.map(laterRow).join("");
   }
   if(done.length){
     html += '<h2>達成したもの（' + done.length + '）</h2>' + done.map(onceRow).join("");
@@ -2588,7 +2623,7 @@ function onceRow(t){
     catTag(t) + sizeBox(t) +
     (done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>') +
     (!done && n > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
-    whenBtn(t) + editBtn(t) + linkBtn(t) +
+    whenBtn(t) + (done ? "" : laterBtn(t)) + editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -2599,7 +2634,22 @@ function farRow(t){
     '<div class="grow">' + taskTitle(t) +
       '<div class="s">' + esc(t.remindAt) + ' から出てきます ・ ' + boxTime(t.size) + '</div>' +
     '</div>' +
-    catTag(t) + editBtn(t) + linkBtn(t) +
+    catTag(t) + laterBtn(t) + editBtn(t) + linkBtn(t) +
+    '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
+  '</div>';
+}
+/* 今はまだ。本人が ↩ を押すまで、ふだんのリストにも今日にも1週間にも出ない */
+function laterRow(t){
+  const sub = [t.freq.unit === "once" ? "単発" : freqLabel(t.freq), boxTime(t.size)];
+  if(t.remindAt && t.remindAt > dayKey()) sub.push(t.remindAt + " から");
+  return '<div class="item later" data-id="' + t.id + '">' +
+    '<span class="grip" title="今はまだ">💤</span>' +
+    '<div class="grow">' + taskTitle(t) +
+      '<div class="s">' + esc(sub.join(" ・ ")) + '</div>' +
+    '</div>' +
+    catTag(t) +
+    '<button class="iconbtn" data-act="unlater" title="やりたいことに戻す">↩</button>' +
+    editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -2627,7 +2677,7 @@ function repeatRow(t){
     '</div>' +
     catTag(t) + sizeBox(t) +
     (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
-    whenBtn(t) + editBtn(t) + linkBtn(t) +
+    whenBtn(t) + laterBtn(t) + editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -2637,6 +2687,8 @@ function linkBtn(t){
     (n > 1 ? '<span class="badge">' + n + '</span>' : '') + '</button>';
 }
 const editBtn = t => '<button class="iconbtn" data-act="edit" title="編集">✎</button>';
+/* 「今はまだ」へ送る。達成したものには出さない（戻す先がないので） */
+const laterBtn = t => '<button class="iconbtn laterbtn" data-act="later" title="今はまだ">💤</button>';
 /* 曜日と時刻の見出し。dow が null なら毎日 */
 function fixedLabel(t){
   if(!t.fixed) return "";
@@ -2979,6 +3031,8 @@ async function taskClick(e){
   if(act === "link") { openLinkEditor(id); return; }
   if(act === "edit") { openTaskEditor(id); return; }
   if(act === "when") { cycleWhen(id); return; }
+  if(act === "later")  { setLater(id, true);  return; }
+  if(act === "unlater"){ setLater(id, false); return; }
   if(act === "up" && i > 0){ const [x] = S.tasks.splice(i,1); S.tasks.unshift(x); save(); renderAll(); return; }
   if(act === "del"){
     const ok = await askConfirm("「" + t.text + "」を削除しますか？", "削除",
@@ -4004,7 +4058,7 @@ function renderStats(){
   const rep  = S.tasks.filter(t => t.freq.unit !== "once");
   // 「遅れ」の数え方は一覧と揃える（毎日ぶんは、その日にまだやっていないだけなので数えない）
   const late = rep.filter(t => {
-    if(isDaily(t.freq)) return false;
+    if(isDaily(t.freq) || isLater(t)) return false;   // 今はまだ のものは遅れない
     const s = statOf(t);
     return !s.met && s.deficit >= 1;
   }).length;
