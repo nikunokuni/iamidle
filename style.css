@@ -1016,3 +1016,104 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   .lkrow .lkmain{flex:1 1 100%;order:9}
   .lkrow .lkargs,.lkrow .lkbrowser{flex:1 1 auto;order:10;width:auto}
 }
+
+/* ---------- やりたいことを見つけよう（全画面で重なる。PC用） ----------
+   ▼ z-index は下のタブ帯（50）より上、toast（99）とダイアログ（200）より下。
+     ③の「やりたいことにする」は、この上に編集ダイアログを重ねて開く */
+.finder{
+  position:fixed;inset:0;z-index:90;display:none;
+  background:var(--bg);overflow-y:auto;
+  --stk-ideal:#ffe08a;   /* ①のふせん */
+  --stk-vision:#ffb3c7;  /* ②のふせん */
+}
+.finder.on{display:block}
+body.fd-open{overflow:hidden}
+.fdbar{
+  position:sticky;top:0;z-index:5;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  background:var(--bg2);border-bottom:1px solid var(--line);
+  padding:12px 24px;
+}
+.fdtitle{font-size:17px;font-weight:700;flex:none}
+.fdsteps{flex:1;min-width:0}
+.fdsteps{display:flex;gap:6px;flex-wrap:wrap}
+.fdsteps .chip{padding:5px 12px;font-size:13px}
+.fdend{display:flex;align-items:center;gap:8px;flex:none}
+.fdend .btn{padding:7px 12px;font-size:13px}
+.fdend .iconbtn{font-size:18px}
+.fdbody{max-width:1180px;margin:0 auto;padding:18px 24px 40px}
+
+.fdnum{font-size:12px;letter-spacing:.12em;color:var(--accent2);font-weight:700}
+.fdname{font-size:19px;font-weight:700;margin-top:2px}
+.fddesc{font-size:14px;color:var(--fg-dim);margin-top:6px;white-space:pre-line;line-height:1.7}
+.fdlead{margin-bottom:14px}
+
+/* 概要：3つのステップを左から並べる */
+.fdintro{display:flex;align-items:stretch;gap:10px;margin-top:6px}
+.fdcard{
+  flex:1;min-width:0;text-align:left;cursor:pointer;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;color:var(--fg);font-family:inherit;
+  display:flex;flex-direction:column;
+}
+.fdcard:hover{border-color:var(--accent)}
+.fdcard .fddesc{flex:1}
+.fdcount{font-size:12px;color:var(--fg-faint);margin-top:12px}
+.fdarrow{align-self:center;color:var(--fg-faint);font-size:20px;flex:none}
+.fdnav{display:flex;justify-content:space-between;gap:8px;margin-top:18px}
+
+.fdadd{margin-bottom:12px;max-width:640px}
+
+/* ビジョンノート。中身（ふせんの幅・字の大きさ）はノートの幅に合わせて伸び縮みする（cqw） */
+/* ▼ ①②では、ノートが画面の高さに収まるように幅を絞る（上の見出しと入力欄でおよそ250px）。
+     ③では右の列に入るので、列の幅のほうが先に効く */
+.fdboard{
+  position:relative;width:100%;aspect-ratio:1000/640;
+  max-width:max(560px, calc((100dvh - 250px) * 1000 / 640));margin:0 auto;
+  container-type:inline-size;
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;user-select:none;
+}
+.fdsvg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.fbband{fill:var(--card)}
+.fbline line{stroke:var(--line);stroke-width:2}
+.fbring{fill:var(--bg2);stroke:var(--line);stroke-width:2}
+.fbcore{fill:var(--card2);stroke:var(--line);stroke-width:2}
+.fbl{fill:var(--fg-dim);font-size:17px;font-weight:600;letter-spacing:.06em}
+.fbq{fill:var(--fg-faint);font-size:17px}
+
+.stk{
+  /* 幅は中身なり（短いふせんは小さく）。内側の楕円は狭いので、決め打ちの幅だとすぐ埋まる */
+  position:absolute;width:max-content;max-width:13cqw;min-width:5cqw;min-height:3.6cqw;
+  padding:.7cqw .9cqw;border-radius:.4cqw;
+  font-size:clamp(8px, 1.35cqw, 16px);line-height:1.4;color:#2a2410;
+  background:var(--stk-ideal);
+  box-shadow:0 .3cqw .9cqw rgba(0,0,0,.35);
+  cursor:grab;touch-action:none;
+}
+.stk.vision{background:var(--stk-vision);color:#3a1622}
+.stk.moving{cursor:grabbing;box-shadow:0 .8cqw 2cqw rgba(0,0,0,.5);transform:scale(1.03)}
+.stk .stx{white-space:pre-wrap;word-break:break-word;outline:none;min-height:1.4em}
+.stk.editing{cursor:text;user-select:text;outline:2px solid var(--accent)}
+.stk.editing .stx{user-select:text}
+.stk .stdel{
+  position:absolute;top:-.8cqw;right:-.8cqw;display:none;
+  width:22px;height:22px;border-radius:50%;border:1px solid var(--line);
+  background:var(--bg2);color:var(--fg-dim);font-size:11px;line-height:1;cursor:pointer;padding:0;
+}
+.stk:hover .stdel{display:block}
+.stk.editing .stdel,.stk.moving .stdel{display:none}
+.stk .stdel:hover{color:var(--danger);border-color:var(--danger)}
+
+/* ③ 左にリスト、右にノート（見ながら細かくする） */
+.fd3{display:grid;grid-template-columns:minmax(360px, 5fr) 7fr;gap:20px;align-items:start}
+.fd3r{position:sticky;top:70px}
+.fdstepform .row{flex-wrap:nowrap}
+.fdstepform input[type=date]{width:auto;flex:1}
+.fdstep{gap:8px}
+.fdstep .t{cursor:pointer}
+.fdstep .t:hover{color:var(--accent)}
+.fddue{width:auto;flex:none;padding:5px 8px;font-size:13px}
+.fddue.late{border-color:var(--warn);color:var(--warn)}
+.fdtotask{padding:6px 10px;font-size:13px}
+.fdreg{font-size:12px;color:var(--ok);flex:none;padding:0 4px}

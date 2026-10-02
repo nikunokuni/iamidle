@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-09-11.2";
+const APP_VERSION = "2026-10-02.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2654,6 +2654,7 @@ function fixedLabel(t){
 ====================================================== */
 let edTaskId = "";       // 直しているやりたいことのID。新しく作るときは空
 let edNewAt  = null;     // 空き箱から作るとき { key, i }。ふつうの編集では null
+let edStepId = "";       // 「やりたいことを見つけよう」の③から作るとき、その行のID
 
 /* 入力欄を組み立てて、動きをつける。
    v … 初期値 { text, cat, freq, goal, size, when, fixed, remindAt }
@@ -2822,7 +2823,7 @@ function syncEdCount(){
   $("edN").style.display   = u === "days" ? "" : "none";
   $("edMid").style.display = u === "days" ? "" : "none";
 }
-function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; edNewAt = null; }
+function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; edNewAt = null; edStepId = ""; }
 function saveTaskEditor(){
   const t = taskById(edTaskId); if(!t){ closeTaskEditor(); return; }
   const v = readTaskForm(); if(!v) return;
@@ -2848,7 +2849,7 @@ function saveTaskEditor(){
   toast("直しました" + (sizeChanged ? "／箱数が変わったので入れ直してください" : "") +
     (put ? "／" + put + "日ぶん箱に入れました" : ""));
 }
-$("edOk").onclick     = ()=> edNewAt ? saveNewBoxTask() : saveTaskEditor();
+$("edOk").onclick     = ()=> edNewAt ? saveNewBoxTask() : edStepId ? saveStepTask() : saveTaskEditor();
 $("edCancel").onclick = closeTaskEditor;
 $("editModal").onclick = e => { if(e.target === $("editModal")) closeTaskEditor(); };
 
@@ -4024,13 +4025,14 @@ function renderStats(){
         ? esc(S.timerSound.name || "音") + '（約 ' + Math.round(S.timerSound.data.length/1024) + ' KB）'
         : '既定のピッピッピッ（0 KB）') + '</span></div>' +
     '<div class="kv"><span>日記</span><span>' + diaryCount() + '件（' + diaryDays() + '日ぶん）</span></div>' +
-    '<div class="kv"><span>保存量のめやす</span><span>約 ' + (usedKB() + diaryKB()) +
+    '<div class="kv"><span>保存量のめやす</span><span>約 ' + (usedKB() + diaryKB() + finderKB()) +
       ' KB（うち日記 ' + diaryKB() + ' KB）</span></div>';
 }
 $("btnExport").onclick = ()=>{
   // ▼ 保存していない日記は入らない（自動保存をやめたので、押していないものはまだ存在しない）
-  // 日記は別のキーに持っているので、書き出しのときだけ diary として同じファイルに入れる
-  const blob = new Blob([JSON.stringify(Object.assign({}, S, { diary: D }), null, 2)], { type: "application/json" });
+  // 日記は別のキーに持っているので、書き出しのときだけ diary として同じファイルに入れる。
+  // 「やりたいことを見つけよう」も同じ（finder）。こちらは同期しないので、取り戻せる道はここだけ
+  const blob = new Blob([JSON.stringify(Object.assign({}, S, { diary: D, finder: F }), null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "自己管理_" + dayKey() + ".json";
@@ -4051,17 +4053,21 @@ $("fileInput").onchange = e => {
     const inDiary = (d.diary && typeof d.diary === "object" && d.diary.entries &&
                      typeof d.diary.entries === "object")
                     ? { v:1, entries: d.diary.entries, tags: normTags(d.diary.tags) } : null;
+    // 「やりたいことを見つけよう」も同じく、入っていなければ今のものを残す
+    const inFinder = (d.finder && typeof d.finder === "object") ? normFinder(d.finder) : null;
     const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
       "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます。" +
       (inDiary ? "日記も、読み込むほうに置き換わります（" + Object.keys(inDiary.entries).length + "件）"
                : "このファイルに日記は入っていないので、いまの日記はそのまま残します"));
     if(!ok) return;
     delete d.diary;      // 本体（S）に混ぜない。日記は別のキーで持つ
+    delete d.finder;
     S = migrate(Object.assign(structuredClone(DEFAULTS), d));
     if(inDiary){
       D = inDiary; diaryOpened = {}; diaryEditKey = ""; diaryShow = 20; diarySavedAt = 0;
       saveDiary();
     }
+    if(inFinder){ F = inFinder; saveFinder(); renderFinder(); }
     save(); renderAll(); toast("読み込みました");
   };
   r.readAsText(f);
@@ -4156,6 +4162,417 @@ function renderVersion(){
 }
 $("updateNow").onclick = hardReload;
 
+/* ================= やりたいことを見つけよう =================
+   やりたいことタブのボタンから、全画面で重なって開く（PC用）。仕様は SPEC.md の同名の節。
+     ① 理想の自分の洗い出し … ビジョンノートの内側の楕円に、ふせんを貼る
+     ② ビジョンノート       … 同じ1枚の、外側の帯（6つの区切り）に、ふせんを貼る
+     ③ やりたいことリスト   … 小さな一歩を1行ずつ。「やりたいことにする」で本物のやりたいことになる
+   ▼ 本体（S / KEY）とは別のキーに保存している。日記と同じ考え方：
+     prune() にも migrate() にも同期にも触れないので、データ版は上げていない（v7 のまま）。
+     **同期はしない**（本人の指示）。そのぶんバックアップ書き出しには入れてある
+   ▼ ふせんは位置だけを持つ（x, y はノートの幅・高さに対する割合で、ふせんの左上）。
+     どの区切りに置いたかは記録しない。並び順がそのまま重なり順（後ろほど上）
+   ▼ この画面だけは説明文を置く（HANDOFF.md「画面の説明文は、置かない」の例外。本人の指示）
+====================================================== */
+const FKEY = "jiko-kanri-finder-v1";
+const FD_STEPS = [
+  { n:"①", name:"理想の自分の洗い出し",
+    desc:"自分の理想を吐き出そう！\n幸せを感じる瞬間は？ どんな景色で、どんなことしてる？ 周りとの関係は？ など" },
+  { n:"②", name:"ビジョンノート",
+    desc:"①を叶えた自分がやってそうなこと、持ってそうなもの、考えてることを書き出す" },
+  { n:"③", name:"やりたいことリスト",
+    desc:"①②を細分化して、今すぐできるくらいまで落とし込む\n＋いつまでに達成したいかを決める" }
+];
+/* 外側の帯の区切り。上から右回り。deg は区切りの真ん中の向き（右が0°、上が90°） */
+const FD_AREAS = [
+  { name:"自分磨き",           deg: 90   },
+  { name:"お金",               deg: 22.5 },
+  { name:"人格",               deg:-22.5 },
+  { name:"趣味",               deg:-90   },
+  { name:"スケジュール・仕事", deg:-157.5},
+  { name:"暮らし・人生",       deg: 157.5}
+];
+/* ノートの形（viewBox 1000×640 の中の寸法）。区切りの線は中心から45°で4本＋左右の水平線 */
+const FB = { W:1000, H:640, cx:500, cy:320,
+  band:{ x:120, y:60, w:760, h:520 },        // 外側の帯（灰色の角丸）。角の丸みは高さの半分
+  ring:{ rx:230, ry:165 },                   // 区切りの名前が並ぶ輪の外周
+  core:{ rx:185, ry:125 } };                 // 内側の楕円（①の場所）
+const STK_W = 100, STK_H = 40;               // ふせん1枚のおおよその大きさ（置き場所を探すときだけ使う。幅は中身なりで、最大130）
+
+let fdFailed = "";
+const emptyFinder = () => ({ v:1, notes:[], steps:[] });
+function normFinder(d){
+  if(!d || typeof d !== "object") return null;
+  const num = x => (typeof x === "number" && isFinite(x)) ? Math.min(1, Math.max(0, x)) : 0;
+  return {
+    v: 1,
+    notes: (Array.isArray(d.notes) ? d.notes : []).filter(n => n && n.id).map(n => ({
+      id: String(n.id), kind: n.kind === "vision" ? "vision" : "ideal",
+      text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
+    steps: (Array.isArray(d.steps) ? d.steps : []).filter(s => s && s.id).map(s => ({
+      id: String(s.id), text: String(s.text || ""),
+      due: DAYKEY_RE.test(s.due || "") ? s.due : "", taskId: String(s.taskId || "") }))
+  };
+}
+function loadFinder(){
+  let raw = null;
+  try{
+    raw = localStorage.getItem(FKEY);
+    if(!raw) return emptyFinder();
+    const d = normFinder(JSON.parse(raw));
+    if(!d) throw new Error("形が違う");
+    return d;
+  }catch(e){
+    /* 本体の load() と同じ考え方。消える前に必ず横へ退避する */
+    if(raw){
+      try{ localStorage.setItem(FKEY + "-broken", raw); }catch(_){}
+      fdFailed = String((e && e.message) || e);
+    }
+    return emptyFinder();
+  }
+}
+let F = loadFinder();
+function saveFinder(){
+  try{ localStorage.setItem(FKEY, JSON.stringify(F)); }
+  catch(e){ toast("保存できませんでした。哲学タブから画像を減らしてください"); return false; }
+  return true;
+}
+function finderKB(){
+  try{ return Math.round(JSON.stringify(F).length / 1024); }catch(e){ return 0; }
+}
+const fdNote = id => F.notes.find(n => n.id === id) || null;
+const fdStep = id => F.steps.find(s => s.id === id) || null;
+
+let fdView = 0;          // 0 概要 ／ 1〜3 ステップ。メモリだけに持つ（開き直すと続きから）
+const finderOpen = () => $("finder").classList.contains("on");
+function openFinder(){
+  $("finder").classList.add("on");
+  document.body.classList.add("fd-open");
+  renderFinder();
+}
+function closeFinder(){
+  $("finder").classList.remove("on");
+  document.body.classList.remove("fd-open");
+}
+
+/* ---------- ビジョンノート（SVG の下絵） ---------- */
+/* 楕円の上（または下）半分をなぞる道の、どこに角度 deg の点があるか（0〜100%）。
+   区切りの名前を輪に沿わせて置くのに使う。楕円の弧の長さは式で出ないので、細かく刻んで足す */
+function fdArcPct(a, b, deg, top){
+  const rad = deg * Math.PI / 180;
+  const t = Math.atan2(a * Math.sin(rad), b * Math.cos(rad));   // 角度 → 楕円の媒介変数（上は 0〜π、下は -π〜0）
+  const ds = u => Math.sqrt(a*a*Math.sin(u)**2 + b*b*Math.cos(u)**2);
+  const len = (from, to) => {
+    const N = 120, h = (to - from) / N; let s = 0;
+    for(let i = 0; i < N; i++) s += ds(from + h * (i + .5)) * h;
+    return s;
+  };
+  // 上の道は左端（π）から右端（0）へ、下の道は左端（-π）から右端（0）へ
+  return (top ? len(t, Math.PI) / len(0, Math.PI) : len(-Math.PI, t) / len(-Math.PI, 0)) * 100;
+}
+function fdBoardSVG(){
+  const { W, H, cx, cy, band, ring, core } = FB;
+  const r = band.h / 2;
+  const mid = { rx: (ring.rx + core.rx) / 2, ry: (ring.ry + core.ry) / 2 };
+  const arc = (sweep) => 'M' + (cx - mid.rx) + ' ' + cy + ' A' + mid.rx + ' ' + mid.ry + ' 0 0 ' + sweep + ' ' +
+                         (cx + mid.rx) + ' ' + cy;
+  const d = 320;   // 45°の線が上下の端に届く横の距離（= cy）
+  const labels = FD_AREAS.map(ar => {
+    const top = ar.deg >= 0;
+    return '<text class="fbl"><textPath href="#fdArc' + (top ? "T" : "B") + '" startOffset="' +
+      fdArcPct(mid.rx, mid.ry, ar.deg, top).toFixed(1) + '%" text-anchor="middle" dominant-baseline="central">' +
+      esc(ar.name) + '</textPath></text>';
+  }).join("");
+  return '<svg class="fdsvg" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' +
+    '<defs><path id="fdArcT" d="' + arc(1) + '"/><path id="fdArcB" d="' + arc(0) + '"/></defs>' +
+    '<rect class="fbband" x="' + band.x + '" y="' + band.y + '" width="' + band.w + '" height="' + band.h +
+      '" rx="' + r + '"/>' +
+    '<g class="fbline">' +
+      '<line x1="0" y1="' + cy + '" x2="' + W + '" y2="' + cy + '"/>' +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx - d) + '" y2="0"/>' +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx + d) + '" y2="0"/>' +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx - d) + '" y2="' + H + '"/>' +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx + d) + '" y2="' + H + '"/>' +
+    '</g>' +
+    '<ellipse class="fbring" cx="' + cx + '" cy="' + cy + '" rx="' + ring.rx + '" ry="' + ring.ry + '"/>' +
+    '<ellipse class="fbcore" cx="' + cx + '" cy="' + cy + '" rx="' + core.rx + '" ry="' + core.ry + '"/>' +
+    labels +
+    '<text class="fbq" x="' + cx + '" y="' + (cy - 12) + '" text-anchor="middle">私が「幸福感」「満足感」を</text>' +
+    '<text class="fbq" x="' + cx + '" y="' + (cy + 16) + '" text-anchor="middle">感じる状態ってどんなとき？</text>' +
+    '</svg>';
+}
+function fdStickyHTML(n){
+  return '<div class="stk ' + n.kind + '" data-id="' + esc(n.id) + '" style="left:' + (n.x * 100).toFixed(2) +
+    '%;top:' + (n.y * 100).toFixed(2) + '%"><div class="stx">' + esc(n.text) + '</div>' +
+    '<button class="stdel" data-act="stdel" title="はがす">✕</button></div>';
+}
+const fdBoardHTML = () =>
+  '<div class="fdboard" id="fdBoard">' + fdBoardSVG() + F.notes.map(fdStickyHTML).join("") + '</div>';
+
+/* ---------- ふせんを貼る場所を探す ---------- */
+/* ①は内側の楕円の中、②は外側の帯の中（輪より外）。
+   候補をいくつか出して、いま貼ってあるふせんからいちばん離れたところを選ぶ */
+function fdInZone(kind, x, y){
+  const { cx, cy, band, ring, core } = FB;
+  if(kind === "ideal"){
+    const ax = core.rx - STK_W / 2 - 4, ay = core.ry - STK_H / 2 - 4;
+    return ((x-cx)/ax)**2 + ((y-cy)/ay)**2 <= 1;
+  }
+  const m = 34, r = band.h / 2 - m;                                // 帯の縁から少し内側
+  const sx = Math.min(Math.max(x, band.x + band.h/2), band.x + band.w - band.h/2);
+  const inBand = (x - sx)**2 + (y - cy)**2 <= r*r;
+  const outRing = ((x-cx)/(ring.rx + STK_W/2))**2 + ((y-cy)/(ring.ry + STK_H/2))**2 > 1;
+  return inBand && outRing;
+}
+function fdSpot(kind){
+  const { W, H } = FB;
+  const centers = F.notes.map(n => [n.x * W + STK_W/2, n.y * H + STK_H/2]);
+  let best = null, bestD = -1;
+  for(let i = 0; i < 400 && (!best || i < 60 || bestD < 0); i++){
+    const x = Math.random() * W, y = Math.random() * H;
+    if(!fdInZone(kind, x, y)) continue;
+    const dist = centers.length ? Math.min(...centers.map(([a,b]) => Math.hypot(a - x, (b - y) * 1.4))) : 1e9;
+    if(dist > bestD){ bestD = dist; best = [x, y]; }
+  }
+  if(!best) best = kind === "ideal" ? [FB.cx, FB.cy] : [FB.cx, FB.band.y + 40];
+  return { x: Math.min(1, Math.max(0, (best[0] - STK_W/2) / W)),
+           y: Math.min(1, Math.max(0, (best[1] - STK_H/2) / H)) };
+}
+function addNote(kind){
+  const inp = $("fdNoteIn"); if(!inp) return;
+  const text = inp.value.trim();
+  if(!text){ inp.focus(); return; }
+  const at = fdSpot(kind);
+  F.notes.push({ id: uid(), kind, text, x: at.x, y: at.y });
+  saveFinder();
+  inp.value = "";
+  renderFinder();
+  $("fdNoteIn").focus();
+}
+function removeNote(id){
+  const i = F.notes.findIndex(n => n.id === id); if(i < 0) return;
+  const gone = F.notes.splice(i, 1)[0];
+  saveFinder(); renderFinder();
+  toast("はがしました", ()=>{ F.notes.splice(Math.min(i, F.notes.length), 0, gone); saveFinder(); renderFinder(); });
+}
+
+/* ---------- ふせんを動かす・書き直す ----------
+   押して動かせばドラッグ、動かさずに離せば書き直し。
+   ▼ HTML5 のドラッグ（dragstart）は使わない。箱へのドラッグと混ざらないように、
+     ポインターで自前に動かしている */
+let fdDrag = null;
+function fdPointerDown(e){
+  const st = e.target.closest(".stk");
+  if(!st || e.button !== 0 || e.target.closest(".stdel") || st.classList.contains("editing")) return;
+  const n = fdNote(st.dataset.id); if(!n) return;
+  e.preventDefault();
+  const board = $("fdBoard");
+  // 触ったものを一番上へ（並び順 ＝ 重なり順）
+  F.notes = F.notes.filter(x => x !== n).concat(n);
+  board.appendChild(st);
+  st.setPointerCapture(e.pointerId);
+  st.classList.add("moving");
+  fdDrag = { n, st, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, moved: false,
+             rect: board.getBoundingClientRect() };
+}
+function fdPointerMove(e){
+  const g = fdDrag; if(!g) return;
+  const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+  if(!g.moved && Math.hypot(dx, dy) < 4) return;
+  g.moved = true;
+  const maxX = 1 - g.st.offsetWidth / g.rect.width, maxY = 1 - g.st.offsetHeight / g.rect.height;
+  g.n.x = Math.min(Math.max(0, maxX), Math.max(0, g.ox + dx / g.rect.width));
+  g.n.y = Math.min(Math.max(0, maxY), Math.max(0, g.oy + dy / g.rect.height));
+  g.st.style.left = (g.n.x * 100).toFixed(2) + "%";
+  g.st.style.top  = (g.n.y * 100).toFixed(2) + "%";
+}
+function fdPointerUp(){
+  const g = fdDrag; if(!g) return;
+  fdDrag = null;
+  g.st.classList.remove("moving");
+  saveFinder();                         // 動かさなくても重なり順は変わっているので保存する
+  if(!g.moved) editNote(g.st);
+}
+function editNote(st){
+  const n = fdNote(st.dataset.id); if(!n) return;
+  const tx = st.querySelector(".stx");
+  st.classList.add("editing");
+  tx.contentEditable = "true";
+  tx.focus();
+  const sel = getSelection(), rg = document.createRange();
+  rg.selectNodeContents(tx); sel.removeAllRanges(); sel.addRange(rg);
+  let cancel = false;
+  tx.onkeydown = e => {
+    // Esc は書き直しをやめるだけ（画面を閉じる Esc まで届かせない）
+    if(e.key === "Escape"){ e.stopPropagation(); cancel = true; tx.blur(); }
+    else if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); tx.blur(); }
+  };
+  tx.onblur = ()=>{
+    tx.onblur = null; tx.onkeydown = null;
+    tx.contentEditable = "false";
+    st.classList.remove("editing");
+    const text = tx.innerText.replace(/\s+$/,"").replace(/^\s+/,"");
+    if(cancel || text === n.text){ tx.textContent = n.text; return; }
+    if(!text){ tx.textContent = n.text; removeNote(n.id); return; }
+    n.text = text; saveFinder();
+    tx.textContent = text;
+  };
+}
+
+/* ---------- ③ やりたいことリスト ---------- */
+function addStep(){
+  const text = $("fdStepIn").value.trim();
+  if(!text){ $("fdStepIn").focus(); return; }
+  const due = $("fdStepDue").value;
+  F.steps.push({ id: uid(), text, due: DAYKEY_RE.test(due) ? due : "", taskId: "" });
+  saveFinder();
+  renderFinder();
+  $("fdStepIn").focus();
+}
+function fdStepRow(s){
+  const reg = s.taskId && taskById(s.taskId);
+  const late = s.due && !reg && s.due < dayKey();
+  return '<div class="item fdstep' + (reg ? " met" : "") + '" data-id="' + esc(s.id) + '">' +
+    '<div class="grow"><div class="t" data-act="stedit" title="押すと書き直せます">' + esc(s.text) + '</div></div>' +
+    '<input type="date" class="fddue' + (late ? " late" : "") + '" data-act="due" value="' + esc(s.due) +
+      '" title="いつまでに">' +
+    (reg ? '<span class="fdreg">登録ずみ</span>'
+         : '<button class="btn ghost fdtotask" data-act="totask">やりたいことにする</button>') +
+    '<button class="iconbtn del" data-act="stdel" title="削除">✕</button></div>';
+}
+async function editStep(id){
+  const s = fdStep(id); if(!s) return;
+  const v = await askInput("書き直す", s.text);
+  if(v === null) return;
+  const text = String(v).trim();
+  if(!text || text === s.text) return;
+  s.text = text; saveFinder(); renderFinder();
+}
+function removeStep(id){
+  const i = F.steps.findIndex(s => s.id === id); if(i < 0) return;
+  const gone = F.steps.splice(i, 1)[0];
+  saveFinder(); renderFinder();
+  toast("削除しました", ()=>{ F.steps.splice(Math.min(i, F.steps.length), 0, gone); saveFinder(); renderFinder(); });
+}
+/* 「やりたいことにする」。やりたいことの編集と同じ欄（buildTaskForm / readTaskForm）を使う。
+   決めた中身でそのまま作るだけで、箱には入れない（右の一覧から、いつもどおりドラッグ） */
+function openStepTask(id){
+  const s = fdStep(id); if(!s) return;
+  edTaskId = ""; edNewAt = null; edStepId = id;
+  buildTaskForm({ text: s.text, cat:"", freq:{ unit:"once" }, goal:1, size:1,
+                  when:"any", fixed:null, remindAt:"" }, false);
+  $("edTitle").textContent = "やりたいことにする";
+  $("edOk").textContent = "登録";
+  $("editModal").classList.add("on");
+  setTimeout(()=> $("edText").focus(), 30);
+}
+function saveStepTask(){
+  const s = fdStep(edStepId); if(!s){ closeTaskEditor(); return; }
+  const v = readTaskForm(); if(!v) return;
+  const t = { id: uid(), text: v.text, links: [], when: v.when, cat: v.cat, freq: v.freq, size: v.size,
+              goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
+              log: [], actuals: [], createdAt: Date.now() };
+  S.tasks.push(t);
+  // 決まった時間を持たせたぶんは、もう作られている先の日にも入れる（編集と同じ扱い）
+  const put = t.fixed ? autoPlaceAhead(t.id) : 0;
+  s.taskId = t.id;
+  closeTaskEditor();
+  save(); saveFinder(); renderAll(); renderFinder();
+  toast("やりたいことに登録しました" + (put ? "／" + put + "日ぶん箱に入れました" : ""));
+}
+
+/* ---------- 画面 ---------- */
+function fdLead(i){
+  const st = FD_STEPS[i - 1];
+  return '<div class="fdlead"><div class="fdnum">ステップ' + st.n + '</div>' +
+    '<div class="fdname">' + esc(st.name) + '</div><div class="fddesc">' + esc(st.desc) + '</div></div>';
+}
+function fdNav(i){
+  return '<div class="fdnav">' +
+    (i > 0 ? '<button class="btn ghost" data-go="' + (i - 1) + '">← ' + (i === 1 ? "概要" : "ステップ" + FD_STEPS[i-2].n) + '</button>' : '<span></span>') +
+    (i < 3 ? '<button class="btn" data-go="' + (i + 1) + '">' + (i === 0 ? "はじめる" : "ステップ" + FD_STEPS[i].n) + ' →</button>' : '<span></span>') +
+    '</div>';
+}
+function renderFinder(){
+  if(!finderOpen()) return;
+  $("fdSteps").innerHTML = ["概要"].concat(FD_STEPS.map(s => s.n + " " + s.name)).map((l, i) =>
+    '<button class="chip' + (fdView === i ? " on" : "") + '" data-go="' + i + '">' + esc(l) + '</button>').join("");
+  const nIdeal = F.notes.filter(n => n.kind === "ideal").length;
+  const nVision = F.notes.length - nIdeal;
+  const nReg = F.steps.filter(s => s.taskId && taskById(s.taskId)).length;
+  let html = "";
+  if(fdView === 0){
+    const counts = [ "ふせん " + nIdeal + "枚", "ふせん " + nVision + "枚",
+                     F.steps.length + "件（うち登録 " + nReg + "件）" ];
+    html = '<div class="fdintro">' + FD_STEPS.map((st, i) =>
+      (i ? '<div class="fdarrow">→</div>' : '') +
+      '<button class="fdcard" data-go="' + (i + 1) + '"><div class="fdnum">ステップ' + st.n + '</div>' +
+      '<div class="fdname">' + esc(st.name) + '</div><div class="fddesc">' + esc(st.desc) + '</div>' +
+      '<div class="fdcount">' + counts[i] + '</div></button>').join("") + '</div>' + fdNav(0);
+  }else if(fdView === 1 || fdView === 2){
+    const kind = fdView === 1 ? "ideal" : "vision";
+    html = fdLead(fdView) +
+      '<div class="row fdadd"><input id="fdNoteIn" autocomplete="off" maxlength="80" placeholder="ふせんに書く">' +
+      '<button class="btn" id="fdNoteAdd" data-kind="' + kind + '">貼る</button></div>' +
+      fdBoardHTML() + fdNav(fdView);
+  }else{
+    html = '<div class="fd3"><div class="fd3l">' + fdLead(3) +
+      '<div class="form fdstepform"><input id="fdStepIn" autocomplete="off" placeholder="小さな一歩">' +
+      '<div class="row mt8"><span class="fnote">いつまでに</span><input type="date" id="fdStepDue">' +
+      '<button class="btn" id="fdStepAdd">追加</button></div></div>' +
+      '<div id="fdStepList">' + F.steps.map(fdStepRow).join("") + '</div></div>' +
+      '<div class="fd3r">' + fdBoardHTML() + '</div></div>' + fdNav(3);
+  }
+  $("fdBody").innerHTML = html;
+  if($("fdNoteIn")){
+    const kind = $("fdNoteAdd").dataset.kind;
+    $("fdNoteAdd").onclick = ()=> addNote(kind);
+    $("fdNoteIn").onkeydown = e => { if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); addNote(kind); } };
+  }
+  if($("fdStepIn")){
+    $("fdStepAdd").onclick = addStep;
+    $("fdStepIn").onkeydown = e => { if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); addStep(); } };
+  }
+  const board = $("fdBoard");
+  if(board){
+    board.onpointerdown = fdPointerDown;
+    board.onpointermove = fdPointerMove;
+    board.onpointerup = board.onpointercancel = fdPointerUp;
+  }
+}
+async function resetFinder(){
+  if(!F.notes.length && !F.steps.length){ toast("まだ何も書いていません"); return; }
+  const ok = await openModal({ title: "まっさらに戻しますか？", ok: "まっさらに戻す", danger: true,
+    desc: "ふせん・ビジョンノート・やりたいことリストが全部消えます。\nやりたいことに登録したものは、そのまま残ります。" });
+  if(!ok) return;
+  const before = F;
+  F = emptyFinder(); fdView = 0;
+  saveFinder(); renderFinder();
+  toast("まっさらに戻しました", ()=>{ F = before; saveFinder(); renderFinder(); toast("戻しました"); });
+}
+
+$("finderOpen").onclick = openFinder;
+$("fdClose").onclick = closeFinder;
+$("fdReset").onclick = resetFinder;
+$("finder").addEventListener("click", e => {
+  const go = e.target.closest("[data-go]");
+  if(go){ fdView = Number(go.dataset.go) || 0; renderFinder(); $("fdBody").scrollTop = 0; $("finder").scrollTop = 0; return; }
+  const del = e.target.closest('.stk [data-act="stdel"]');
+  if(del){ removeNote(del.closest(".stk").dataset.id); return; }
+  const row = e.target.closest(".fdstep"); if(!row) return;
+  const act = (e.target.closest("[data-act]") || {}).dataset?.act;
+  if(act === "stedit") editStep(row.dataset.id);
+  else if(act === "totask") openStepTask(row.dataset.id);
+  else if(act === "stdel") removeStep(row.dataset.id);
+});
+$("finder").addEventListener("change", e => {
+  if(!e.target.matches('.fdstep [data-act="due"]')) return;
+  const s = fdStep(e.target.closest(".fdstep").dataset.id); if(!s) return;
+  s.due = DAYKEY_RE.test(e.target.value) ? e.target.value : "";
+  saveFinder(); renderFinder();
+});
+if(fdFailed) console.error("finder load failed:", fdFailed, "→ 退避先 localStorage:", FKEY + "-broken");
+
 /* ================= tabs ================= */
 function switchTab(name){
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
@@ -4175,6 +4592,8 @@ document.addEventListener("keydown", e => {
   if(e.key === "Escape" && modalDone){ closeModal(null); return; }
   if($("modal").classList.contains("on") || $("linkModal").classList.contains("on") ||
      $("editModal").classList.contains("on")) return;
+  // 「やりたいことを見つけよう」が開いているあいだは、Esc で閉じるだけ（今日タブのキーは効かせない）
+  if(finderOpen()){ if(e.key === "Escape") closeFinder(); return; }
   if(e.ctrlKey || e.metaKey || e.altKey) return;
   const tag = (e.target.tagName || "").toLowerCase();
   if(tag === "input" || tag === "textarea" || tag === "select") return;
