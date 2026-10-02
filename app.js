@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-02.4";
+const APP_VERSION = "2026-10-02.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -4202,18 +4202,13 @@ const STK_W = 100, STK_H = 40;               // ふせん1枚のおおよその�
 
 let fdFailed = "";
 const FD_AREA_MAX = 12;   // 区切りの名前の字数の上限（長いと隣の区切りにはみ出す）
-const FD_GRP_MAX = 40;    // ③のグループの名前の字数の上限
-const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], groups:[], steps:[] });
+const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[] });
 function normFinder(d){
   if(!d || typeof d !== "object") return null;
   const num = x => (typeof x === "number" && isFinite(x)) ? Math.min(1, Math.max(0, x)) : 0;
   // 区切りの名前。無い（古いデータ）・数が合わないときは、最初の名前で埋める
   const areas = FD_AREAS.map((a, i) =>
     (Array.isArray(d.areas) && typeof d.areas[i] === "string") ? d.areas[i].slice(0, FD_AREA_MAX) : a.name);
-  // ③のグループ。無い（古いデータ）なら空。並び順 ＝ 優先順（上からやる）
-  const groups = (Array.isArray(d.groups) ? d.groups : []).filter(g => g && g.id).map(g => ({
-    id: String(g.id), name: String(g.name || "").slice(0, FD_GRP_MAX) }));
-  const gids = new Set(groups.map(g => g.id));
   return {
     v: 1,
     areas,
@@ -4222,9 +4217,7 @@ function normFinder(d){
       text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
     steps: (Array.isArray(d.steps) ? d.steps : []).filter(s => s && s.id).map(s => ({
       id: String(s.id), text: String(s.text || ""),
-      gid: gids.has(String(s.gid || "")) ? String(s.gid) : "",     // 無い・知らないグループは「グループなし」
-      due: DAYKEY_RE.test(s.due || "") ? s.due : "", taskId: String(s.taskId || "") })),
-    groups
+      due: DAYKEY_RE.test(s.due || "") ? s.due : "", taskId: String(s.taskId || "") }))
   };
 }
 function loadFinder(){
@@ -4255,11 +4248,9 @@ function finderKB(){
 }
 const fdNote = id => F.notes.find(n => n.id === id) || null;
 const fdStep = id => F.steps.find(s => s.id === id) || null;
-const fdGroup = id => F.groups.find(g => g.id === id) || null;
 
 let fdView = 0;          // 0 概要 ／ 1〜3 ステップ。メモリだけに持つ（開き直すと続きから）
 let fdArea = -1;         // ②③で強調している区切り（FD_AREAS の番号。-1 はなし）。これもメモリだけ
-let fdGrpSel = "";       // ③で一歩を足すときのグループ（"" はグループなし）。これもメモリだけ
 const finderOpen = () => $("finder").classList.contains("on");
 function openFinder(){
   $("finder").classList.add("on");
@@ -4497,23 +4488,17 @@ function addStep(){
   const text = $("fdStepIn").value.trim();
   if(!text){ $("fdStepIn").focus(); return; }
   const due = $("fdStepDue").value;
-  const gid = fdGroup(fdGrpSel) ? fdGrpSel : "";
-  const s = { id: uid(), text, gid, due: DAYKEY_RE.test(due) ? due : "", taskId: "" };
-  // グループの中ではいちばん下（＝いちばんあと）に足す。配列の並び ＝ グループの中の優先順
-  const last = F.steps.map(x => x.gid).lastIndexOf(gid);
-  F.steps.splice(last < 0 ? F.steps.length : last + 1, 0, s);
+  F.steps.push({ id: uid(), text, due: DAYKEY_RE.test(due) ? due : "", taskId: "" });
   saveFinder();
   renderFinder();
-  // 足したものが見えるように
-  const row = document.querySelector('#fdStepList .fdstep[data-id="' + s.id + '"]');
-  if(row) row.scrollIntoView({ block: "nearest" });
+  $("fdStepList").scrollTop = $("fdStepList").scrollHeight;   // 足したもの（いちばん下）が見えるように
   $("fdStepIn").focus();
 }
 function fdStepRow(s){
   const reg = s.taskId && taskById(s.taskId);
   const late = s.due && !reg && s.due < dayKey();
   // 左の細い列に入るので縦に積む：文面と✕／いつまでに／やりたいことにする
-  return '<div class="item fdstep' + (reg ? " met" : "") + '" draggable="true" data-id="' + esc(s.id) + '">' +
+  return '<div class="item fdstep' + (reg ? " met" : "") + '" data-id="' + esc(s.id) + '">' +
     '<div class="fdsthead"><div class="t" data-act="stedit" title="押すと書き直せます">' + esc(s.text) + '</div>' +
     '<button class="iconbtn del" data-act="stdel" title="削除">✕</button></div>' +
     '<input type="date" class="fddue' + (late ? " late" : "") + '" data-act="due" value="' + esc(s.due) +
@@ -4535,124 +4520,6 @@ function removeStep(id){
   saveFinder(); renderFinder();
   toast("削除しました", ()=>{ F.steps.splice(Math.min(i, F.steps.length), 0, gone); saveFinder(); renderFinder(); });
 }
-/* ---------- ③ グループ ----------
-   一歩をグループにまとめる。グループの並び ＝ 優先順（上ができたら下をやる）。
-   グループの中の一歩の並びも、F.steps の並びそのまま（上からやる）。
-   並べ替えは一覧の中でドラッグ（グループは見出しを、一歩は行をつかむ） */
-async function addGroup(){
-  const v = await askInput("グループの名前", "", "例：英語を話せるようになる");
-  if(v === null) return;
-  const name = String(v).trim().slice(0, FD_GRP_MAX);
-  if(!name) return;
-  const g = { id: uid(), name };
-  F.groups.push(g);
-  fdGrpSel = g.id;                     // 次に足す一歩は、いま作ったグループに入る
-  saveFinder(); renderFinder();
-  const head = document.querySelector('#fdStepList .fdgrp[data-gid="' + g.id + '"]');
-  if(head) head.scrollIntoView({ block: "nearest" });
-  $("fdStepIn").focus();
-}
-async function renameGroup(id){
-  const g = fdGroup(id); if(!g) return;
-  const v = await askInput("グループの名前", g.name);
-  if(v === null) return;
-  const name = String(v).trim().slice(0, FD_GRP_MAX);
-  if(!name || name === g.name) return;
-  g.name = name; saveFinder(); renderFinder();
-}
-/* グループを消しても、中の一歩は消さない（「グループなし」に移る） */
-function removeGroup(id){
-  const i = F.groups.findIndex(g => g.id === id); if(i < 0) return;
-  const gone = F.groups.splice(i, 1)[0];
-  const moved = F.steps.filter(s => s.gid === id);
-  moved.forEach(s => s.gid = "");
-  if(fdGrpSel === id) fdGrpSel = "";
-  saveFinder(); renderFinder();
-  toast("グループを消しました" + (moved.length ? "（中身は「グループなし」へ）" : ""), ()=>{
-    F.groups.splice(Math.min(i, F.groups.length), 0, gone);
-    moved.forEach(s => { if(fdStep(s.id)) s.gid = id; });
-    saveFinder(); renderFinder();
-  });
-}
-/* 一歩を動かす。at が一歩なら、その上（after なら下）へ入ってそのグループに移る。
-   at が無ければ、グループ gid のいちばん上へ */
-function moveStep(id, at, after, gid){
-  const s = fdStep(id); if(!s || id === at) return;
-  F.steps = F.steps.filter(x => x !== s);
-  if(at){
-    const t = fdStep(at); if(!t){ F.steps.push(s); return; }
-    s.gid = t.gid;
-    F.steps.splice(F.steps.indexOf(t) + (after ? 1 : 0), 0, s);
-  }else{
-    s.gid = gid;
-    const first = F.steps.findIndex(x => x.gid === gid);
-    F.steps.splice(first < 0 ? F.steps.length : first, 0, s);
-  }
-}
-function moveGroup(id, at, after){
-  const g = fdGroup(id); if(!g || id === at) return;
-  F.groups = F.groups.filter(x => x !== g);
-  const t = fdGroup(at); if(!t){ F.groups.push(g); return; }
-  F.groups.splice(F.groups.indexOf(t) + (after ? 1 : 0), 0, g);
-}
-function fdGroupHead(g, i, steps){
-  const nReg = steps.filter(s => s.taskId && taskById(s.taskId)).length;
-  return '<div class="fdgrp" draggable="true" data-gid="' + esc(g.id) + '">' +
-    '<span class="fdgno">' + (i + 1) + '</span>' +
-    '<div class="fdgnm" data-act="grename" title="押すと名前を変えられます">' + esc(g.name) + '</div>' +
-    '<span class="fdgct">' + (steps.length ? nReg + "/" + steps.length : "") + '</span>' +
-    '<button class="iconbtn del" data-act="grdel" title="グループを消す（中身は残ります）">✕</button></div>';
-}
-/* 一覧。グループが無ければ、これまでどおり一歩を並べるだけ */
-function fdStepListHTML(){
-  if(!F.groups.length) return F.steps.map(fdStepRow).join("");
-  const loose = F.steps.filter(s => !s.gid);
-  return F.groups.map((g, i) => {
-    const steps = F.steps.filter(s => s.gid === g.id);
-    return '<div class="fdgbox">' + fdGroupHead(g, i, steps) + steps.map(fdStepRow).join("") + '</div>';
-  }).join("") +
-    // 「グループなし」は中身があるときだけ出す（一歩をドラッグしているあいだは、落とし先として出す）
-    '<div class="fdgbox loose' + (loose.length ? "" : " empty") + '"><div class="fdgrp" data-gid="">' +
-    '<div class="fdgnm">グループなし</div></div>' + loose.map(fdStepRow).join("") + '</div>';
-}
-
-/* 一覧の中のドラッグ。箱へのドラッグ（dragId）とは別に持つ */
-let fdLD = null;   // { kind:"step"|"grp", id }
-function fdDropMark(el, cls){
-  document.querySelectorAll("#fdStepList .dropb, #fdStepList .dropa, #fdStepList .dropin")
-    .forEach(x => { if(x !== el) x.classList.remove("dropb", "dropa", "dropin"); });
-  if(el){ el.classList.remove("dropb", "dropa", "dropin"); if(cls) el.classList.add(cls); }
-}
-/* いまマウスの下にある落とし先。{ el, cls, apply } か null */
-function fdDropAt(e){
-  const g = fdLD; if(!g) return null;
-  const lower = el => { const r = el.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
-  if(g.kind === "step"){
-    const row = e.target.closest("#fdStepList .fdstep");
-    if(row){
-      if(row.dataset.id === g.id) return { el: row, cls: "", apply: null };
-      const after = lower(row);
-      return { el: row, cls: after ? "dropa" : "dropb", apply: ()=> moveStep(g.id, row.dataset.id, after) };
-    }
-    const head = e.target.closest("#fdStepList .fdgrp");
-    if(head) return { el: head, cls: "dropin", apply: ()=> moveStep(g.id, "", false, head.dataset.gid) };
-    return null;
-  }
-  // グループ：ほかのグループの上なら、その前か後ろへ
-  const box = e.target.closest("#fdStepList .fdgbox:not(.loose)");
-  if(!box) return null;
-  const head = box.querySelector(".fdgrp");
-  if(head.dataset.gid === g.id) return { el: head, cls: "", apply: null };
-  const after = lower(head) || e.target.closest(".fdstep") !== null;   // 中身の上なら後ろ
-  return { el: head, cls: after ? "dropa" : "dropb", apply: ()=> moveGroup(g.id, head.dataset.gid, after) };
-}
-function fdListDragEnd(){
-  fdLD = null;
-  const list = $("fdStepList"); if(list) list.classList.remove("dragstep");
-  fdDropMark(null);
-  document.querySelectorAll("#fdStepList .dragging").forEach(x => x.classList.remove("dragging"));
-}
-
 /* 「やりたいことにする」。やりたいことの編集と同じ欄（buildTaskForm / readTaskForm）を使う。
    決めた中身でそのまま作るだけで、箱には入れない（右の一覧から、いつもどおりドラッグ） */
 function openStepTask(id){
@@ -4706,7 +4573,6 @@ function renderFinder(){
   let html = "";
   if(fdView === 0){
     const counts = [ "ふせん " + nIdeal + "枚", "ふせん " + nVision + "枚",
-                     (F.groups.length ? "グループ " + F.groups.length + "・" : "") +
                      F.steps.length + "件（うち登録 " + nReg + "件）" ];
     html = '<div class="fdintro">' + FD_STEPS.map((st, i) =>
       (i ? '<div class="fdarrow">→</div>' : '') +
@@ -4721,19 +4587,11 @@ function renderFinder(){
       '<div class="fdmain">' + fdBoardHTML() + '</div></div>';
   }else{
     // ③も①②と同じ形。一覧は左の列の下に足していき、そこだけスクロールする
-    if(!fdGroup(fdGrpSel)) fdGrpSel = "";
-    const grpSel = F.groups.length
-      ? '<div class="fnote mt8">グループ</div><select id="fdStepGrp">' +
-        [{ id:"", name:"グループなし" }].concat(F.groups).map(g =>
-          '<option value="' + esc(g.id) + '"' + (g.id === fdGrpSel ? " selected" : "") + '>' + esc(g.name) + '</option>').join("") +
-        '</select>'
-      : '';
     html = '<div class="fdwork">' + fdSide(3,
       '<div class="form fdstepform"><input id="fdStepIn" autocomplete="off" placeholder="小さな一歩">' +
-      '<div class="fnote mt8">いつまでに</div><input type="date" id="fdStepDue">' + grpSel +
-      '<button class="btn mt8" id="fdStepAdd">追加</button></div>' +
-      '<button class="btn ghost fdgadd" id="fdGrpAdd">＋ グループを作る</button>',
-      '<div class="fdsteplist" id="fdStepList">' + fdStepListHTML() + '</div>') +
+      '<div class="fnote mt8">いつまでに</div><input type="date" id="fdStepDue">' +
+      '<button class="btn mt8" id="fdStepAdd">追加</button></div>',
+      '<div class="fdsteplist" id="fdStepList">' + F.steps.map(fdStepRow).join("") + '</div>') +
       '<div class="fdmain">' + fdBoardHTML() + '</div></div>';
   }
   $("fdBody").innerHTML = html;
@@ -4745,8 +4603,6 @@ function renderFinder(){
   }
   if($("fdStepIn")){
     $("fdStepAdd").onclick = addStep;
-    $("fdGrpAdd").onclick = ()=> addGroup();
-    if($("fdStepGrp")) $("fdStepGrp").onchange = e => { fdGrpSel = e.target.value; };
     $("fdStepIn").onkeydown = e => { if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); addStep(); } };
   }
   const board = $("fdBoard");
@@ -4757,12 +4613,12 @@ function renderFinder(){
   }
 }
 async function resetFinder(){
-  if(!F.notes.length && !F.steps.length && !F.groups.length){ toast("まだ何も書いていません"); return; }
+  if(!F.notes.length && !F.steps.length){ toast("まだ何も書いていません"); return; }
   const ok = await openModal({ title: "まっさらに戻しますか？", ok: "まっさらに戻す", danger: true,
     desc: "ふせん・ビジョンノート・やりたいことリストが全部消えます。\nやりたいことに登録したものは、そのまま残ります。" });
   if(!ok) return;
   const before = F;
-  F = emptyFinder(); fdView = 0; fdArea = -1; fdGrpSel = "";
+  F = emptyFinder(); fdView = 0; fdArea = -1;
   saveFinder(); renderFinder();
   toast("まっさらに戻しました", ()=>{ F = before; saveFinder(); renderFinder(); toast("戻しました"); });
 }
@@ -4778,13 +4634,6 @@ $("finder").addEventListener("click", e => {
   if(area){ if(fdView >= 2) fdPickArea(Number(area.dataset.area)); return; }
   const del = e.target.closest('.stk [data-act="stdel"]');
   if(del){ removeNote(del.closest(".stk").dataset.id); return; }
-  const head = e.target.closest(".fdgrp[data-gid]");
-  if(head && head.dataset.gid){
-    const gact = (e.target.closest("[data-act]") || {}).dataset?.act;
-    if(gact === "grename") renameGroup(head.dataset.gid);
-    else if(gact === "grdel") removeGroup(head.dataset.gid);
-    return;
-  }
   const row = e.target.closest(".fdstep"); if(!row) return;
   const act = (e.target.closest("[data-act]") || {}).dataset?.act;
   if(act === "stedit") editStep(row.dataset.id);
@@ -4801,33 +4650,6 @@ $("finder").addEventListener("change", e => {
   s.due = DAYKEY_RE.test(e.target.value) ? e.target.value : "";
   saveFinder(); renderFinder();
 });
-/* ③の一覧の並べ替え（グループは見出しを、一歩は行をつかんでドラッグ） */
-$("finder").addEventListener("dragstart", e => {
-  const el = e.target.closest && e.target.closest("#fdStepList .fdstep, #fdStepList .fdgrp[draggable]");
-  if(!el) return;
-  fdLD = el.classList.contains("fdstep") ? { kind:"step", id: el.dataset.id } : { kind:"grp", id: el.dataset.gid };
-  try{ e.dataTransfer.setData("text/plain", fdLD.id); }catch(_){}
-  e.dataTransfer.effectAllowed = "move";
-  (fdLD.kind === "grp" ? el.closest(".fdgbox") : el).classList.add("dragging");
-  // 「グループなし」を落とし先として出す（つかんだ直後に形を変えるとドラッグが切れることがあるので、一拍おく）
-  if(fdLD.kind === "step") setTimeout(()=>{ if(fdLD && $("fdStepList")) $("fdStepList").classList.add("dragstep"); }, 0);
-});
-$("finder").addEventListener("dragover", e => {
-  if(!fdLD) return;
-  const at = fdDropAt(e);
-  fdDropMark(at && at.el, at && at.cls);
-  if(at && at.apply){ e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
-});
-$("finder").addEventListener("drop", e => {
-  if(!fdLD) return;
-  const at = fdDropAt(e);
-  e.preventDefault();
-  fdListDragEnd();
-  if(!at || !at.apply) return;
-  at.apply();
-  saveFinder(); renderFinder();
-});
-$("finder").addEventListener("dragend", fdListDragEnd);
 if(fdFailed) console.error("finder load failed:", fdFailed, "→ 退避先 localStorage:", FKEY + "-broken");
 
 /* ================= tabs ================= */
