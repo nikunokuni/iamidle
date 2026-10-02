@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-10-02.1">
+<meta name="app-version" content="2026-10-02.4">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-10-02.3">
+<link rel="stylesheet" href="style.css?v=2026-10-02.4">
 </head>
 <body>
 
@@ -96,6 +96,11 @@
         <span id="freqMid" style="display:none">日に</span>
         <input type="number" id="freqCount" min="1" max="99" value="1">
         <span>回</span>
+      </div>
+      <!-- グループ（単発だけ。グループが1つでもあるときだけ出る。中身は app.js の syncTaskGroupRow） -->
+      <div class="row mt10" id="taskGroupRow" style="display:none">
+        <span class="flabel">グループ</span>
+        <select id="taskGroup"></select>
       </div>
       <div class="row mt10" style="justify-content:flex-end">
         <button class="btn" id="taskAdd">追加</button>
@@ -374,6 +379,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-10-02.3"></script>
+<script src="app.js?v=2026-10-02.4"></script>
 </body>
 </html>

@@ -1137,3 +1137,26 @@ body.fd-open{overflow:hidden}
 .fddue.late{border-color:var(--warn);color:var(--warn)}
 .fdtotask{padding:6px 10px;font-size:13px}
 .fdreg{font-size:12px;color:var(--ok);padding:0 4px}
+
+/* ---------- やりたいことのグループ（「やりたいこと」タブ。2026-10-02） ----------
+   グループの並び ＝ 優先順。番号の丸と左の帯はグループのカテゴリーの色 */
+.tgbar{justify-content:space-between;align-items:center;margin:22px 0 9px}
+.tgbar h2{margin:0}
+.tgbar .btn{padding:6px 12px;font-size:13px}
+.tgroup{
+  border:1px solid var(--line);border-left:3px solid var(--cat,var(--line));
+  border-radius:var(--radius);padding:8px 8px 1px;margin-bottom:12px;background:var(--bg2);
+}
+.tghead{display:flex;align-items:center;gap:8px;padding:2px 4px 8px}
+.tghead .t{font-size:15px;font-weight:700;word-break:break-word}
+.tghead .s{font-size:12px;color:var(--fg-faint);margin-top:2px}
+.tgno{
+  flex:none;min-width:24px;height:24px;border-radius:12px;padding:0 6px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--cat,var(--card2));color:#15171c;font-size:13px;font-weight:700;
+}
+.cat-none .tgno{color:var(--fg)}
+.tgino{flex:none;width:16px;text-align:right;font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
+.item.ingroup.next{border-color:var(--accent)}
+.iconbtn:disabled{opacity:.25;cursor:default}
+@media (max-width:600px){ .tghead{flex-wrap:wrap} }
