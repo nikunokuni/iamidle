@@ -4177,13 +4177,14 @@ $("updateNow").onclick = hardReload;
 const FKEY = "jiko-kanri-finder-v1";
 const FD_STEPS = [
   { n:"①", name:"理想の自分の洗い出し",
-    desc:"自分の理想を吐き出そう！\n幸せを感じる瞬間は？ どんな景色で、どんなことしてる？ 周りとの関係は？ など" },
+    desc:"自分の理想を吐き出そう！\n幸せを感じる瞬間は？ どんな景色で、どんなことしてる？ 周りとの関係は？ など\n書き出せたら似た者同士でグループ分けしよう\nグレーの部分にふせんを貼る" },
   { n:"②", name:"ビジョンノート",
-    desc:"①を叶えた自分がやってそうなこと、持ってそうなもの、考えてることを書き出す" },
+    desc:"①を叶えた自分がやってそうなこと、持ってそうなもの、考えてることを書き出す\n黒い部分にふせんを貼る" },
   { n:"③", name:"やりたいことリスト",
     desc:"①②を細分化して、今すぐできるくらいまで落とし込む\n＋いつまでに達成したいかを決める" }
 ];
-/* 外側の帯の区切り。上から右回り。deg は区切りの真ん中の向き（右が0°、上が90°） */
+/* 外側の帯の区切り。上から右回り。deg は区切りの真ん中の向き（右が0°、上が90°）
+   ▼ name は最初に入っている名前。本人が書きかえた名前は F.areas（同じ並び）に持つ。空にもできる */
 const FD_AREAS = [
   { name:"自分磨き",           deg: 90   },
   { name:"お金",               deg: 22.5 },
@@ -4200,12 +4201,17 @@ const FB = { W:1000, H:640, cx:500, cy:320,
 const STK_W = 100, STK_H = 40;               // ふせん1枚のおおよその大きさ（置き場所を探すときだけ使う。幅は中身なりで、最大130）
 
 let fdFailed = "";
-const emptyFinder = () => ({ v:1, notes:[], steps:[] });
+const FD_AREA_MAX = 12;   // 区切りの名前の字数の上限（長いと隣の区切りにはみ出す）
+const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[] });
 function normFinder(d){
   if(!d || typeof d !== "object") return null;
   const num = x => (typeof x === "number" && isFinite(x)) ? Math.min(1, Math.max(0, x)) : 0;
+  // 区切りの名前。無い（古いデータ）・数が合わないときは、最初の名前で埋める
+  const areas = FD_AREAS.map((a, i) =>
+    (Array.isArray(d.areas) && typeof d.areas[i] === "string") ? d.areas[i].slice(0, FD_AREA_MAX) : a.name);
   return {
     v: 1,
+    areas,
     notes: (Array.isArray(d.notes) ? d.notes : []).filter(n => n && n.id).map(n => ({
       id: String(n.id), kind: n.kind === "vision" ? "vision" : "ideal",
       text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
@@ -4277,11 +4283,12 @@ function fdBoardSVG(){
   const arc = (sweep) => 'M' + (cx - mid.rx) + ' ' + cy + ' A' + mid.rx + ' ' + mid.ry + ' 0 0 ' + sweep + ' ' +
                          (cx + mid.rx) + ' ' + cy;
   const d = 320;   // 45°の線が上下の端に届く横の距離（= cy）
-  const labels = FD_AREAS.map(ar => {
+  const labels = FD_AREAS.map((ar, i) => {
     const top = ar.deg >= 0;
-    return '<text class="fbl"><textPath href="#fdArc' + (top ? "T" : "B") + '" startOffset="' +
+    const name = F.areas[i];
+    return '<text class="fbl' + (name ? "" : " blank") + '" data-area="' + i + '"><title>押すと名前を変えられます</title><textPath href="#fdArc' + (top ? "T" : "B") + '" startOffset="' +
       fdArcPct(mid.rx, mid.ry, ar.deg, top).toFixed(1) + '%" text-anchor="middle" dominant-baseline="central">' +
-      esc(ar.name) + '</textPath></text>';
+      esc(name || "＋ 名前") + '</textPath></text>';
   }).join("");
   return '<svg class="fdsvg" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' +
     '<defs><path id="fdArcT" d="' + arc(1) + '"/><path id="fdArcB" d="' + arc(0) + '"/></defs>' +
@@ -4354,6 +4361,19 @@ function removeNote(id){
   const gone = F.notes.splice(i, 1)[0];
   saveFinder(); renderFinder();
   toast("はがしました", ()=>{ F.notes.splice(Math.min(i, F.notes.length), 0, gone); saveFinder(); renderFinder(); });
+}
+
+/* 区切りの名前を書きかえる。空にすれば名前なし（「＋ 名前」とだけ出る） */
+async function renameArea(i){
+  if(!(i >= 0 && i < FD_AREAS.length)) return;
+  const v = await askInput("区切りの名前", F.areas[i], FD_AREAS[i].name);
+  if(v === null) return;
+  const name = String(v).trim().slice(0, FD_AREA_MAX);
+  if(name === F.areas[i]) return;
+  const before = F.areas[i];
+  F.areas[i] = name;
+  saveFinder(); renderFinder();
+  toast("名前を変えました", ()=>{ F.areas[i] = before; saveFinder(); renderFinder(); });
 }
 
 /* ---------- ふせんを動かす・書き直す ----------
@@ -4482,10 +4502,12 @@ function saveStepTask(){
 }
 
 /* ---------- 画面 ---------- */
-function fdLead(i){
+/* ①②③の左の細い列。上から ステップ番号 → 名前 → 書く欄 → 説明文 → 前後のボタン */
+function fdSide(i, form){
   const st = FD_STEPS[i - 1];
-  return '<div class="fdlead"><div class="fdnum">ステップ' + st.n + '</div>' +
-    '<div class="fdname">' + esc(st.name) + '</div><div class="fddesc">' + esc(st.desc) + '</div></div>';
+  return '<div class="fdside"><div class="fdnum">ステップ' + st.n + '</div>' +
+    '<div class="fdname">' + esc(st.name) + '</div>' + form +
+    '<div class="fddesc">' + esc(st.desc) + '</div>' + fdNav(i) + '</div>';
 }
 function fdNav(i){
   return '<div class="fdnav">' +
@@ -4511,17 +4533,17 @@ function renderFinder(){
       '<div class="fdcount">' + counts[i] + '</div></button>').join("") + '</div>' + fdNav(0);
   }else if(fdView === 1 || fdView === 2){
     const kind = fdView === 1 ? "ideal" : "vision";
-    html = fdLead(fdView) +
+    html = '<div class="fdwork">' + fdSide(fdView,
       '<div class="row fdadd"><input id="fdNoteIn" autocomplete="off" maxlength="80" placeholder="ふせんに書く">' +
-      '<button class="btn" id="fdNoteAdd" data-kind="' + kind + '">貼る</button></div>' +
-      fdBoardHTML() + fdNav(fdView);
+      '<button class="btn" id="fdNoteAdd" data-kind="' + kind + '">貼る</button></div>') +
+      '<div class="fdmain">' + fdBoardHTML() + '</div></div>';
   }else{
-    html = '<div class="fd3"><div class="fd3l">' + fdLead(3) +
+    html = '<div class="fdwork fd3">' + fdSide(3,
       '<div class="form fdstepform"><input id="fdStepIn" autocomplete="off" placeholder="小さな一歩">' +
-      '<div class="row mt8"><span class="fnote">いつまでに</span><input type="date" id="fdStepDue">' +
-      '<button class="btn" id="fdStepAdd">追加</button></div></div>' +
-      '<div id="fdStepList">' + F.steps.map(fdStepRow).join("") + '</div></div>' +
-      '<div class="fd3r">' + fdBoardHTML() + '</div></div>' + fdNav(3);
+      '<div class="fnote mt8">いつまでに</div><input type="date" id="fdStepDue">' +
+      '<button class="btn mt8" id="fdStepAdd">追加</button></div>') +
+      '<div id="fdStepList">' + F.steps.map(fdStepRow).join("") + '</div>' +
+      '<div class="fd3r">' + fdBoardHTML() + '</div></div>';
   }
   $("fdBody").innerHTML = html;
   if($("fdNoteIn")){
@@ -4557,6 +4579,8 @@ $("fdReset").onclick = resetFinder;
 $("finder").addEventListener("click", e => {
   const go = e.target.closest("[data-go]");
   if(go){ fdView = Number(go.dataset.go) || 0; renderFinder(); $("fdBody").scrollTop = 0; $("finder").scrollTop = 0; return; }
+  const area = e.target.closest(".fbl[data-area]");
+  if(area){ renameArea(Number(area.dataset.area)); return; }
   const del = e.target.closest('.stk [data-act="stdel"]');
   if(del){ removeNote(del.closest(".stk").dataset.id); return; }
   const row = e.target.closest(".fdstep"); if(!row) return;

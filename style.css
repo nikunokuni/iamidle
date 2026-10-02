@@ -1041,15 +1041,15 @@ body.fd-open{overflow:hidden}
 .fdend{display:flex;align-items:center;gap:8px;flex:none}
 .fdend .btn{padding:7px 12px;font-size:13px}
 .fdend .iconbtn{font-size:18px}
-.fdbody{max-width:1180px;margin:0 auto;padding:18px 24px 40px}
+.fdbody{padding:18px 24px}
 
 .fdnum{font-size:12px;letter-spacing:.12em;color:var(--accent2);font-weight:700}
 .fdname{font-size:19px;font-weight:700;margin-top:2px}
 .fddesc{font-size:14px;color:var(--fg-dim);margin-top:6px;white-space:pre-line;line-height:1.7}
-.fdlead{margin-bottom:14px}
 
 /* 概要：3つのステップを左から並べる */
-.fdintro{display:flex;align-items:stretch;gap:10px;margin-top:6px}
+.fdintro{display:flex;align-items:stretch;gap:10px;margin:6px auto 0;max-width:1132px}
+.fdintro + .fdnav{max-width:1132px;margin-left:auto;margin-right:auto}
 .fdcard{
   flex:1;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
@@ -1062,14 +1062,25 @@ body.fd-open{overflow:hidden}
 .fdarrow{align-self:center;color:var(--fg-faint);font-size:20px;flex:none}
 .fdnav{display:flex;justify-content:space-between;gap:8px;margin-top:18px}
 
-.fdadd{margin-bottom:12px;max-width:640px}
+/* ①②③：左に細い列（ステップ番号・名前・書く欄・説明文・前後のボタン）、残りを全部ノートに使う。
+   列の幅は「理想の自分の洗い出し」の字の幅ぶん（19px × 10字） */
+.fdwork{display:grid;grid-template-columns:196px minmax(0, 1fr);gap:24px;align-items:start}
+.fdside{display:flex;flex-direction:column;position:sticky;top:76px}
+.fdside .fdname{white-space:nowrap}
+.fdside .fddesc{margin-top:12px}
+.fdside .fdnav{flex-wrap:wrap;margin-top:16px}
+.fdside .fdnav .btn{padding:7px 10px;font-size:13px}
+.fdadd{margin-top:12px;flex-wrap:nowrap;gap:6px}
+.fdadd input{flex:1;min-width:0}
+.fdadd .btn{flex:none;padding:8px 12px}
 
 /* ビジョンノート。中身（ふせんの幅・字の大きさ）はノートの幅に合わせて伸び縮みする（cqw） */
-/* ▼ ①②では、ノートが画面の高さに収まるように幅を絞る（上の見出しと入力欄でおよそ250px）。
+/* ▼ ①②では、ノートを画面いっぱいまで大きくする。幅は右の空き全部、
+     ただし高さが画面に収まるところまで（上の帯とすきまでおよそ 100px）。
      ③では右の列に入るので、列の幅のほうが先に効く */
 .fdboard{
   position:relative;width:100%;aspect-ratio:1000/640;
-  max-width:max(560px, calc((100dvh - 250px) * 1000 / 640));margin:0 auto;
+  max-width:max(480px, calc((100dvh - 100px) * 1000 / 640));margin:0 auto;
   container-type:inline-size;
   background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);
   overflow:hidden;user-select:none;
@@ -1079,14 +1090,16 @@ body.fd-open{overflow:hidden}
 .fbline line{stroke:var(--line);stroke-width:2}
 .fbring{fill:var(--bg2);stroke:var(--line);stroke-width:2}
 .fbcore{fill:var(--card2);stroke:var(--line);stroke-width:2}
-.fbl{fill:var(--fg-dim);font-size:17px;font-weight:600;letter-spacing:.06em}
+.fbl{fill:var(--fg-dim);font-size:17px;font-weight:600;letter-spacing:.06em;cursor:pointer}
+.fbl:hover{fill:var(--accent)}
+.fbl.blank{fill:var(--fg-faint);font-weight:400}
 .fbq{fill:var(--fg-faint);font-size:17px}
 
 .stk{
   /* 幅は中身なり（短いふせんは小さく）。内側の楕円は狭いので、決め打ちの幅だとすぐ埋まる */
   position:absolute;width:max-content;max-width:13cqw;min-width:5cqw;min-height:3.6cqw;
   padding:.7cqw .9cqw;border-radius:.4cqw;
-  font-size:clamp(8px, 1.35cqw, 16px);line-height:1.4;color:#2a2410;
+  font-size:max(8px, 1.35cqw);line-height:1.4;color:#2a2410;
   background:var(--stk-ideal);
   box-shadow:0 .3cqw .9cqw rgba(0,0,0,.35);
   cursor:grab;touch-action:none;
@@ -1105,11 +1118,12 @@ body.fd-open{overflow:hidden}
 .stk.editing .stdel,.stk.moving .stdel{display:none}
 .stk .stdel:hover{color:var(--danger);border-color:var(--danger)}
 
-/* ③ 左にリスト、右にノート（見ながら細かくする） */
-.fd3{display:grid;grid-template-columns:minmax(360px, 5fr) 7fr;gap:20px;align-items:start}
-.fd3r{position:sticky;top:70px}
-.fdstepform .row{flex-wrap:nowrap}
-.fdstepform input[type=date]{width:auto;flex:1}
+/* ③ 左の細い列に書く欄、まん中にリスト、右にノート（見ながら細かくする） */
+.fd3{grid-template-columns:196px minmax(340px, 5fr) 6fr}
+.fd3r{position:sticky;top:76px}
+.fdstepform{margin:12px 0 0;padding:10px}
+.fdstepform input{width:100%}
+.fdstepform .btn{width:100%}
 .fdstep{gap:8px}
 .fdstep .t{cursor:pointer}
 .fdstep .t:hover{color:var(--accent)}
