@@ -1022,14 +1022,15 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
      ③の「やりたいことにする」は、この上に編集ダイアログを重ねて開く */
 .finder{
   position:fixed;inset:0;z-index:90;display:none;
-  background:var(--bg);overflow-y:auto;
+  background:var(--bg);
   --stk-ideal:#ffe08a;   /* ①のふせん */
   --stk-vision:#ffb3c7;  /* ②のふせん */
 }
-.finder.on{display:block}
+/* 上の帯＋中身（.fdbody）の縦並び。①②③は中身を画面の高さぴったりにして、ページ全体はスクロールさせない */
+.finder.on{display:flex;flex-direction:column}
 body.fd-open{overflow:hidden}
 .fdbar{
-  position:sticky;top:0;z-index:5;
+  flex:none;
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
   background:var(--bg2);border-bottom:1px solid var(--line);
   padding:12px 24px;
@@ -1041,7 +1042,7 @@ body.fd-open{overflow:hidden}
 .fdend{display:flex;align-items:center;gap:8px;flex:none}
 .fdend .btn{padding:7px 12px;font-size:13px}
 .fdend .iconbtn{font-size:18px}
-.fdbody{padding:18px 24px}
+.fdbody{flex:1;min-height:0;overflow-y:auto;padding:18px 24px}
 
 .fdnum{font-size:12px;letter-spacing:.12em;color:var(--accent2);font-weight:700}
 .fdname{font-size:19px;font-weight:700;margin-top:2px}
@@ -1062,25 +1063,24 @@ body.fd-open{overflow:hidden}
 .fdarrow{align-self:center;color:var(--fg-faint);font-size:20px;flex:none}
 .fdnav{display:flex;justify-content:space-between;gap:8px;margin-top:18px}
 
-/* ①②③：左に細い列（ステップ番号・名前・書く欄・説明文・前後のボタン）、残りを全部ノートに使う。
+/* ①②③：左に細い列（ステップ番号・名前・書く欄・説明文、③はその下に一覧）、残りを全部ノートに使う。
+   ①②③で同じ形なので、右のノートはどのステップでも同じ大きさ・同じ位置に見える。
    列の幅は「理想の自分の洗い出し」の字の幅ぶん（19px × 10字） */
-.fdwork{display:grid;grid-template-columns:196px minmax(0, 1fr);gap:24px;align-items:start}
-.fdside{display:flex;flex-direction:column;position:sticky;top:76px}
+.fdwork{display:grid;grid-template-columns:196px minmax(0, 1fr);grid-template-rows:minmax(0, 1fr);gap:24px;height:100%}
+.fdside{display:flex;flex-direction:column;min-height:0;overflow-y:auto}
 .fdside .fdname{white-space:nowrap}
 .fdside .fddesc{margin-top:12px}
-.fdside .fdnav{flex-wrap:wrap;margin-top:16px}
-.fdside .fdnav .btn{padding:7px 10px;font-size:13px}
+/* ノートの置き場。高さも幅も測れる箱にして、ノートはその中に収まる一番大きい大きさにする */
+.fdmain{container-type:size;min-width:0;min-height:0}
 .fdadd{margin-top:12px;flex-wrap:nowrap;gap:6px}
 .fdadd input{flex:1;min-width:0}
 .fdadd .btn{flex:none;padding:8px 12px}
 
 /* ビジョンノート。中身（ふせんの幅・字の大きさ）はノートの幅に合わせて伸び縮みする（cqw） */
-/* ▼ ①②では、ノートを画面いっぱいまで大きくする。幅は右の空き全部、
-     ただし高さが画面に収まるところまで（上の帯とすきまでおよそ 100px）。
-     ③では右の列に入るので、列の幅のほうが先に効く */
+/* ▼ ノートは画面いっぱいまで大きくする。.fdmain（右の空き）の幅と高さの、どちらか先に当たるところまで */
 .fdboard{
-  position:relative;width:100%;aspect-ratio:1000/640;
-  max-width:max(480px, calc((100dvh - 100px) * 1000 / 640));margin:0 auto;
+  position:relative;aspect-ratio:1000/640;
+  width:min(100cqw, 100cqh * 1000 / 640);margin:0 auto;
   container-type:inline-size;
   background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);
   overflow:hidden;user-select:none;
@@ -1090,9 +1090,13 @@ body.fd-open{overflow:hidden}
 .fbline line{stroke:var(--line);stroke-width:2}
 .fbring{fill:var(--bg2);stroke:var(--line);stroke-width:2}
 .fbcore{fill:var(--card2);stroke:var(--line);stroke-width:2}
-.fbl{fill:var(--fg-dim);font-size:17px;font-weight:600;letter-spacing:.06em;cursor:pointer}
-.fbl:hover{fill:var(--accent)}
+.fbl{fill:var(--fg-dim);font-size:17px;font-weight:600;letter-spacing:.06em}
+.fbhit{fill:transparent;cursor:pointer}
+.fbhit:hover{fill:rgba(255,255,255,.04)}
 .fbl.blank{fill:var(--fg-faint);font-weight:400}
+.fbl.on{fill:var(--accent2);font-weight:700}
+/* ②③で選んだ区切り。輪郭を太くして色を乗せる（内側の楕円は除く。ふせんは上に乗ったまま） */
+.fbhl{fill:rgba(255,209,102,.14);stroke:var(--accent2);stroke-width:4;stroke-linejoin:round;pointer-events:none}
 .fbq{fill:var(--fg-faint);font-size:17px}
 
 .stk{
@@ -1118,16 +1122,18 @@ body.fd-open{overflow:hidden}
 .stk.editing .stdel,.stk.moving .stdel{display:none}
 .stk .stdel:hover{color:var(--danger);border-color:var(--danger)}
 
-/* ③ 左の細い列に書く欄、まん中にリスト、右にノート（見ながら細かくする） */
-.fd3{grid-template-columns:196px minmax(340px, 5fr) 6fr}
-.fd3r{position:sticky;top:76px}
+/* ③ 左の細い列に書く欄と一覧。一覧はそこだけスクロールする */
 .fdstepform{margin:12px 0 0;padding:10px}
+.fdsteplist{flex:1 0 120px;min-height:120px;overflow-y:auto;margin-top:14px}
+.fdstep{flex-direction:column;align-items:stretch;gap:6px;padding:9px 10px}
+.fdsthead{display:flex;align-items:flex-start;gap:6px}
+.fdsthead .t{flex:1;min-width:0;font-size:14px}
+.fdsthead .iconbtn{flex:none;margin:-4px -4px 0 0}
 .fdstepform input{width:100%}
 .fdstepform .btn{width:100%}
-.fdstep{gap:8px}
 .fdstep .t{cursor:pointer}
 .fdstep .t:hover{color:var(--accent)}
-.fddue{width:auto;flex:none;padding:5px 8px;font-size:13px}
+.fddue{width:100%;padding:5px 8px;font-size:13px}
 .fddue.late{border-color:var(--warn);color:var(--warn)}
 .fdtotask{padding:6px 10px;font-size:13px}
-.fdreg{font-size:12px;color:var(--ok);flex:none;padding:0 4px}
+.fdreg{font-size:12px;color:var(--ok);padding:0 4px}

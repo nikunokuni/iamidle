@@ -4250,6 +4250,7 @@ const fdNote = id => F.notes.find(n => n.id === id) || null;
 const fdStep = id => F.steps.find(s => s.id === id) || null;
 
 let fdView = 0;          // 0 概要 ／ 1〜3 ステップ。メモリだけに持つ（開き直すと続きから）
+let fdArea = -1;         // ②③で強調している区切り（FD_AREAS の番号。-1 はなし）。これもメモリだけ
 const finderOpen = () => $("finder").classList.contains("on");
 function openFinder(){
   $("finder").classList.add("on");
@@ -4286,7 +4287,8 @@ function fdBoardSVG(){
   const labels = FD_AREAS.map((ar, i) => {
     const top = ar.deg >= 0;
     const name = F.areas[i];
-    return '<text class="fbl' + (name ? "" : " blank") + '" data-area="' + i + '"><title>押すと名前を変えられます</title><textPath href="#fdArc' + (top ? "T" : "B") + '" startOffset="' +
+    return '<text class="fbl' + (name ? "" : " blank") + (i === fdArea && fdView >= 2 ? " on" : "") +
+      '" data-area="' + i + '"><textPath href="#fdArc' + (top ? "T" : "B") + '" startOffset="' +
       fdArcPct(mid.rx, mid.ry, ar.deg, top).toFixed(1) + '%" text-anchor="middle" dominant-baseline="central">' +
       esc(name || "＋ 名前") + '</textPath></text>';
   }).join("");
@@ -4303,10 +4305,52 @@ function fdBoardSVG(){
     '</g>' +
     '<ellipse class="fbring" cx="' + cx + '" cy="' + cy + '" rx="' + ring.rx + '" ry="' + ring.ry + '"/>' +
     '<ellipse class="fbcore" cx="' + cx + '" cy="' + cy + '" rx="' + core.rx + '" ry="' + core.ry + '"/>' +
+    '<path class="fbhl" id="fdHl" d="' + (fdView >= 2 ? fdAreaPath(fdArea) : "") + '"/>' +
     labels +
+    // 押せる場所は、名前の字だけでなく輪のその区切りぶん全部（字は細くて押しにくい）
+    FD_AREAS.map((ar, i) => '<path class="fbhit" data-area="' + i + '" d="' + fdRingPath(i) + '"><title>' +
+      (fdView >= 2 ? "押すとここを強調／" : "") + 'ダブルクリックで名前を変える</title></path>').join("") +
     '<text class="fbq" x="' + cx + '" y="' + (cy - 12) + '" text-anchor="middle">私が「幸福感」「満足感」を</text>' +
     '<text class="fbq" x="' + cx + '" y="' + (cy + 16) + '" text-anchor="middle">感じる状態ってどんなとき？</text>' +
     '</svg>';
+}
+/* 区切り i の形（強調に使う）。中心から引いた2本の線のあいだで、内側の楕円より外、ノートの端まで。
+   外側の帯も輪も、帯の外の角も入る。i が範囲外なら "" */
+const fdDir = a => [Math.cos(a * Math.PI / 180), -Math.sin(a * Math.PI / 180)];   // 右が0°、上が90°（画面の y は下向き）
+const fdSpan = ar => { const half = Math.abs(ar.deg) === 90 ? 45 : 22.5; return [ar.deg - half, ar.deg + half]; };
+const fdOnEll = (a, e) => { const [ux, uy] = fdDir(a), r = 1 / Math.hypot(ux / e.rx, uy / e.ry);
+                            return [FB.cx + ux * r, FB.cy + uy * r]; };
+const fdPt = p => p[0].toFixed(1) + " " + p[1].toFixed(1);
+/* 輪のうち区切り i のぶん（名前の載っている帯）。名前を押す場所に使う */
+function fdRingPath(i){
+  const [a1, a2] = fdSpan(FD_AREAS[i]), { core, ring } = FB;
+  return "M" + fdPt(fdOnEll(a1, core)) + " A" + core.rx + " " + core.ry + " 0 0 0 " + fdPt(fdOnEll(a2, core)) +
+    " L" + fdPt(fdOnEll(a2, ring)) + " A" + ring.rx + " " + ring.ry + " 0 0 1 " + fdPt(fdOnEll(a1, ring)) + " Z";
+}
+function fdAreaPath(i){
+  const ar = FD_AREAS[i]; if(!ar) return "";
+  const { W, H, cx, cy, core } = FB;
+  const [a1, a2] = fdSpan(ar);
+  const dir = fdDir, onCore = a => fdOnEll(a, core);
+  const onEdge = a => { const [ux, uy] = dir(a);
+    const t = Math.min(ux > 1e-9 ? (W - cx) / ux : ux < -1e-9 ? -cx / ux : Infinity,
+                       uy > 1e-9 ? (H - cy) / uy : uy < -1e-9 ? -cy / uy : Infinity);
+    return [cx + ux * t, cy + uy * t]; };
+  // 2本の線のあいだに入るノートの角も通る
+  const corners = [[W, 0], [0, 0], [0, H], [W, H]]
+    .map(([x, y]) => ({ p: [x, y], a: ((Math.atan2(cy - y, x - cx) * 180 / Math.PI - a1) % 360 + 360) % 360 }))
+    .filter(c => c.a > 0 && c.a < a2 - a1).sort((u, v) => u.a - v.a).map(c => c.p);
+  const pt = fdPt;
+  const c1 = onCore(a1), c2 = onCore(a2);
+  return "M" + pt(c1) + " L" + pt(onEdge(a1)) + corners.map(p => " L" + pt(p)).join("") +
+    " L" + pt(onEdge(a2)) + " L" + pt(c2) + " A" + core.rx + " " + core.ry + " 0 0 1 " + pt(c1) + " Z";
+}
+/* 強調を付けかえる。ノートを組み直さずに書きかえるだけ（組み直すとダブルクリックが届かなくなる） */
+function fdPickArea(i){
+  fdArea = fdArea === i ? -1 : i;
+  const hl = $("fdHl"); if(!hl) return;
+  hl.setAttribute("d", fdAreaPath(fdArea));
+  document.querySelectorAll("#fdBoard .fbl").forEach(t => t.classList.toggle("on", Number(t.dataset.area) === fdArea));
 }
 function fdStickyHTML(n){
   return '<div class="stk ' + n.kind + '" data-id="' + esc(n.id) + '" style="left:' + (n.x * 100).toFixed(2) +
@@ -4363,7 +4407,7 @@ function removeNote(id){
   toast("はがしました", ()=>{ F.notes.splice(Math.min(i, F.notes.length), 0, gone); saveFinder(); renderFinder(); });
 }
 
-/* 区切りの名前を書きかえる。空にすれば名前なし（「＋ 名前」とだけ出る） */
+/* 区切りの名前を書きかえる（名前をダブルクリック）。空にすれば名前なし（「＋ 名前」とだけ出る） */
 async function renameArea(i){
   if(!(i >= 0 && i < FD_AREAS.length)) return;
   const v = await askInput("区切りの名前", F.areas[i], FD_AREAS[i].name);
@@ -4447,18 +4491,20 @@ function addStep(){
   F.steps.push({ id: uid(), text, due: DAYKEY_RE.test(due) ? due : "", taskId: "" });
   saveFinder();
   renderFinder();
+  $("fdStepList").scrollTop = $("fdStepList").scrollHeight;   // 足したもの（いちばん下）が見えるように
   $("fdStepIn").focus();
 }
 function fdStepRow(s){
   const reg = s.taskId && taskById(s.taskId);
   const late = s.due && !reg && s.due < dayKey();
+  // 左の細い列に入るので縦に積む：文面と✕／いつまでに／やりたいことにする
   return '<div class="item fdstep' + (reg ? " met" : "") + '" data-id="' + esc(s.id) + '">' +
-    '<div class="grow"><div class="t" data-act="stedit" title="押すと書き直せます">' + esc(s.text) + '</div></div>' +
+    '<div class="fdsthead"><div class="t" data-act="stedit" title="押すと書き直せます">' + esc(s.text) + '</div>' +
+    '<button class="iconbtn del" data-act="stdel" title="削除">✕</button></div>' +
     '<input type="date" class="fddue' + (late ? " late" : "") + '" data-act="due" value="' + esc(s.due) +
       '" title="いつまでに">' +
     (reg ? '<span class="fdreg">登録ずみ</span>'
-         : '<button class="btn ghost fdtotask" data-act="totask">やりたいことにする</button>') +
-    '<button class="iconbtn del" data-act="stdel" title="削除">✕</button></div>';
+         : '<button class="btn ghost fdtotask" data-act="totask">やりたいことにする</button>') + '</div>';
 }
 async function editStep(id){
   const s = fdStep(id); if(!s) return;
@@ -4502,12 +4548,13 @@ function saveStepTask(){
 }
 
 /* ---------- 画面 ---------- */
-/* ①②③の左の細い列。上から ステップ番号 → 名前 → 書く欄 → 説明文 → 前後のボタン */
-function fdSide(i, form){
+/* ①②③の左の細い列。上から ステップ番号 → 名前 → 書く欄 → 説明文（→ ③だけ一覧）。
+   前後へ進むボタンは置かない（上の帯のチップで行き来する。本人の指示） */
+function fdSide(i, form, more){
   const st = FD_STEPS[i - 1];
   return '<div class="fdside"><div class="fdnum">ステップ' + st.n + '</div>' +
     '<div class="fdname">' + esc(st.name) + '</div>' + form +
-    '<div class="fddesc">' + esc(st.desc) + '</div>' + fdNav(i) + '</div>';
+    '<div class="fddesc">' + esc(st.desc) + '</div>' + (more || "") + '</div>';
 }
 function fdNav(i){
   return '<div class="fdnav">' +
@@ -4522,6 +4569,7 @@ function renderFinder(){
   const nIdeal = F.notes.filter(n => n.kind === "ideal").length;
   const nVision = F.notes.length - nIdeal;
   const nReg = F.steps.filter(s => s.taskId && taskById(s.taskId)).length;
+  const listTop = $("fdStepList") ? $("fdStepList").scrollTop : 0;   // 書き直し・削除で一覧が上に戻らないように
   let html = "";
   if(fdView === 0){
     const counts = [ "ふせん " + nIdeal + "枚", "ふせん " + nVision + "枚",
@@ -4538,14 +4586,16 @@ function renderFinder(){
       '<button class="btn" id="fdNoteAdd" data-kind="' + kind + '">貼る</button></div>') +
       '<div class="fdmain">' + fdBoardHTML() + '</div></div>';
   }else{
-    html = '<div class="fdwork fd3">' + fdSide(3,
+    // ③も①②と同じ形。一覧は左の列の下に足していき、そこだけスクロールする
+    html = '<div class="fdwork">' + fdSide(3,
       '<div class="form fdstepform"><input id="fdStepIn" autocomplete="off" placeholder="小さな一歩">' +
       '<div class="fnote mt8">いつまでに</div><input type="date" id="fdStepDue">' +
-      '<button class="btn mt8" id="fdStepAdd">追加</button></div>') +
-      '<div id="fdStepList">' + F.steps.map(fdStepRow).join("") + '</div>' +
-      '<div class="fd3r">' + fdBoardHTML() + '</div></div>';
+      '<button class="btn mt8" id="fdStepAdd">追加</button></div>',
+      '<div class="fdsteplist" id="fdStepList">' + F.steps.map(fdStepRow).join("") + '</div>') +
+      '<div class="fdmain">' + fdBoardHTML() + '</div></div>';
   }
   $("fdBody").innerHTML = html;
+  if($("fdStepList")) $("fdStepList").scrollTop = listTop;
   if($("fdNoteIn")){
     const kind = $("fdNoteAdd").dataset.kind;
     $("fdNoteAdd").onclick = ()=> addNote(kind);
@@ -4568,7 +4618,7 @@ async function resetFinder(){
     desc: "ふせん・ビジョンノート・やりたいことリストが全部消えます。\nやりたいことに登録したものは、そのまま残ります。" });
   if(!ok) return;
   const before = F;
-  F = emptyFinder(); fdView = 0;
+  F = emptyFinder(); fdView = 0; fdArea = -1;
   saveFinder(); renderFinder();
   toast("まっさらに戻しました", ()=>{ F = before; saveFinder(); renderFinder(); toast("戻しました"); });
 }
@@ -4579,8 +4629,9 @@ $("fdReset").onclick = resetFinder;
 $("finder").addEventListener("click", e => {
   const go = e.target.closest("[data-go]");
   if(go){ fdView = Number(go.dataset.go) || 0; renderFinder(); $("fdBody").scrollTop = 0; $("finder").scrollTop = 0; return; }
-  const area = e.target.closest(".fbl[data-area]");
-  if(area){ renameArea(Number(area.dataset.area)); return; }
+  // 区切りの名前：②③では押すとそこを強調（もう一度押すと消える）。名前を変えるのはダブルクリック
+  const area = e.target.closest("#fdBoard [data-area]");
+  if(area){ if(fdView >= 2) fdPickArea(Number(area.dataset.area)); return; }
   const del = e.target.closest('.stk [data-act="stdel"]');
   if(del){ removeNote(del.closest(".stk").dataset.id); return; }
   const row = e.target.closest(".fdstep"); if(!row) return;
@@ -4588,6 +4639,10 @@ $("finder").addEventListener("click", e => {
   if(act === "stedit") editStep(row.dataset.id);
   else if(act === "totask") openStepTask(row.dataset.id);
   else if(act === "stdel") removeStep(row.dataset.id);
+});
+$("finder").addEventListener("dblclick", e => {
+  const area = e.target.closest("#fdBoard [data-area]");
+  if(area) renameArea(Number(area.dataset.area));
 });
 $("finder").addEventListener("change", e => {
   if(!e.target.matches('.fdstep [data-act="due"]')) return;
