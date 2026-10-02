@@ -1137,3 +1137,30 @@ body.fd-open{overflow:hidden}
 .fddue.late{border-color:var(--warn);color:var(--warn)}
 .fdtotask{padding:6px 10px;font-size:13px}
 .fdreg{font-size:12px;color:var(--ok);padding:0 4px}
+
+/* ③のグループ。並び ＝ 優先順。見出しをつかんでグループごと、行をつかんで一歩を並べ替える */
+.fdgadd{width:100%;margin-top:8px;padding:7px 10px;font-size:13px}
+.fdstepform select{width:100%}
+.fdgbox{margin-bottom:10px}
+.fdgbox.empty{display:none}
+.fdsteplist.dragstep .fdgbox.empty{display:block}
+.fdgbox.dragging{opacity:.35}
+.fdgrp{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 4px 6px 2px;margin-bottom:6px;
+  border-bottom:1px solid var(--line);border-radius:4px;cursor:grab;
+}
+.fdgrp[data-gid=""]{cursor:default}
+.fdgno{flex:none;min-width:20px;height:20px;border-radius:10px;padding:0 5px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--accent2);color:#2a2410;font-size:12px;font-weight:700}
+.fdgnm{flex:1;min-width:0;font-size:14px;font-weight:700;word-break:break-word;cursor:pointer}
+.fdgnm:hover{color:var(--accent)}
+.fdgrp[data-gid=""] .fdgnm{color:var(--fg-faint);font-weight:400;cursor:default}
+.fdgct{flex:none;font-size:11px;color:var(--fg-faint)}
+.fdgrp .iconbtn{flex:none;margin:-4px -4px -4px 0}
+.fdstep{cursor:grab}
+/* 落とし先の印：上に入る／下に入る／このグループの先頭に入る */
+.fdsteplist .dropb{box-shadow:0 -3px 0 var(--accent)}
+.fdsteplist .dropa{box-shadow:0 3px 0 var(--accent)}
+.fdgrp.dropin{background:rgba(91,156,255,.14);border-color:var(--accent)}
