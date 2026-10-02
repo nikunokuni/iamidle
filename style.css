@@ -1160,3 +1160,11 @@ body.fd-open{overflow:hidden}
 .item.ingroup.next{border-color:var(--accent)}
 .iconbtn:disabled{opacity:.25;cursor:default}
 @media (max-width:600px){ .tghead{flex-wrap:wrap} }
+.tgpick{flex:none;padding:5px 10px;font-size:12px}
+/* グループに入れるものを選ぶ一覧（モーダルの中） */
+.tgcands{max-height:min(50vh, 420px);overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.tgcand{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.tgcand:hover{border-color:var(--accent)}
+.tgcand input{flex:none;width:auto;margin:0}
+.tgcand .t{flex:1;min-width:0;font-size:14px;word-break:break-word}
+.tgcand .s{flex:none;font-size:12px;color:var(--fg-faint)}

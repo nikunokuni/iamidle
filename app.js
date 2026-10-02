@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-02.4";
+const APP_VERSION = "2026-10-02.5";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2665,6 +2665,7 @@ function groupsHTML(){
         '<div class="grow"><div class="t">' + esc(g.name) + '</div>' +
           '<div class="s">' + (ms.length ? "達成 " + nDone + "/" + ms.length : "まだ空です") + '</div></div>' +
         (c ? '<span class="cattag ' + catClass(c) + '">' + esc(catInfo(c).label) + '</span>' : '') +
+        '<button class="btn ghost tgpick" data-gact="pick" title="このグループに入れるやりたいことを選ぶ">＋ 入れる</button>' +
         '<button class="iconbtn" data-gact="up" title="グループを上へ"' + (top ? " disabled" : "") + '>↑</button>' +
         '<button class="iconbtn" data-gact="down" title="グループを下へ"' + (bottom ? " disabled" : "") + '>↓</button>' +
         '<button class="iconbtn" data-gact="edit" title="名前とタグを直す">✎</button>' +
@@ -2701,6 +2702,7 @@ async function groupAct(gid, act){
   const i = S.tgroups.findIndex(g => g.id === gid); if(i < 0) return;
   const g = S.tgroups[i];
   if(act === "edit"){ editGroup(gid); return; }
+  if(act === "pick"){ pickIntoGroup(gid); return; }
   if(act === "up" || act === "down"){
     const j = act === "up" ? i - 1 : i + 1;
     if(j < 0 || j >= S.tgroups.length) return;
@@ -2721,6 +2723,26 @@ async function groupAct(gid, act){
       save(); renderAll(); toast("戻しました");
     });
   }
+}
+/* グループの側から、入れるやりたいことを選ぶ。
+   出すのは、どのグループにも入っていない単発で、まだやり切っていないもの（「単発のやりたいこと」と「まだ先の予定」）。
+   選んだものは、一覧に並んでいる順のまま、グループの一番下に入る */
+async function pickIntoGroup(gid){
+  const g = groupById(gid); if(!g) return;
+  const cand = S.tasks.filter(t => t.freq.unit === "once" && !isDone(t) && !groupOf(t));
+  if(!cand.length){ toast("入れられる単発のやりたいことがありません"); return; }
+  const ok = await openModal({ title: "「" + g.name + "」に入れる", ok: "入れる",
+    html: '<div class="tgcands">' + cand.map(t =>
+      '<label class="tgcand"><input type="checkbox" value="' + esc(t.id) + '">' +
+      '<span class="t">' + esc(t.text) + '</span><span class="s">' + esc(boxTime(t.size)) +
+        (t.remindAt ? " ・ " + esc(t.remindAt) + " から" : "") + '</span></label>').join("") + '</div>' });
+  if(!ok) return;
+  const ids = [...document.querySelectorAll('#mExtra .tgcand input:checked')].map(x => x.value);
+  if(!ids.length) return;
+  if(!groupById(gid)) return;                     // 待っている間に消えていたら何もしない
+  ids.forEach(id => { if(taskById(id)) setTaskGroup(id, gid); });
+  save(); renderAll();
+  toast(ids.length + "件を「" + g.name + "」に入れました");
 }
 /* グループの中で1つ上（下）へ。消えたもの・くり返しに変わったものは飛ばして、見えている隣と入れ替える */
 function moveInGroup(id, dir){
