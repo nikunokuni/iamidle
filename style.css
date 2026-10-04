@@ -292,6 +292,13 @@ body.now-fixed .side #rouletteBox{
 .boxrow.done{opacity:.45}
 .boxrow.done .bt{text-decoration:line-through}
 .boxrow.span2 .bi{color:var(--accent2)}
+/* 2箱以上のものの、2つ目から下の箱。薄く出すだけで、押しても何も起きない。
+   ▼ 行そのものを opacity で薄くしないこと。ごほうびの画像を敷いているとき、
+     まだやっていない箱から画像が透けてしまう。薄くするのは中の字だけ */
+.boxrow.cont{pointer-events:none}
+.boxrow.cont > :not(.bclock){opacity:.45}
+.boxrow.cont .bi{color:var(--accent2)}
+.boxrow.cont .bt{font-size:13px}
 
 /* ---------- list items ---------- */
 .item{
@@ -861,6 +868,9 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .wkbox.empty.tap{cursor:pointer}
 .wkbox.empty.tap:hover{border-color:var(--accent);background:rgba(91,156,255,.1)}
 .wkbox.done{opacity:.45}
+/* 2箱以上のものの、2つ目から下の箱。薄く出すだけで、押しても何も起きない */
+.wkbox.cont{pointer-events:none}
+.wkbox.cont > :not(.wkclock){opacity:.45}
 .wkbox.done .wktxt{text-decoration:line-through}
 .wkbox.over{border-color:var(--accent);background:rgba(91,156,255,.16)}
 .wkbox[draggable=true]{cursor:grab}

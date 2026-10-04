@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-02.5";
+const APP_VERSION = "2026-10-04.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1940,7 +1940,8 @@ function renderBoxes(){
   const dupCount = {};
   groups.forEach(g => { if(g.tid) dupCount[g.tid] = (dupCount[g.tid] || 0) + 1; });
   const rows = groups.map(g => {
-    const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
+    // 2箱以上でも、番号はその行の箱のぶんだけ。続きの箱は下に1行ずつ出る
+    const no = String(g.from+1);
     // 時刻はちょうど◯時のところだけ。箱は順番だけを持つので、これは目安
     const clock = isClockMark(key, g.from) ? '<span class="bclock">' + boxClock(key, g.from) + '</span>' : '';
     if(!g.id){
@@ -1960,6 +1961,17 @@ function renderBoxes(){
     // 同じものを今日いくつ置いてあるか。1つだけのときは何も足さない
     const dup = dupCount[g.tid] || 0;
     if(dup > 1) sub.push((g.ord+1) + "/" + dup + "つ目");
+    // ▼ 2箱以上のものも、箱1つにつき1行。表示される箱の数は、その日の箱数のまま変わらない。
+    //   操作できるのは一番上の行だけ。続きの行（.cont）は薄く出すだけで、押しても何も起きない
+    //   （data-id も data-act も持たせない。CSS で pointer-events も切ってある）
+    let conts = "";
+    for(let i = g.from + 1; i <= g.to; i++){
+      conts += '<div class="boxrow cont' + (done ? " done" : "") + (isCur ? " current" : "") + '">' +
+        (isClockMark(key, i) ? '<span class="bclock">' + boxClock(key, i) + '</span>' : '') +
+        '<span class="bi">' + (i+1) + '</span>' +
+        '<div class="bt">' + esc(t.text) + '</div>' +
+      '</div>';
+    }
     return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
         (size > 1 ? " span2" : "") + '" data-id="' + esc(g.id) + '" data-i="' + g.from + '"' +
         (done ? "" : ' draggable="true"') + '>' + clock +
@@ -1977,7 +1989,7 @@ function renderBoxes(){
       (done
         ? '<button class="iconbtn" data-act="boxundo" title="取り消す">↩</button>'
         : '<button class="iconbtn" data-act="boxout" title="箱から出す">✕</button>') +
-    '</div>' + sizePickHTML(g.id, size, d);
+    '</div>' + conts + sizePickHTML(g.id, size, d);
   }).join("");
 
   el.innerHTML = head + rows +
@@ -2094,7 +2106,7 @@ function renderWeek(){
     const isToday = k === today;
     const ds = dayStart(k);
     const rows = boxGroups(d).map(g => {
-      const no = (g.from+1) + (g.to > g.from ? "–" + (g.to+1) : "");
+      const no = String(g.from+1);
       const mark = isClockMark(k, g.from) ? '<span class="wkclock">' + boxClock(k, g.from) + '</span>' : '';
       if(!g.id){
         // 過ぎた日は記録なので触らない。それ以外は押すと、その箱に予定を入れられる
@@ -2104,6 +2116,16 @@ function renderWeek(){
       }
       const t = taskById(g.tid);
       const done = groupDone(g, k);
+      // ▼ 今日タブと同じく、2箱以上のものも箱1つにつき1行。操作できるのは一番上だけで、
+      //   続きの行（.cont）は薄く出すだけ。data-id を持たせないので、押しても落としても何も起きない
+      let conts = "";
+      for(let i = g.from + 1; i <= g.to; i++){
+        conts += '<div class="wkbox cont' + (done ? " done" : "") + '">' +
+          (isClockMark(k, i) ? '<span class="wkclock">' + boxClock(k, i) + '</span>' : '') +
+          '<span class="wkno">' + (i+1) + '</span>' +
+          '<span class="wktxt">' + esc(t.text) + '</span>' +
+        '</div>';
+      }
       return '<div class="wkbox' + (done ? " done" : "") + '" data-i="' + g.from + '" data-day="' + k +
           '" data-id="' + esc(g.id) + '"' + (past || done ? "" : ' draggable="true"') + '>' +
         mark + '<span class="wkno">' + no + '</span>' +
@@ -2111,7 +2133,7 @@ function renderWeek(){
         // 過ぎた日は記録なので触らない。それ以外は終わった箱からも複製できる
         (past ? '' : '<button class="wkx dup" data-act="wkdup" title="同じものを、もう1つ空き箱に入れる">⧉</button>') +
         (past || done ? '' : '<button class="wkx" data-act="wkout" title="箱から出す">✕</button>') +
-      '</div>';
+      '</div>' + conts;
     }).join("");
 
     return '<div class="wkcol' + (isToday ? " today" : "") + (past ? " past" : "") + '" data-day="' + k + '">' +
