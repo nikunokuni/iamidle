@@ -1035,7 +1035,8 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   background:var(--bg);
   --stk-ideal:#ffe08a;   /* ①のふせん */
   --stk-vision:#ffb3c7;  /* ②のふせん */
-  --stk-memo:#bfe8b0;    /* メモ帳のふせん */
+  --stk-memo:#ffe08a;    /* メモ帳のふせん（ページが薄い緑なので黄色） */
+  --memo-bg:#e4f2dc;     /* メモ帳のページ */
 }
 /* 上の帯＋中身（.fdbody）の縦並び。①②③は中身を画面の高さぴったりにして、ページ全体はスクロールさせない */
 .finder.on{display:flex;flex-direction:column}
@@ -1099,7 +1100,18 @@ body.fd-open{overflow:hidden}
 /* メモ帳：下絵なしのまっさらなページ。右の空きいっぱいに広げる */
 .finder.memo .fdsteps{visibility:hidden}
 .finder.memo #fdReset{display:none}
-.fdboard.memo{aspect-ratio:auto;width:100%;height:100%}
+.fdboard.memo{aspect-ratio:auto;width:100%;height:100%;background:var(--memo-bg);border-color:#b9d6ab;
+  touch-action:none;cursor:crosshair}
+.fdboard.memo.erase{cursor:cell}
+.fdink{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.fdink path{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.inktools{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.inktools .row{flex-wrap:wrap;gap:6px}
+.inktools .row:nth-child(2){gap:10px;padding:4px}   /* 選んだ色の輪が列の端で切れないように */
+.inktools .chip{padding:5px 10px;font-size:13px}
+.inktools .btn{padding:6px 10px;font-size:13px}
+.inkc{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+.inkc.on{outline:2px solid var(--accent);outline-offset:2px}
 .fdsvg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .fbband{fill:var(--card)}
 .fbline line{stroke:var(--line);stroke-width:2}
