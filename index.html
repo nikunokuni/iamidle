@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-10-04.1">
+<meta name="app-version" content="2026-10-10.1">
 <title>自己管理</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-10-04.1">
+<link rel="stylesheet" href="style.css?v=2026-10-10.1">
 </head>
 <body>
 
@@ -62,8 +62,8 @@
 
   <!-- ============ やりたいこと管理 ============ -->
   <section id="sec-tasks">
-    <!-- やりたいことを見つけよう（全画面で重なって開く。中身は app.js の renderFinder） -->
-    <div class="row mt10"><button class="btn ghost" id="finderOpen">🌱 やりたいことを見つけよう</button></div>
+    <!-- やりたいことを見つけよう／メモ帳（どちらも同じ全画面で重なって開く。中身は app.js の renderFinder） -->
+    <div class="row mt10"><button class="btn ghost" id="finderOpen">🌱 やりたいことを見つけよう</button><button class="btn ghost" id="memoOpen">📝 メモ帳</button></div>
     <h2>やりたいことを追加</h2>
     <div class="form">
       <input id="taskInput" placeholder="やりたいことを入力" autocomplete="off">
@@ -320,7 +320,7 @@
      中身は app.js の renderFinder が組み立てる。保存は別のキー（jiko-kanri-finder-v1）で、同期しない -->
 <div class="finder" id="finder">
   <div class="fdbar">
-    <div class="fdtitle">やりたいことを見つけよう</div>
+    <div class="fdtitle" id="fdTitle">やりたいことを見つけよう</div>
     <div class="fdsteps" id="fdSteps"></div>
     <div class="fdend">
       <button class="btn ghost" id="fdReset">まっさらに戻す</button>
@@ -379,6 +379,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-10-04.1"></script>
+<script src="app.js?v=2026-10-10.1"></script>
 </body>
 </html>

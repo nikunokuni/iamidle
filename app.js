@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-04.1";
+const APP_VERSION = "2026-10-10.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -4431,7 +4431,7 @@ const STK_W = 100, STK_H = 40;               // ふせん1枚のおおよその�
 
 let fdFailed = "";
 const FD_AREA_MAX = 12;   // 区切りの名前の字数の上限（長いと隣の区切りにはみ出す）
-const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[] });
+const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[], memo:[] });
 function normFinder(d){
   if(!d || typeof d !== "object") return null;
   const num = x => (typeof x === "number" && isFinite(x)) ? Math.min(1, Math.max(0, x)) : 0;
@@ -4444,6 +4444,9 @@ function normFinder(d){
     notes: (Array.isArray(d.notes) ? d.notes : []).filter(n => n && n.id).map(n => ({
       id: String(n.id), kind: n.kind === "vision" ? "vision" : "ideal",
       text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
+    // メモ帳のふせん（ノートとは別のまっさらなページに貼る）。形は notes と同じで kind は "memo"
+    memo: (Array.isArray(d.memo) ? d.memo : []).filter(n => n && n.id).map(n => ({
+      id: String(n.id), kind: "memo", text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
     steps: (Array.isArray(d.steps) ? d.steps : []).filter(s => s && s.id).map(s => ({
       id: String(s.id), text: String(s.text || ""),
       due: DAYKEY_RE.test(s.due || "") ? s.due : "", taskId: String(s.taskId || "") }))
@@ -4475,13 +4478,20 @@ function saveFinder(){
 function finderKB(){
   try{ return Math.round(JSON.stringify(F).length / 1024); }catch(e){ return 0; }
 }
-const fdNote = id => F.notes.find(n => n.id === id) || null;
+// いま開いているページのふせん（メモ帳なら F.memo、それ以外は F.notes）
+const fdKey = () => fdMemo ? "memo" : "notes";
+const fdNotes = () => F[fdKey()];
+const fdNote = id => fdNotes().find(n => n.id === id) || null;
 const fdStep = id => F.steps.find(s => s.id === id) || null;
 
 let fdView = 0;          // 0 概要 ／ 1〜3 ステップ。メモリだけに持つ（開き直すと続きから）
 let fdArea = -1;         // ②③で強調している区切り（FD_AREAS の番号。-1 はなし）。これもメモリだけ
+let fdMemo = false;      // メモ帳として開いているか（同じ全画面を使う。まっさらなページに書く欄とふせんだけ）
 const finderOpen = () => $("finder").classList.contains("on");
-function openFinder(){
+function openFinder(memo){
+  fdMemo = memo === true;
+  $("finder").classList.toggle("memo", fdMemo);
+  $("fdTitle").textContent = fdMemo ? "メモ帳" : "やりたいことを見つけよう";
   $("finder").classList.add("on");
   document.body.classList.add("fd-open");
   renderFinder();
@@ -4586,14 +4596,16 @@ function fdStickyHTML(n){
     '%;top:' + (n.y * 100).toFixed(2) + '%"><div class="stx">' + esc(n.text) + '</div>' +
     '<button class="stdel" data-act="stdel" title="はがす">✕</button></div>';
 }
-const fdBoardHTML = () =>
-  '<div class="fdboard" id="fdBoard">' + fdBoardSVG() + F.notes.map(fdStickyHTML).join("") + '</div>';
+const fdBoardHTML = () => fdMemo
+  ? '<div class="fdboard memo" id="fdBoard">' + F.memo.map(fdStickyHTML).join("") + '</div>'
+  : '<div class="fdboard" id="fdBoard">' + fdBoardSVG() + F.notes.map(fdStickyHTML).join("") + '</div>';
 
 /* ---------- ふせんを貼る場所を探す ---------- */
 /* ①は内側の楕円の中、②は外側の帯の中（輪より外）。
    候補をいくつか出して、いま貼ってあるふせんからいちばん離れたところを選ぶ */
 function fdInZone(kind, x, y){
-  const { cx, cy, band, ring, core } = FB;
+  const { W, H, cx, cy, band, ring, core } = FB;
+  if(kind === "memo") return x > STK_W/2 + 20 && x < W - STK_W/2 - 20 && y > STK_H/2 + 20 && y < H - STK_H/2 - 20;
   if(kind === "ideal"){
     const ax = core.rx - STK_W / 2 - 4, ay = core.ry - STK_H / 2 - 4;
     return ((x-cx)/ax)**2 + ((y-cy)/ay)**2 <= 1;
@@ -4606,7 +4618,7 @@ function fdInZone(kind, x, y){
 }
 function fdSpot(kind){
   const { W, H } = FB;
-  const centers = F.notes.map(n => [n.x * W + STK_W/2, n.y * H + STK_H/2]);
+  const centers = fdNotes().map(n => [n.x * W + STK_W/2, n.y * H + STK_H/2]);
   let best = null, bestD = -1;
   for(let i = 0; i < 400 && (!best || i < 60 || bestD < 0); i++){
     const x = Math.random() * W, y = Math.random() * H;
@@ -4614,7 +4626,7 @@ function fdSpot(kind){
     const dist = centers.length ? Math.min(...centers.map(([a,b]) => Math.hypot(a - x, (b - y) * 1.4))) : 1e9;
     if(dist > bestD){ bestD = dist; best = [x, y]; }
   }
-  if(!best) best = kind === "ideal" ? [FB.cx, FB.cy] : [FB.cx, FB.band.y + 40];
+  if(!best) best = kind === "vision" ? [FB.cx, FB.band.y + 40] : [FB.cx, FB.cy];
   return { x: Math.min(1, Math.max(0, (best[0] - STK_W/2) / W)),
            y: Math.min(1, Math.max(0, (best[1] - STK_H/2) / H)) };
 }
@@ -4623,17 +4635,17 @@ function addNote(kind){
   const text = inp.value.trim();
   if(!text){ inp.focus(); return; }
   const at = fdSpot(kind);
-  F.notes.push({ id: uid(), kind, text, x: at.x, y: at.y });
+  fdNotes().push({ id: uid(), kind, text, x: at.x, y: at.y });
   saveFinder();
   inp.value = "";
   renderFinder();
   $("fdNoteIn").focus();
 }
 function removeNote(id){
-  const i = F.notes.findIndex(n => n.id === id); if(i < 0) return;
-  const gone = F.notes.splice(i, 1)[0];
+  const key = fdKey(), i = F[key].findIndex(n => n.id === id); if(i < 0) return;
+  const gone = F[key].splice(i, 1)[0];
   saveFinder(); renderFinder();
-  toast("はがしました", ()=>{ F.notes.splice(Math.min(i, F.notes.length), 0, gone); saveFinder(); renderFinder(); });
+  toast("はがしました", ()=>{ F[key].splice(Math.min(i, F[key].length), 0, gone); saveFinder(); renderFinder(); });
 }
 
 /* 区切りの名前を書きかえる（名前をダブルクリック）。空にすれば名前なし（「＋ 名前」とだけ出る） */
@@ -4661,7 +4673,8 @@ function fdPointerDown(e){
   e.preventDefault();
   const board = $("fdBoard");
   // 触ったものを一番上へ（並び順 ＝ 重なり順）
-  F.notes = F.notes.filter(x => x !== n).concat(n);
+  const list = fdNotes();
+  list.splice(list.indexOf(n), 1); list.push(n);
   board.appendChild(st);
   st.setPointerCapture(e.pointerId);
   st.classList.add("moving");
@@ -4801,7 +4814,13 @@ function renderFinder(){
   const nReg = F.steps.filter(s => s.taskId && taskById(s.taskId)).length;
   const listTop = $("fdStepList") ? $("fdStepList").scrollTop : 0;   // 書き直し・削除で一覧が上に戻らないように
   let html = "";
-  if(fdView === 0){
+  if(fdMemo){
+    // メモ帳：書く欄と、まっさらなページだけ。Enter でふせんになる
+    html = '<div class="fdwork"><div class="fdside">' +
+      '<div class="row fdadd"><input id="fdNoteIn" autocomplete="off" maxlength="80" placeholder="ふせんに書く">' +
+      '<button class="btn" id="fdNoteAdd" data-kind="memo">貼る</button></div></div>' +
+      '<div class="fdmain">' + fdBoardHTML() + '</div></div>';
+  }else if(fdView === 0){
     const counts = [ "ふせん " + nIdeal + "枚", "ふせん " + nVision + "枚",
                      F.steps.length + "件（うち登録 " + nReg + "件）" ];
     html = '<div class="fdintro">' + FD_STEPS.map((st, i) =>
@@ -4848,12 +4867,14 @@ async function resetFinder(){
     desc: "ふせん・ビジョンノート・やりたいことリストが全部消えます。\nやりたいことに登録したものは、そのまま残ります。" });
   if(!ok) return;
   const before = F;
-  F = emptyFinder(); fdView = 0; fdArea = -1;
+  F = Object.assign(emptyFinder(), { memo: before.memo });   // メモ帳は別物なので残す
+  fdView = 0; fdArea = -1;
   saveFinder(); renderFinder();
   toast("まっさらに戻しました", ()=>{ F = before; saveFinder(); renderFinder(); toast("戻しました"); });
 }
 
-$("finderOpen").onclick = openFinder;
+$("finderOpen").onclick = ()=> openFinder(false);
+$("memoOpen").onclick = ()=> openFinder(true);
 $("fdClose").onclick = closeFinder;
 $("fdReset").onclick = resetFinder;
 $("finder").addEventListener("click", e => {
