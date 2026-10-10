@@ -22,6 +22,14 @@
   --cat-reward:#ffd166;
   --cat-easy:#4ecb8f;
   --cat-none:#6b7688;
+  /* ▼ デザインの切り替え（設定タブ）で差し替える値。下の「デザイン：◯◯」の節が上書きする。
+       色を足すときは、ここに名前を作ってから使うこと。じかに書くと、ほかのデザインで浮く */
+  --accent-rgb:91,156,255;      /* --accent を薄く敷くとき用。rgba(var(--accent-rgb),.1) */
+  --accent2-rgb:255,209,102;
+  --warn-rgb:255,165,82;
+  --ok-rgb:78,203,143;
+  --on-accent:#0b1017;          /* --accent を塗ったボタンの上の字 */
+  --on-accent2:#241c00;         /* --accent2 を塗ったボタンの上の字 */
   --radius:14px;
   --navh:58px;          /* 下のタブ帯の高さ。帯そのものにも、今日タブの下の空けにも、これ1つを使う */
 }
@@ -45,12 +53,12 @@ body{
 .updatebar{
   display:none;
   align-items:center;gap:12px;flex-wrap:wrap;
-  background:var(--accent2);color:#241c00;
+  background:var(--accent2);color:var(--on-accent2);
   padding:10px 24px;font-size:14px;font-weight:700;
 }
 .updatebar.on{display:flex}
 .updatebar button{
-  background:#241c00;color:var(--accent2);border:none;border-radius:8px;
+  background:var(--on-accent2);color:var(--accent2);border:none;border-radius:8px;
   padding:7px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;
 }
 .updatebar button:hover{filter:brightness(1.25)}
@@ -190,7 +198,7 @@ body.now-fixed .side #rouletteBox{
 .now .txt a{color:inherit;text-decoration:none}
 .now .btnrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .now button{
-  background:var(--accent);color:#0b1017;border:none;border-radius:10px;
+  background:var(--accent);color:var(--on-accent);border:none;border-radius:10px;
   padding:11px 20px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;
 }
 .now button:hover{filter:brightness(1.08)}
@@ -236,7 +244,7 @@ body.now-fixed .side #rouletteBox{
 .now .timer.done{border-color:var(--warn);animation:tblink 1s ease-in-out 6}
 @keyframes tblink{
   0%,100%{background:rgba(0,0,0,.24)}
-  50%{background:rgba(255,165,82,.22)}
+  50%{background:rgba(var(--warn-rgb),.22)}
 }
 
 /* ---------- 箱の列 ---------- */
@@ -279,10 +287,10 @@ body.now-fixed .side #rouletteBox{
 .boxrow.empty .bt{color:var(--fg-faint);font-size:13px}
 /* 押すと、その箱に予定を入れられる空き箱 */
 .boxrow.empty.tap{cursor:pointer}
-.boxrow.empty.tap:hover{border-color:var(--accent);background:rgba(91,156,255,.08)}
+.boxrow.empty.tap:hover{border-color:var(--accent);background:rgba(var(--accent-rgb),.08)}
 .boxrow.empty.tap:hover .bt{color:var(--accent)}
 /* ドラッグ中の受け皿 */
-.boxrow.over{border-color:var(--accent);border-style:solid;background:rgba(91,156,255,.12)}
+.boxrow.over{border-color:var(--accent);border-style:solid;background:rgba(var(--accent-rgb),.12)}
 .boxrow.over .bt{color:var(--accent)}
 .boxrow[draggable="true"]{cursor:grab}
 .boxrow.dragging,.item.dragging{opacity:.35}
@@ -322,7 +330,7 @@ body.now-fixed .side #rouletteBox{
   font-size:12px;font-weight:700;font-family:inherit;
 }
 .check:hover{border-color:var(--accent)}
-.check.on{background:var(--ok);border-color:var(--ok);color:#0b1017}
+.check.on{background:var(--ok);border-color:var(--ok);color:var(--on-accent)}
 .check.part{border-color:var(--accent);color:var(--accent)}
 
 .iconbtn{
@@ -333,10 +341,10 @@ body.now-fixed .side #rouletteBox{
 .iconbtn.del:hover{color:var(--danger)}
 .iconbtn.faint{opacity:.28}
 .iconbtn.put{color:var(--accent);font-weight:700;font-size:13px;border:1px solid var(--line)}
-.iconbtn.put:hover{border-color:var(--accent);background:rgba(91,156,255,.1)}
+.iconbtn.put:hover{border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
 /* 複製（同じものを、その日にもう1つ）。「増やす」操作なので ✕ と色で見分ける */
 .iconbtn.dup{font-size:13px}
-.iconbtn.dup:hover{color:var(--accent);background:rgba(91,156,255,.12)}
+.iconbtn.dup:hover{color:var(--accent);background:rgba(var(--accent-rgb),.12)}
 
 /* ---------- progress ---------- */
 .prog{display:flex;align-items:center;gap:8px;margin-top:6px}
@@ -347,11 +355,11 @@ body.now-fixed .side #rouletteBox{
 .pmeta{font-size:11px;color:var(--fg-faint);flex:none;font-variant-numeric:tabular-nums}
 .pmeta b{color:var(--fg-dim);font-weight:700}
 .tag{font-size:11px;padding:1px 7px;border-radius:99px;flex:none;font-weight:600}
-.tag.late{background:rgba(255,165,82,.16);color:var(--warn)}
-.tag.ok{background:rgba(78,203,143,.14);color:var(--ok)}
+.tag.late{background:rgba(var(--warn-rgb),.16);color:var(--warn)}
+.tag.ok{background:rgba(var(--ok-rgb),.14);color:var(--ok)}
 .tag.freq{background:var(--card2);color:var(--fg-faint)}
-.tag.now{background:rgba(91,156,255,.18);color:var(--accent)}
-.tag.box{background:rgba(255,209,102,.14);color:var(--accent2)}
+.tag.now{background:rgba(var(--accent-rgb),.18);color:var(--accent)}
+.tag.box{background:rgba(var(--accent2-rgb),.14);color:var(--accent2)}
 
 /* ---------- カテゴリー（せきにん／ごほうび／おきらく） ----------
    組ごとに --cat を差し替えるだけ。見出しも札もチップも、同じ1色から作る */
@@ -400,9 +408,9 @@ body.now-fixed .side #rouletteBox{
 .chips.cats .chip:hover{border-color:var(--cat,var(--accent))}
 .chips.cats .chip.on{
   background:var(--cat,var(--accent));border-color:var(--cat,var(--accent));
-  color:#0b1017;font-weight:700;
+  color:var(--on-accent);font-weight:700;
 }
-.chips.cats .chip.on::before{background:#0b1017;opacity:.45}
+.chips.cats .chip.on::before{background:var(--on-accent);opacity:.45}
 
 /* ▼ 狭い画面では「やりたいこと」タブの行が横に収まらない
      （✓・札・箱数・ボタン5つで、名前の幅を 0 にしてもまだ足りない）。
@@ -438,7 +446,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .flabel{font-size:14px;color:var(--fg-dim);flex:none;min-width:86px}
 .fnote{font-size:12px;color:var(--fg-faint);flex:none}
 .btn{
-  background:var(--accent);color:#0b1017;border:none;border-radius:10px;
+  background:var(--accent);color:var(--on-accent);border:none;border-radius:10px;
   padding:10px 18px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;flex:none;
 }
 .btn.ghost{background:none;border:1px solid var(--line);color:var(--fg-dim);font-weight:500}
@@ -452,7 +460,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   border-radius:99px;padding:6px 14px;font-size:14px;font-family:inherit;cursor:pointer;
 }
 .chip:hover{border-color:var(--accent)}
-.chip.on{background:var(--accent);border-color:var(--accent);color:#0b1017;font-weight:700}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
 .freqline{display:flex;gap:8px;align-items:center;color:var(--fg-dim);font-size:14px;flex-wrap:wrap}
 .sizein{width:52px !important;padding:5px 2px !important;font-size:13px !important;flex:none}
 
@@ -484,7 +492,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .tasklink:hover{text-decoration:underline}
 /* 何本あるか。1本のときは出さない */
 .tasklink .lc,.iconbtn .badge{
-  font-size:10px;font-weight:700;color:#0b1017;background:var(--accent);
+  font-size:10px;font-weight:700;color:var(--on-accent);background:var(--accent);
   border-radius:99px;padding:0 5px;flex:none;line-height:1.6;
 }
 .iconbtn .badge{margin-left:2px;vertical-align:top}
@@ -586,7 +594,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .dctime{font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums;flex:none}
 .dcago{
   font-size:11px;font-weight:600;color:var(--accent2);
-  background:rgba(255,209,102,.14);border-radius:99px;padding:1px 9px;flex:none;
+  background:rgba(var(--accent2-rgb),.14);border-radius:99px;padding:1px 9px;flex:none;
 }
 .dchead .sp{margin-left:auto}
 /* 日付を1日ずつ動かす。書き直し（✎）を開いているときだけ出る */
@@ -624,7 +632,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .bhead .sp{margin-left:auto}
 .bend{
   font-size:11px;font-weight:700;color:var(--ok);flex:none;
-  background:rgba(78,203,143,.14);padding:3px 11px;border-radius:99px;
+  background:rgba(var(--ok-rgb),.14);padding:3px 11px;border-radius:99px;
 }
 .daytype{
   flex:none;border-radius:9px;padding:5px 14px;
@@ -632,7 +640,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;line-height:1.4;
 }
 .daytype:hover{border-color:var(--accent);color:var(--accent)}
-.daytype.off{color:var(--accent2);border-color:rgba(255,209,102,.4)}
+.daytype.off{color:var(--accent2);border-color:rgba(var(--accent2-rgb),.4)}
 
 .bfoot{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:10px}
 .bfoot button{
@@ -678,12 +686,12 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 }
 /* 押せる空き箱も、膜より強く出す（そうしないと押せることが見えない） */
 .boxarea.has-img .boxrow.empty.tap:hover{
-  background:rgba(91,156,255,.22);border-color:var(--accent);transition:none;
+  background:rgba(var(--accent-rgb),.22);border-color:var(--accent);transition:none;
 }
 /* ドラッグ中の受け皿は、膜より強く出す。
    ここを書かないと上の2つに負けて、落とし先がどこか分からなくなる */
 .boxarea.has-img .boxrow.empty.over{
-  background:rgba(91,156,255,.3);border-color:var(--accent);transition:none;
+  background:rgba(var(--accent-rgb),.3);border-color:var(--accent);transition:none;
 }
 .boxarea.has-img .boxrow.empty.over .bt{color:var(--accent);text-shadow:none}
 .boxarea.has-img .boxrow.current{background:#1d2534}
@@ -742,8 +750,8 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   background:rgba(0,0,0,.65);color:#fff;font-size:10px;
   padding:2px 6px;border-radius:6px;
 }
-.imgs .cell.today{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(255,209,102,.35)}
-.imgs .cell.today .sz{background:var(--accent2);color:#241c00;font-weight:700}
+.imgs .cell.today{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(var(--accent2-rgb),.35)}
+.imgs .cell.today .sz{background:var(--accent2);color:var(--on-accent2);font-weight:700}
 
 /* ---------- 完了したときの一言（ドーン） ---------- */
 .cheer{
@@ -755,7 +763,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   font-size:clamp(40px,9vw,110px);font-weight:800;line-height:1.2;
   text-align:center;padding:0 24px;white-space:pre-wrap;word-break:break-word;
   color:var(--accent2);
-  text-shadow:0 0 40px rgba(255,209,102,.45), 0 10px 40px rgba(0,0,0,.6);
+  text-shadow:0 0 40px rgba(var(--accent2-rgb),.45), 0 10px 40px rgba(0,0,0,.6);
   animation:doon .9s cubic-bezier(.18,1.5,.4,1) forwards;
 }
 @keyframes doon{
@@ -773,7 +781,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   padding:14px;text-align:center;color:var(--fg-faint);font-size:13px;
   margin-bottom:10px;
 }
-.roulette .drop.over{border-color:var(--accent2);border-style:solid;background:rgba(255,209,102,.1);color:var(--accent2)}
+.roulette .drop.over{border-color:var(--accent2);border-style:solid;background:rgba(var(--accent2-rgb),.1);color:var(--accent2)}
 .roulette .cand{
   display:flex;align-items:center;gap:8px;
   padding:6px 0;border-bottom:1px solid var(--line);font-size:14px;
@@ -789,7 +797,7 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .roulette .face.spin{color:var(--accent2);border-color:var(--accent2)}
 .roulette .face.won{color:var(--accent);border-color:var(--accent);background:#1d2534}
 .roulette .spinbtn{
-  width:100%;background:var(--accent2);color:#241c00;border:none;border-radius:10px;
+  width:100%;background:var(--accent2);color:var(--on-accent2);border:none;border-radius:10px;
   padding:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;
 }
 .roulette .spinbtn:disabled{opacity:.5;cursor:default}
@@ -836,25 +844,25 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   background:none;border:none;color:var(--fg-faint);font-family:inherit;font-size:13px;
   padding:6px 18px;border-radius:999px;cursor:pointer;
 }
-.wktab.on{background:var(--accent);color:#0b1017;font-weight:700}
+.wktab.on{background:var(--accent);color:var(--on-accent);font-weight:700}
 .wkrange{font-size:12px;color:var(--fg-faint);letter-spacing:.06em}
 
 .wkgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:start}
 .wkcol{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px 6px;min-width:0}
-.wkcol.today{border-color:var(--accent);background:rgba(91,156,255,.06)}
+.wkcol.today{border-color:var(--accent);background:rgba(var(--accent-rgb),.06)}
 .wkcol.past{opacity:.5}
 .wkday{display:flex;align-items:baseline;gap:5px;justify-content:center;flex-wrap:wrap;margin-bottom:6px}
 .wkday .wkdn{font-size:13px;font-weight:700;color:var(--fg)}
 .wkday .wkdd{font-size:11px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
-.wkday .wktoday{font-size:10px;background:var(--accent);color:#0b1017;border-radius:99px;padding:1px 6px;font-weight:700}
+.wkday .wktoday{font-size:10px;background:var(--accent);color:var(--on-accent);border-radius:99px;padding:1px 6px;font-weight:700}
 .wkbtns{display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:7px}
 .wkbtns button{
   background:var(--card2);border:1px solid var(--line);color:var(--fg-dim);
   font-family:inherit;font-size:11px;line-height:1;padding:4px 6px;border-radius:6px;cursor:pointer;
 }
 .wkbtns button:hover{color:var(--fg);border-color:var(--fg-faint)}
-.wkbtns .wktype{font-size:10px;padding:4px 6px;white-space:nowrap;color:var(--accent);border-color:rgba(91,156,255,.4)}
-.wkbtns .wktype.off{color:var(--accent2);border-color:rgba(255,209,102,.4)}
+.wkbtns .wktype{font-size:10px;padding:4px 6px;white-space:nowrap;color:var(--accent);border-color:rgba(var(--accent-rgb),.4)}
+.wkbtns .wktype.off{color:var(--accent2);border-color:rgba(var(--accent2-rgb),.4)}
 .wkcnt{font-size:11px;color:var(--fg-faint);min-width:15px;text-align:center;font-variant-numeric:tabular-nums}
 
 .wkboxes{display:flex;flex-direction:column;gap:2px}
@@ -866,13 +874,13 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .wkbox.empty{border:1px dashed var(--line);background:none}
 /* 押すと、その箱に予定を入れられる空き箱（過ぎた日には付かない） */
 .wkbox.empty.tap{cursor:pointer}
-.wkbox.empty.tap:hover{border-color:var(--accent);background:rgba(91,156,255,.1)}
+.wkbox.empty.tap:hover{border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
 .wkbox.done{opacity:.45}
 /* 2箱以上のものの、2つ目から下の箱。薄く出すだけで、押しても何も起きない */
 .wkbox.cont{pointer-events:none}
 .wkbox.cont > :not(.wkclock){opacity:.45}
 .wkbox.done .wktxt{text-decoration:line-through}
-.wkbox.over{border-color:var(--accent);background:rgba(91,156,255,.16)}
+.wkbox.over{border-color:var(--accent);background:rgba(var(--accent-rgb),.16)}
 .wkbox[draggable=true]{cursor:grab}
 .wkbox .wkno{color:var(--fg-faint);font-size:10px;flex:none;font-variant-numeric:tabular-nums}
 .wkbox .wktxt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
@@ -885,14 +893,14 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 /* 時刻の線。全部の箱には出さず、ちょうど◯時のところだけ */
 .wkclock{
   position:absolute;left:0;right:0;top:-1px;height:0;
-  border-top:1px solid rgba(255,209,102,.35);
+  border-top:1px solid rgba(var(--accent2-rgb),.35);
   font-size:9px;color:var(--accent2);letter-spacing:.02em;
   text-align:right;padding-right:2px;line-height:1;pointer-events:none;
 }
 .wknone{font-size:11px;color:var(--fg-faint);text-align:center;padding:8px 0}
 
 .wkalert{
-  background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.45);
+  background:rgba(var(--accent2-rgb),.1);border:1px solid rgba(var(--accent2-rgb),.45);
   border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.8;
 }
 .wkalert b{color:var(--accent2)}
@@ -1016,8 +1024,8 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 .lkrow .lkkind{
   font-size:11px;flex:none;border-radius:99px;padding:2px 9px;font-weight:700;
 }
-.lkrow .lkkind.url{background:rgba(91,156,255,.16);color:var(--accent)}
-.lkrow .lkkind.app{background:rgba(255,209,102,.16);color:var(--accent2)}
+.lkrow .lkkind.url{background:rgba(var(--accent-rgb),.16);color:var(--accent)}
+.lkrow .lkkind.app{background:rgba(var(--accent2-rgb),.16);color:var(--accent2)}
 .lkadd{flex-wrap:wrap}
 .lkadd .btn{font-size:13px;padding:8px 14px}
 #lkNote{line-height:1.9}
@@ -1123,7 +1131,7 @@ body.fd-open{overflow:hidden}
 .fbl.blank{fill:var(--fg-faint);font-weight:400}
 .fbl.on{fill:var(--accent2);font-weight:700}
 /* ②③で選んだ区切り。輪郭を太くして色を乗せる（内側の楕円は除く。ふせんは上に乗ったまま） */
-.fbhl{fill:rgba(255,209,102,.14);stroke:var(--accent2);stroke-width:4;stroke-linejoin:round;pointer-events:none}
+.fbhl{fill:rgba(var(--accent2-rgb),.14);stroke:var(--accent2);stroke-width:4;stroke-linejoin:round;pointer-events:none}
 .fbq{fill:var(--fg-faint);font-size:17px}
 
 .stk{
@@ -1196,3 +1204,297 @@ body.fd-open{overflow:hidden}
 .tgcand input{flex:none;width:auto;margin:0}
 .tgcand .t{flex:1;min-width:0;font-size:14px;word-break:break-word}
 .tgcand .s{flex:none;font-size:12px;color:var(--fg-faint)}
+
+/* ============================================================
+   デザイン：天使（2026-10-10）
+   設定タブ「画面のデザイン」で選ぶ。印は <html data-theme="angel">。
+   上の指定はそのまま（＝ダーク）で、ここで上書きしている。
+
+   ▼ デザインを足すときは
+     ・この節を丸ごと写して data-theme の名前を変え、値を差し替える
+     ・app.js の THEMES に1行足す（名前と、スマホの上の帯の色）
+     ・画像は img/<名前>/ に置く。localStorage には入れない（ごほうびの画像と容量を食い合うため）
+
+   ▼ ごほうびの画像との関係（本人と決めたこと）
+     ・背景の絵が見えるのは、箱の**外側**だけ
+     ・ごほうびの画像を敷いている日は、まだやっていない箱はほとんど透けない白にする。
+       終わった箱が透けて画像が見える、というしくみは今までどおり
+   ============================================================ */
+html[data-theme="angel"]{
+  --bg:#e6f0fc;
+  --bg2:rgba(255,255,255,.62);
+  --card:rgba(255,255,255,.72);
+  --card2:rgba(236,244,255,.92);
+  --line:rgba(140,172,222,.42);
+  --fg:#2a4570;
+  --fg-dim:#56709a;
+  --fg-faint:#8599bd;
+  --accent:#3d8bf2;
+  --accent-rgb:61,139,242;
+  --accent2:#7b6fd6;            /* ダークの黄色の役。明るい地に黄色の字は読めないので薄紫にした */
+  --accent2-rgb:123,111,214;
+  --ok:#2aa874;
+  --ok-rgb:42,168,116;
+  --warn:#df8526;
+  --warn-rgb:223,133,38;
+  --danger:#e3536a;
+  --cat-resp:#4f8ff0;
+  --cat-reward:#e0a238;
+  --cat-easy:#36b07f;
+  --cat-none:#9aaacb;
+  --on-accent:#fff;
+  --on-accent2:#fff;
+
+  /* このデザインだけで使う値 */
+  --glass:rgba(255,255,255,.55);          /* カードの地。後ろの絵がうっすら透ける */
+  --glass-strong:rgba(255,255,255,.82);   /* 字が多い所・上に重なる所 */
+  --glass-edge:rgba(255,255,255,.9);      /* カードのふちの白い光 */
+  --glass-shadow:0 8px 26px rgba(70,110,180,.16), inset 0 1px 0 rgba(255,255,255,.95);
+  --btn-grad:linear-gradient(180deg,#62a8ff 0%,#2f7be8 100%);
+  --hdr-fg:var(--fg);                     /* 日付・時計の字。背景の絵が入ったら白に変える */
+  /* 背景の絵。img/angel/ に置いたら url("img/angel/…") を入れる。
+     none のままでも、下のグラデーションだけで成り立つようにしてある */
+  --theme-bg:none;
+  --theme-bg-sp:var(--theme-bg);          /* スマホ用（縦長）。無ければPC用を切り取って使う */
+  color-scheme:light;                     /* 日付の入力欄・スクロールバーを明るい側に */
+}
+
+/* ---------- 地（背景） ----------
+   body の背景ではなく、画面に貼り付けた板（::before）に描く。
+   今日タブ以外はページ全体がスクロールするが、絵は動かさないため
+   （background-attachment:fixed はスマホで効かないことがある） */
+html[data-theme="angel"],
+html[data-theme="angel"] body{background:var(--bg)}
+html[data-theme="angel"] body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:
+    var(--theme-bg),
+    radial-gradient(ellipse 60% 45% at 18% 22%, rgba(255,255,255,.85), rgba(255,255,255,0) 70%),
+    radial-gradient(ellipse 50% 40% at 85% 80%, rgba(214,204,250,.55), rgba(214,204,250,0) 70%),
+    linear-gradient(160deg,#f1f7ff 0%,#d9e8fc 45%,#e6e1fa 100%);
+  background-size:cover,auto,auto,auto;
+  background-position:center left,center,center,center;
+  background-repeat:no-repeat;
+}
+@media (max-width:600px){
+  html[data-theme="angel"] body::before{background-image:
+    var(--theme-bg-sp),
+    radial-gradient(ellipse 80% 40% at 30% 15%, rgba(255,255,255,.85), rgba(255,255,255,0) 70%),
+    linear-gradient(170deg,#f1f7ff 0%,#d9e8fc 50%,#e6e1fa 100%)}
+}
+
+/* ---------- 並び：左に人物のぶんを空ける（今日タブだけ・広い画面だけ） ----------
+   1週間タブは7列で幅が要るので寄せない。狭い画面では人物は部品の後ろに隠れる（本人了承） */
+@media (min-width:1360px){
+  html[data-theme="angel"] body.now-fixed .wrap{
+    max-width:min(1180px, 72vw);
+    margin-left:auto;margin-right:max(24px, 3vw);
+  }
+}
+
+/* ---------- 共通のガラスのカード ---------- */
+html[data-theme="angel"] .philo-bar,
+html[data-theme="angel"] .now,
+html[data-theme="angel"] .side .panel,
+html[data-theme="angel"] .form,
+html[data-theme="angel"] .diary-today,
+html[data-theme="angel"] .dcard,
+html[data-theme="angel"] .tgroup,
+html[data-theme="angel"] .wkcol{
+  background-color:var(--glass);
+  border:1px solid var(--glass-edge);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
+}
+html[data-theme="angel"] .wkcol.today{background-color:rgba(255,255,255,.78);border-color:var(--accent)}
+html[data-theme="angel"] .dcard.same{border-left:3px solid var(--accent2)}
+html[data-theme="angel"] .dcard.editing{border-color:var(--accent)}
+html[data-theme="angel"] .tgroup{border-left:3px solid var(--cat,var(--glass-edge))}
+
+/* ---------- 見出しの飾り ----------
+   羽や十字の画像が届いたら、ここの ✦ を差し替える */
+html[data-theme="angel"] h2{color:var(--fg-dim)}
+html[data-theme="angel"] .philo-bar .label::before,
+html[data-theme="angel"] .now .label::before,
+html[data-theme="angel"] .bhead h2::before{content:"✦ ";color:var(--accent);opacity:.8}
+
+/* ---------- header ---------- */
+html[data-theme="angel"] header{color:var(--hdr-fg)}
+html[data-theme="angel"] .date{color:var(--hdr-fg);opacity:.8}
+html[data-theme="angel"] .greet{color:var(--hdr-fg);text-shadow:0 1px 8px rgba(255,255,255,.8)}
+html[data-theme="angel"] .clock{
+  color:var(--hdr-fg);font-size:40px;font-weight:200;letter-spacing:.02em;
+  text-shadow:0 2px 12px rgba(255,255,255,.9), 0 0 2px rgba(255,255,255,.9);
+}
+
+/* ---------- 今日の指針 ---------- */
+html[data-theme="angel"] .philo-bar{border-radius:18px;background-image:none}
+html[data-theme="angel"] .philo-bar .label{color:var(--accent);opacity:1}
+
+/* ---------- いま、これ ---------- */
+html[data-theme="angel"] .now{
+  border-radius:20px;
+  background-image:linear-gradient(135deg,rgba(255,255,255,.78),rgba(222,236,255,.5));
+}
+html[data-theme="angel"] .now .label{color:var(--accent)}
+html[data-theme="angel"] .now button{background:var(--btn-grad);box-shadow:0 4px 12px rgba(var(--accent-rgb),.35);border-radius:12px}
+html[data-theme="angel"] .now .open{background:rgba(255,255,255,.7);border:1px solid var(--line);color:var(--fg);box-shadow:none}
+html[data-theme="angel"] .now .skip{background:none;box-shadow:none;color:var(--fg-dim)}
+html[data-theme="angel"] .now .timer{
+  background:rgba(255,255,255,.55);border:1px solid var(--glass-edge);border-radius:16px;
+  padding:10px 14px;box-shadow:inset 0 1px 3px rgba(70,110,180,.12);
+}
+html[data-theme="angel"] .now .timer .ttime{color:var(--fg)}
+html[data-theme="angel"] .now .timer.run .ttime{color:var(--accent)}
+html[data-theme="angel"] .now .timer.done .ttime{color:var(--warn)}
+html[data-theme="angel"] .now .tadj{
+  background:#fff;border:1px solid var(--line);color:var(--accent);
+  border-radius:50%;box-shadow:0 2px 6px rgba(70,110,180,.15);
+}
+html[data-theme="angel"] .now .tgo{border-radius:12px;padding:10px 22px}
+html[data-theme="angel"] .now .tgo.off{background:rgba(255,255,255,.7);border:1px solid var(--line);color:var(--fg-dim);box-shadow:none}
+html[data-theme="angel"] .now .tquiet{background:#fff;box-shadow:none}
+html[data-theme="angel"] .now .timer.done{animation-name:tblink-angel}
+@keyframes tblink-angel{
+  0%,100%{background:rgba(255,255,255,.55)}
+  50%{background:rgba(var(--warn-rgb),.22)}
+}
+/* ごほうびの画像が出ているとき（.reward）は、ダークと同じ黒いぼかしと白い字のまま。
+   画像の上なので、明るい地の色にすると読めなくなる */
+html[data-theme="angel"] .now.reward{border-color:rgba(255,255,255,.6)}
+html[data-theme="angel"] .now.reward .label{color:#fff}
+html[data-theme="angel"] .now.reward .rbare{background:rgba(0,0,0,.45);box-shadow:none}
+
+/* ---------- 今日の箱 ----------
+   箱の列全体を1枚のカードにして、その中に行を並べる */
+html[data-theme="angel"] .boxarea{
+  background-color:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);
+  border-radius:20px;padding:12px 12px 10px;
+}
+html[data-theme="angel"] .bhead h2{font-size:15px;color:var(--fg);letter-spacing:.14em}
+html[data-theme="angel"] .daytype{
+  background:#fff;border:1px solid var(--line);color:var(--accent);border-radius:99px;padding:5px 16px;
+  box-shadow:0 2px 8px rgba(70,110,180,.14);
+}
+html[data-theme="angel"] .daytype.off{color:var(--accent2);border-color:rgba(var(--accent2-rgb),.45)}
+html[data-theme="angel"] .bfoot button{background:#fff;border:1px solid var(--line);color:var(--accent);border-radius:50%}
+
+html[data-theme="angel"] .boxrow{
+  background:rgba(255,255,255,.66);border:1px solid var(--glass-edge);border-radius:14px;
+  box-shadow:0 2px 8px rgba(70,110,180,.08);
+}
+html[data-theme="angel"] .boxrow .bi{border-right-color:var(--line)}
+html[data-theme="angel"] .boxrow .bi.pick{text-decoration-color:rgba(var(--accent-rgb),.35)}
+html[data-theme="angel"] .boxrow.empty{background:rgba(255,255,255,.42);border-style:solid}
+/* 空き箱の右の ＋（押せる印）。押す場所は行全体のまま */
+html[data-theme="angel"] .boxrow.empty.tap::after{
+  content:"＋";flex:none;width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:var(--accent);border:1px solid rgba(var(--accent-rgb),.35);background:#fff;
+}
+html[data-theme="angel"] .boxrow.empty.tap:hover{background:rgba(255,255,255,.85);border-color:var(--accent)}
+html[data-theme="angel"] .boxrow.over{background:rgba(var(--accent-rgb),.14);border-color:var(--accent)}
+html[data-theme="angel"] .boxrow.current{
+  background:rgba(255,255,255,.92);border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15), 0 4px 14px rgba(var(--accent-rgb),.2);
+}
+/* 時刻の札 */
+html[data-theme="angel"] .boxrow .bclock{
+  top:-9px;padding:0 8px;font-weight:700;
+  background:#fff;color:var(--accent);border:1px solid rgba(var(--accent-rgb),.3);
+  box-shadow:0 1px 4px rgba(70,110,180,.15);
+}
+html[data-theme="angel"] .boxrow .bclock::before{content:"✦ ";opacity:.7}
+
+/* ごほうびの画像を敷いている日 */
+html[data-theme="angel"] .boxarea.has-img{border-color:rgba(255,255,255,.7);box-shadow:var(--glass-shadow)}
+html[data-theme="angel"] .boxarea.has-img .bhead,
+html[data-theme="angel"] .boxarea.has-img .bfoot{background:rgba(255,255,255,.9)}
+/* まだの箱：ほとんど透けない白 */
+html[data-theme="angel"] .boxarea.has-img .boxrow{background:rgba(255,255,255,.95);border-color:var(--glass-edge)}
+html[data-theme="angel"] .boxarea.has-img .boxrow.current{background:#fff;border-color:var(--accent)}
+/* 空き箱：やった数につれて薄くなる（--emptyveil は renderBoxes が入れる） */
+html[data-theme="angel"] .boxarea.has-img .boxrow.empty{
+  background:rgba(255,255,255,var(--emptyveil,.88));border-color:rgba(255,255,255,.7);
+}
+html[data-theme="angel"] .boxarea.has-img .boxrow.empty .bt,
+html[data-theme="angel"] .boxarea.has-img .boxrow.empty .bi{
+  color:var(--fg);text-shadow:0 0 6px #fff, 0 0 12px #fff;
+}
+html[data-theme="angel"] .boxarea.has-img .boxrow.empty.tap:hover{background:rgba(255,255,255,.9)}
+html[data-theme="angel"] .boxarea.has-img .boxrow.empty.over{background:rgba(var(--accent-rgb),.3)}
+/* 終わった箱：透けて画像が出る。字はダークと同じ白（画像の上なので） */
+html[data-theme="angel"] .boxarea.has-img .boxrow.done{background:transparent;border-color:rgba(255,255,255,.55);box-shadow:none}
+
+/* ---------- 右の列 ---------- */
+html[data-theme="angel"] .side .panel{border-radius:18px}
+html[data-theme="angel"] .side .panel .ph{color:var(--fg-dim)}
+/* ルーレットは上に貼り付くので、下を流れる一覧が透けすぎないよう濃いめに */
+html[data-theme="angel"] body.now-fixed .side #rouletteBox{background:none}
+html[data-theme="angel"] .side .panel.roulette{background-color:var(--glass-strong)}
+html[data-theme="angel"] .roulette .drop{
+  border:1px dashed rgba(var(--accent-rgb),.45);background:rgba(255,255,255,.45);border-radius:14px;
+  padding:18px 14px;color:var(--fg-dim);
+}
+html[data-theme="angel"] .roulette .drop::before{
+  content:"＋";display:block;width:28px;height:28px;margin:0 auto 4px;border-radius:50%;
+  line-height:26px;color:var(--accent);border:1px solid rgba(var(--accent-rgb),.4);background:#fff;
+}
+html[data-theme="angel"] .roulette .face{background:rgba(255,255,255,.8)}
+html[data-theme="angel"] .roulette .face.won{background:#fff}
+html[data-theme="angel"] .roulette .spinbtn{background:linear-gradient(180deg,#9b90ec,#6f62d0)}
+
+html[data-theme="angel"] .item{
+  background:rgba(255,255,255,.72);border:1px solid var(--glass-edge);border-radius:14px;
+  box-shadow:0 2px 8px rgba(70,110,180,.08);
+}
+html[data-theme="angel"] #unplaced .item,
+html[data-theme="angel"] .wksidelist .item{border-left:3px solid var(--cat,var(--glass-edge))}
+html[data-theme="angel"] .item.ingroup.next{border-color:var(--accent)}
+
+/* ---------- ボタン・入力欄 ---------- */
+html[data-theme="angel"] .btn{background:var(--btn-grad);box-shadow:0 3px 10px rgba(var(--accent-rgb),.28)}
+html[data-theme="angel"] .btn.ghost{background:rgba(255,255,255,.7);border:1px solid var(--line);color:var(--fg-dim);box-shadow:none}
+html[data-theme="angel"] .modal .btn.danger{background:var(--danger)}
+html[data-theme="angel"] input,
+html[data-theme="angel"] textarea,
+html[data-theme="angel"] select{background:rgba(255,255,255,.8)}
+html[data-theme="angel"] .chip{background:rgba(255,255,255,.75)}
+html[data-theme="angel"] .chip.on{background:var(--accent)}
+html[data-theme="angel"] .chips.cats .chip.on{background:var(--cat,var(--accent))}
+html[data-theme="angel"] .iconbtn:hover{background:rgba(var(--accent-rgb),.1)}
+html[data-theme="angel"] .dpasthead input[type=month]{color-scheme:light}
+
+/* ---------- 下のタブ ---------- */
+html[data-theme="angel"] nav{
+  background:rgba(255,255,255,.7);border-top:1px solid var(--glass-edge);
+  box-shadow:0 -6px 20px rgba(70,110,180,.12);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);
+}
+html[data-theme="angel"] nav button{color:var(--fg-dim)}
+html[data-theme="angel"] nav button.on{color:var(--accent);font-weight:700}
+
+/* ---------- 1週間 ---------- */
+html[data-theme="angel"] .weekside{
+  background:rgba(230,240,252,.55);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+html[data-theme="angel"] .weekside .panel{background-color:var(--glass-strong)}
+html[data-theme="angel"] .wktabs{background:rgba(255,255,255,.7)}
+html[data-theme="angel"] .wkbox{background:rgba(255,255,255,.75)}
+html[data-theme="angel"] .wkbox.empty{background:rgba(255,255,255,.3)}
+html[data-theme="angel"] .wkbtns button,
+html[data-theme="angel"] .wkov button{background:rgba(255,255,255,.85)}
+
+/* ---------- 上に重なるもの ---------- */
+html[data-theme="angel"] .modal{background:rgba(40,64,110,.32)}
+html[data-theme="angel"] .modal .sheet{
+  background:rgba(255,255,255,.94);border:1px solid var(--glass-edge);
+  box-shadow:0 20px 60px rgba(40,70,130,.3);
+}
+html[data-theme="angel"] .toast{background:rgba(255,255,255,.95);border-color:var(--glass-edge);box-shadow:0 6px 20px rgba(40,70,130,.2)}
+html[data-theme="angel"] .cheer .ctxt{text-shadow:0 0 30px rgba(255,255,255,.9), 0 6px 30px rgba(var(--accent2-rgb),.45)}
+html[data-theme="angel"] .fdbar{background:rgba(255,255,255,.75)}
+html[data-theme="angel"] .boxarea.has-img .boxrow.done .iconbtn{color:rgba(255,255,255,.85)}

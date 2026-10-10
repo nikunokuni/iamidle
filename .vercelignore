@@ -19,6 +19,7 @@
 index.html
 style.css
 app.js
+img/
 
 # 鍵を作る道具・SQL・手順書。GitHub Pages 側にあればよい
 sync/

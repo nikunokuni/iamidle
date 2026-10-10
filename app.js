@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-10.2";
+const APP_VERSION = "2026-10-10.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -3948,7 +3948,46 @@ function renderSettings(){
   renderSound();
   renderSync();
   renderBrowserPaths();
+  renderTheme();
 }
+/* ================= 画面のデザイン（設定タブ） =================
+   この端末だけのもの。S には入れないので、同期もバックアップもされない
+   （画像やタイマーの音と同じ扱い。スマホとPCで別のデザインにもできる）。
+   印は <html data-theme="…">。開いた瞬間に付けないと一瞬ダークが出るので、
+   読み込みは index.html の <head> でやっている。ここは選ぶ側だけ。
+   ▼ デザインを足すときは、ここに1行と、style.css の「デザイン：◯◯」の節を1つ。
+     id が空のものがダーク（style.css の上のほう、印なしの見た目） */
+const THEME_KEY = "jiko-kanri-theme";
+const THEMES = [
+  { id:"",      name:"ダーク", bar:"#0f1115" },
+  { id:"angel", name:"天使",   bar:"#e6f0fc" },   // bar はスマホの上の帯の色（meta theme-color）
+];
+function currentTheme(){
+  const t = document.documentElement.dataset.theme || "";
+  return THEMES.some(x => x.id === t) ? t : "";
+}
+function applyThemeBar(){
+  const m = document.querySelector('meta[name="theme-color"]');
+  const th = THEMES.find(x => x.id === currentTheme());
+  if(m && th) m.setAttribute("content", th.bar);
+}
+function setTheme(id){
+  if(id) document.documentElement.dataset.theme = id;
+  else   delete document.documentElement.dataset.theme;
+  try{ if(id) localStorage.setItem(THEME_KEY, id); else localStorage.removeItem(THEME_KEY); }catch(e){}
+  applyThemeBar();
+  renderTheme();
+}
+function renderTheme(){
+  const cur = currentTheme();
+  $("themeChips").innerHTML = THEMES.map(th =>
+    '<button class="chip' + (th.id === cur ? " on" : "") + '" data-theme="' + esc(th.id) + '">' + esc(th.name) + '</button>'
+  ).join("");
+}
+$("themeChips").addEventListener("click", e => {
+  const b = e.target.closest("[data-theme]"); if(b) setTheme(b.dataset.theme);
+});
+applyThemeBar();
 /* 目安の計算に使う、その区分の代表日。いまの日で区分だけ差し替える */
 function dayKeyOfType(holiday){
   const k = dayKey();
