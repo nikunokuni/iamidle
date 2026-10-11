@@ -1381,14 +1381,11 @@ html[data-theme="angel"] .philo-bar{border-radius:18px;background-image:none}
 html[data-theme="angel"] .philo-bar .label{color:var(--accent);opacity:1}
 
 /* ---------- やったときの印 ----------
-   緑の丸に ✓ の代わりに、十字の飾りの絵を出す（2026-10-11 本人）。今日の箱・やりたいこと・ルーティーンなど .check.on 全部 */
+   緑の丸を、まわりになじむ淡い水色にする（2026-10-11 本人）。今日の箱・やりたいこと・ルーティーンなど .check.on 全部 */
 html[data-theme="angel"] .check.on{
-  background:url("img/angel/check.webp") center/contain no-repeat;
-  border-color:transparent;border-radius:0;color:transparent;
-  transform:scale(1.45);          /* 細長い絵なので、枠（26px）のままだと小さい。並びは変えずに見た目だけ大きく */
-  filter:drop-shadow(0 1px 2px rgba(40,80,160,.45));
+  background:linear-gradient(135deg,#b3dcfc,#6fb3f0);border-color:#86c1f3;color:#fff;
+  box-shadow:0 1px 6px rgba(70,140,220,.3);
 }
-html[data-theme="angel"] .boxarea.has-img .boxrow.done .check.on{box-shadow:none;filter:drop-shadow(0 0 6px rgba(255,255,255,.9))}
 
 /* ---------- いま、これ ---------- */
 html[data-theme="angel"] .now{
