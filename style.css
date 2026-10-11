@@ -1289,7 +1289,7 @@ html[data-theme="angel"]{
    body の背景ではなく、画面に貼り付けた板（::before）に描く。
    今日タブ以外はページ全体がスクロールするが、絵は動かさないため
    （background-attachment:fixed はスマホで効かないことがある） */
-/* ▼ body には地の色を塗らないこと。塗ると、z-index:-1 の絵（背景・人物・輪っか）がその下に隠れる */
+/* ▼ body には地の色を塗らないこと。塗ると、z-index:-1 の絵（背景・人物）がその下に隠れる */
 html[data-theme="angel"]{background:var(--bg)}
 html[data-theme="angel"] body{background:transparent}
 html[data-theme="angel"] body::before{
@@ -1607,16 +1607,6 @@ html[data-theme="angel"] body.now-fixed::after{
   background:url("img/angel/chara.webp") left bottom/contain no-repeat;
   filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
 }
-/* 輪っか：人物の頭の上に浮かべる。人物の大きさ・位置に合わせて動く
-   （絵の横 49% が頭の真ん中。絵の上端から、絵の幅の 6% ぶん上に出す） */
-html[data-theme="angel"] body.now-fixed .wrap::before{
-  content:"";position:fixed;z-index:-1;pointer-events:none;
-  width:calc(var(--a-charaw) * .84);aspect-ratio:640/427;
-  left:calc(var(--a-charal) + var(--a-charaw) * (.49 - .42));
-  top:calc(100vh - var(--navh) - var(--a-charaw) * 1445 / 1088 - var(--a-charaw) * .06);
-  background:url("img/angel/halo.webp") center/contain no-repeat;
-  opacity:.9;transform:rotate(-8deg);
-}
 /* 日記・1週間・やりたいことのタブにも1人ずつ。中身の少ない所（下の方・左右の余白）に置く。
    中身が伸びてきたら、ガラスのカードの後ろに回るだけ（押す邪魔はしない） */
 html[data-theme="angel"] body[data-tab="diary"]::after,
@@ -1663,7 +1653,6 @@ html[data-theme="angel"] body[data-tab="tasks"]::after{
 }
 @media (max-width:600px){
   html[data-theme="angel"] body.now-fixed::after,
-  html[data-theme="angel"] body.now-fixed .wrap::before,
   html[data-theme="angel"] body[data-tab]::after{display:none}
 }
 /* 絵の上に乗る見出し（「やりたいことを追加」など）が埋もれないように、白く光らせる */
