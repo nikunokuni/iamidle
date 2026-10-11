@@ -1376,7 +1376,6 @@ html[data-theme="angel"] .tgroup{border-left:3px solid var(--cat,var(--glass-edg
 /* ---------- 見出しの飾り ----------
    羽や十字の画像が届いたら、ここの ✦ を差し替える */
 html[data-theme="angel"] h2{color:var(--fg-dim)}
-html[data-theme="angel"] .philo-bar .label::before,
 html[data-theme="angel"] .now .label::before,
 html[data-theme="angel"] .bhead h2::before{
   content:"";display:inline-block;vertical-align:-6px;margin-right:6px;
@@ -1397,6 +1396,17 @@ html[data-theme="angel"] .clock{
 /* ---------- 今日の指針 ---------- */
 html[data-theme="angel"] .philo-bar{border-radius:18px;background-image:none}
 html[data-theme="angel"] .philo-bar .label{color:var(--accent);opacity:1}
+/* 十字は見出しの頭ではなく、箱の左に2行ぶんの高さで大きく置く。
+   右に「今日の指針」と言葉の2行が並ぶ（2026-10-11 本人） */
+html[data-theme="angel"] .philo-bar{
+  display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;align-items:center;
+}
+html[data-theme="angel"] .philo-bar::before{
+  content:"";grid-row:1 / 3;align-self:stretch;
+  width:36px;min-height:46px;background:url("img/angel/cross1.webp") center/contain no-repeat;
+}
+html[data-theme="angel"] .philo-bar .label,
+html[data-theme="angel"] .philo-bar .text{grid-column:2}
 
 /* ---------- やったときの印 ----------
    緑の丸を、まわりになじむ淡い水色にする（2026-10-11 本人）。今日の箱・やりたいこと・ルーティーンなど .check.on 全部 */
