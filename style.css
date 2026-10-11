@@ -1318,11 +1318,11 @@ html[data-theme="angel"] h2{color:var(--fg-dim)}
 html[data-theme="angel"] .philo-bar .label::before,
 html[data-theme="angel"] .now .label::before,
 html[data-theme="angel"] .bhead h2::before{
-  content:"";display:inline-block;vertical-align:-4px;margin-right:6px;
-  width:14px;height:18px;background:url("img/angel/cross1.webp") center/contain no-repeat;
+  content:"";display:inline-block;vertical-align:-6px;margin-right:6px;
+  width:21px;height:27px;background:url("img/angel/cross1.webp") center/contain no-repeat;
 }
 html[data-theme="angel"] .now .label::before{background-image:url("img/angel/cross2.webp")}
-html[data-theme="angel"] .bhead h2::before{width:30px;height:20px;vertical-align:-4px;background-image:url("img/angel/heart.webp")}
+html[data-theme="angel"] .bhead h2::before{width:45px;height:30px;vertical-align:-8px;background-image:url("img/angel/heart.webp")}
 
 /* ---------- header ---------- */
 html[data-theme="angel"] header{color:var(--hdr-fg)}
@@ -1521,8 +1521,8 @@ html[data-theme="angel"] body.now-fixed::after{
 /* 輪っか：人物の頭の上に浮かべる */
 html[data-theme="angel"] body.now-fixed .wrap::before{
   content:"";position:fixed;z-index:-1;pointer-events:none;
-  top:6px;left:calc((100vh - var(--navh) - 40px) * .16);
-  width:calc((100vh - var(--navh) - 40px) * .42);aspect-ratio:640/427;
+  top:6px;left:calc((100vh - var(--navh) - 40px) * .055);
+  width:calc((100vh - var(--navh) - 40px) * .63);aspect-ratio:640/427;
   background:url("img/angel/halo.webp") center/contain no-repeat;
   opacity:.9;transform:rotate(-8deg);
 }
@@ -1567,22 +1567,25 @@ html[data-theme="angel"] h2{text-shadow:0 0 6px #fff, 0 0 12px #fff, 0 0 2px #ff
 html[data-theme="angel"] .clock{position:relative;isolation:isolate}
 html[data-theme="angel"] .clock::before{
   content:"";position:absolute;z-index:-1;pointer-events:none;
-  left:50%;top:50%;width:230px;aspect-ratio:560/373;transform:translate(-50%,-50%);
+  left:50%;top:50%;width:345px;aspect-ratio:560/373;transform:translate(-50%,-50%);
   background:url("img/angel/wings.webp") center/contain no-repeat;opacity:.6;
 }
-@media (max-width:600px){ html[data-theme="angel"] .clock::before{width:170px} }
+@media (max-width:600px){ html[data-theme="angel"] .clock::before{width:255px} }
 
 /* マスコット：「いま、これ」の右下からのぞく。ごほうびの画像が出ているときは引っこめる。
    .now だけだと、やりたいことタブの「次はこれ」の札（.tag.now）にも出てしまうので #nowCard に絞る */
 html[data-theme="angel"] #nowCard{position:relative}
 html[data-theme="angel"] #nowCard::before{
-  content:"";position:absolute;z-index:1;pointer-events:none;
-  right:8px;bottom:6px;width:112px;height:112px;
+  content:"";position:absolute;z-index:0;pointer-events:none;
+  right:8px;bottom:6px;width:168px;height:168px;
   background:url("img/angel/mascot.webp") center/contain no-repeat;
   filter:drop-shadow(0 4px 10px rgba(70,110,180,.25));
 }
 html[data-theme="angel"] #nowCard.reward::before{display:none}
-@media (max-width:600px){ html[data-theme="angel"] #nowCard::before{width:72px;height:72px;right:4px;bottom:4px} }
+/* 大きくしたので、PCだと「始めるよ」などの上にかぶる。文字とボタンをマスコットより手前に出す
+   （ごほうびの時は引っこむので要らない。.rbare の absolute を上書きしないよう :not(.reward)） */
+html[data-theme="angel"] #nowCard:not(.reward) > *{position:relative;z-index:1}
+@media (max-width:600px){ html[data-theme="angel"] #nowCard::before{width:108px;height:108px;right:4px;bottom:4px} }
 
 /* 下のタブのアイコン。絵文字（.ic の中の字）は消して、画像に差し替える */
 html[data-theme="angel"] nav button .ic{
