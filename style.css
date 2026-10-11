@@ -1302,13 +1302,29 @@ html[data-theme="angel"] body::before{
     linear-gradient(170deg,#f1f7ff 0%,#d9e8fc 50%,#e6e1fa 100%)}
 }
 
-/* ---------- 並び：左に人物のぶんを空ける（今日タブだけ・広い画面だけ） ----------
-   1週間タブは7列で幅が要るので寄せない。狭い画面では人物は部品の後ろに隠れる（本人了承） */
-@media (min-width:1360px){
-  html[data-theme="angel"] body.now-fixed .wrap{
-    max-width:min(1180px, 72vw);
-    margin-left:auto;margin-right:max(24px, 3vw);
+/* ---------- 並び：今日タブは真ん中と右の列を右に寄せ、左に人物のぶんを空ける（2026-10-11 本人） ----------
+   ・列の幅は決め打ち（真ん中 --a-mid／右 --a-side）。.wrap の幅もそこから出す
+   ・左に残った幅（--a-free）に人物を合わせる（下の「人物」）
+   ・1週間タブは7列で幅が要るので寄せない。スマホ（600px 以下）は1列なので何もしない */
+@media (min-width:601px){
+  html[data-theme="angel"] body.now-fixed{
+    --a-mid:clamp(240px, 40vw, 380px);
+    --a-side:340px;
+    --a-gap:22px;
+    --a-mr:max(16px, 2vw);
+    --a-wrapw:calc(var(--a-mid) + var(--a-gap) + var(--a-side) + 48px);   /* 48px は .wrap の左右の padding */
+    --a-free:calc(100vw - var(--a-wrapw) - var(--a-mr));
   }
+  html[data-theme="angel"] body.now-fixed .wrap{
+    width:var(--a-wrapw);max-width:none;
+    margin-left:auto;margin-right:var(--a-mr);
+  }
+  html[data-theme="angel"] body.now-fixed .home{
+    grid-template-columns:var(--a-mid) var(--a-side);gap:var(--a-gap);
+  }
+}
+@media (min-width:601px) and (max-width:900px){
+  html[data-theme="angel"] body.now-fixed{--a-side:clamp(230px, 38vw, 340px);--a-gap:14px}
 }
 
 /* ---------- 共通のガラスのカード ---------- */
@@ -1528,20 +1544,29 @@ html[data-theme="angel"] .boxarea.has-img .boxrow.done .iconbtn{color:rgba(255,2
 /* ---------- 絵（人物・マスコット・飾り） ----------
    どれも押せないただの絵。pointer-events:none にして、下の部品の邪魔をしない */
 
-/* 人物：今日タブだけ、左下に立たせる。狭い画面では部品の後ろに隠れる（本人了承）。
-   スマホ（600px 以下）は縦に並んで部品が画面を埋めるので出さない */
+/* 人物：今日タブだけ、左下に立たせる。スマホ（600px 以下）は縦に並んで部品が画面を埋めるので出さない。
+   ▼ 左の空き（--a-free、上の「並び」）に顔が収まるように大きさと位置を決める（2026-10-11 本人）。
+     ・絵の中で顔は横 30%〜92% のあたり。空きが狭いときは、絵の左側（肩・へび）を画面の外に出して顔を残す
+     ・大きさは「画面の高さいっぱい」と「空き ÷ 0.62（顔の幅ぶん）」の小さいほう
+     ・left は「顔の右端（92%）が空きの右端に来る」ところ。空きが広ければ 0（はみ出さない） */
+html[data-theme="angel"] body.now-fixed{
+  --a-charaw:min(calc((100vh - var(--navh) - 40px) * 1088 / 1445), calc(var(--a-free, 100vw) / .62));
+  --a-charal:min(0px, calc(var(--a-free, 100vw) - var(--a-charaw) * .92));
+}
 html[data-theme="angel"] body.now-fixed::after{
   content:"";position:fixed;z-index:-1;pointer-events:none;
-  left:0;bottom:var(--navh);
-  height:calc(100vh - var(--navh) - 40px);aspect-ratio:1088/1445;max-width:60vw;
+  left:var(--a-charal);bottom:var(--navh);
+  width:var(--a-charaw);aspect-ratio:1088/1445;
   background:url("img/angel/chara.webp") left bottom/contain no-repeat;
   filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
 }
-/* 輪っか：人物の頭の上に浮かべる */
+/* 輪っか：人物の頭の上に浮かべる。人物の大きさ・位置に合わせて動く
+   （絵の横 49% が頭の真ん中。絵の上端から、絵の幅の 6% ぶん上に出す） */
 html[data-theme="angel"] body.now-fixed .wrap::before{
   content:"";position:fixed;z-index:-1;pointer-events:none;
-  top:6px;left:calc((100vh - var(--navh) - 40px) * .055);
-  width:calc((100vh - var(--navh) - 40px) * .63);aspect-ratio:640/427;
+  width:calc(var(--a-charaw) * .84);aspect-ratio:640/427;
+  left:calc(var(--a-charal) + var(--a-charaw) * (.49 - .42));
+  top:calc(100vh - var(--navh) - var(--a-charaw) * 1445 / 1088 - var(--a-charaw) * .06);
   background:url("img/angel/halo.webp") center/contain no-repeat;
   opacity:.9;transform:rotate(-8deg);
 }
@@ -1573,14 +1598,11 @@ html[data-theme="angel"] body[data-tab="tasks"]::after{
 }
 @media (max-width:600px){
   html[data-theme="angel"] body.now-fixed::after,
+  html[data-theme="angel"] body.now-fixed .wrap::before,
   html[data-theme="angel"] body[data-tab]::after{display:none}
 }
 /* 絵の上に乗る見出し（「やりたいことを追加」など）が埋もれないように、白く光らせる */
 html[data-theme="angel"] h2{text-shadow:0 0 6px #fff, 0 0 12px #fff, 0 0 2px #fff}
-/* 輪っかは、左に人物のぶんが空いているときだけ（狭いと日付の上に重なってうるさい） */
-@media (max-width:1359px){
-  html[data-theme="angel"] body.now-fixed .wrap::before{display:none}
-}
 
 /* 羽：時計の後ろに広げる */
 html[data-theme="angel"] .clock{position:relative;isolation:isolate}
