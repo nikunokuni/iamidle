@@ -186,6 +186,25 @@ body.now-fixed .side #rouletteBox{
   body.now-fixed .side #rouletteBox{position:static;max-height:none;overflow-y:visible;background:none}
 }
 
+/* ▼ スマホは、ページそのものはスクロールさせず、.wrap の中だけをスクロールさせる（2026-10-11）。
+     ページごとスクロールすると、ブラウザのアドレスバーが出たり引っ込んだりして下のタブ帯が上下し、
+     いちばん上・下でのはね返りで背景の絵も一緒に動いていた。
+     ・html と body は画面の高さで止めて動かさない。帯（nav）と背景（body::before）は position:fixed のまま
+     ・タブを切り替えたときに上に戻すのは、window ではなく .wrap（app.js の switchTab()）
+     ・代わりにアドレスバーは引っ込まなくなる */
+@media (max-width:600px){
+  html{height:100%;overflow:hidden}
+  body,body.now-fixed{
+    height:100%;height:100dvh;overflow:hidden;padding-bottom:0;
+    display:flex;flex-direction:column;
+  }
+  .wrap,body.now-fixed .wrap{
+    flex:1;min-height:0;width:100%;
+    overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+    padding-bottom:88px;
+  }
+}
+
 /* ---------- now card ---------- */
 .now{
   background:linear-gradient(135deg,#213050,#1a2030);

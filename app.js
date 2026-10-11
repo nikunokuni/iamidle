@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-11.4";
+const APP_VERSION = "2026-10-11.5";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -5052,6 +5052,7 @@ function switchTab(name){
   // いま開いているタブの印。デザインごとの絵（タブごとの人物など）を CSS で出し分けるのに使う
   document.body.dataset.tab = name;
   window.scrollTo(0,0);
+  document.querySelector(".wrap").scrollTop = 0;   // スマホは .wrap の中がスクロールする（style.css）
 }
 switchTab("now");        // 最初は今日タブ。body の印を付けるためにここでも通す
 document.querySelectorAll("nav button").forEach(b => b.onclick = ()=> switchTab(b.dataset.tab));
