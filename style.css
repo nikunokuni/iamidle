@@ -1319,12 +1319,12 @@ html[data-theme="angel"] body::before{
     --a-mid:clamp(270px, 45vw, 432px);   /* 真ん中:右 ＝ 3:2（2026-10-11.11 本人）。2列の合計はもとのまま */
     --a-side:288px;
     --a-gap:22px;
-    --a-mr:max(16px, 2vw);
-    --a-wrapw:calc(var(--a-mid) + var(--a-gap) + var(--a-side) + 48px);   /* 48px は .wrap の左右の padding */
+    --a-mr:0px;                          /* 右端との間は .wrap の右の padding だけ（2026-10-11.12 本人：半分くらいに） */
+    --a-wrapw:calc(var(--a-mid) + var(--a-gap) + var(--a-side) + 42px);   /* 42px は .wrap の左右の padding（左 24px／右 18px） */
     --a-free:calc(100vw - var(--a-wrapw) - var(--a-mr));
   }
   html[data-theme="angel"] body.now-fixed .wrap{
-    width:var(--a-wrapw);max-width:none;
+    width:var(--a-wrapw);max-width:none;padding-right:18px;
     margin-left:auto;margin-right:var(--a-mr);
   }
   html[data-theme="angel"] body.now-fixed .home{
