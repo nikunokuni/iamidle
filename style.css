@@ -1613,20 +1613,20 @@ html[data-theme="angel"] .clock::before{
 }
 @media (max-width:600px){ html[data-theme="angel"] .clock::before{width:255px} }
 
-/* マスコット：「いま、これ」の右下からのぞく。ごほうびの画像が出ているときは引っこめる。
+/* マスコット：「いま、これ」の右上からのぞく（2026-10-11 本人の指定で右下から移した）。ごほうびの画像が出ているときは引っこめる。
    .now だけだと、やりたいことタブの「次はこれ」の札（.tag.now）にも出てしまうので #nowCard に絞る */
 html[data-theme="angel"] #nowCard{position:relative}
 html[data-theme="angel"] #nowCard::before{
   content:"";position:absolute;z-index:0;pointer-events:none;
-  right:8px;bottom:6px;width:168px;height:168px;
+  right:8px;top:6px;width:112px;height:112px;
   background:url("img/angel/mascot.webp") center/contain no-repeat;
   filter:drop-shadow(0 4px 10px rgba(70,110,180,.25));
 }
 html[data-theme="angel"] #nowCard.reward::before{display:none}
-/* 大きくしたので、PCだと「始めるよ」などの上にかぶる。文字とボタンをマスコットより手前に出す
+/* マスコットが文字やボタンにかぶったときは、文字とボタンを手前に出す
    （ごほうびの時は引っこむので要らない。.rbare の absolute を上書きしないよう :not(.reward)） */
 html[data-theme="angel"] #nowCard:not(.reward) > *{position:relative;z-index:1}
-@media (max-width:600px){ html[data-theme="angel"] #nowCard::before{width:108px;height:108px;right:4px;bottom:4px} }
+@media (max-width:600px){ html[data-theme="angel"] #nowCard::before{width:72px;height:72px;right:4px;top:4px} }
 
 /* 下のタブのアイコン。絵文字（.ic の中の字）は消して、画像に差し替える */
 html[data-theme="angel"] nav button .ic{
