@@ -1607,9 +1607,18 @@ html[data-theme="angel"] body[data-tab="week"]::after{
 }
 /* やりたいこと：左下。入力欄とリストで中ほどが埋まるので、左の余白からのぞかせる */
 html[data-theme="angel"] body[data-tab="tasks"]::after{
-  left:0;height:calc(100vh - var(--navh) - 120px);aspect-ratio:1088/1445;max-width:45vw;
+  left:0;height:calc(100vh - var(--navh) - 120px);aspect-ratio:1088/1445;max-width:25vw;
   background-position:left bottom;
   background-image:url("img/angel/chara-tasks.webp");
+}
+/* ▼ やりたいことタブは、人物 1：中身 3 に分ける（2026-10-11.13 本人）。
+     人物は左の 25vw に収め（上の max-width）、中身の列は残りの 75vw に右寄せで置く。
+     右端との間は今日タブと同じ 18px。スマホ（600px 以下）は人物を出さないので何もしない */
+@media (min-width:601px){
+  html[data-theme="angel"] body[data-tab="tasks"] .wrap{
+    width:75vw;max-width:none;
+    margin-left:auto;margin-right:0;padding-right:18px;
+  }
 }
 @media (max-width:600px){
   html[data-theme="angel"] body.now-fixed::after,
