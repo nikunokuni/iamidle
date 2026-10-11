@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-11.7";
+const APP_VERSION = "2026-10-11.8";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1557,6 +1557,16 @@ $("philoBar").addEventListener("click", ()=>{
   S.philoIdx = (S.philoIdx + 1) % S.philos.length;
   save(); renderPhiloBar();
 });
+// PC（601px 以上）では、今日の指針をヘッダーの「午後・平日」と時刻のあいだに置く。
+// ヘッダーは今日タブでもスクロールしないので、ずっと見えている。スマホは今日タブの列の先頭のまま
+const philoInHeader = matchMedia("(min-width:601px)");
+function placePhiloBar(){
+  const bar = $("philoBar");
+  if(philoInHeader.matches) document.querySelector("header").insertBefore(bar, $("clock"));
+  else document.querySelector("#sec-now .col.main").prepend(bar);
+}
+philoInHeader.addEventListener("change", placePhiloBar);
+placePhiloBar();
 
 /* ================= タイマー（「いま、これ」の中） =================
    1箱＝30分なので、既定は30分。＋−で1分ずつ増減して、0になったら音が鳴る。
