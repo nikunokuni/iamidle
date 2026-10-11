@@ -1128,7 +1128,7 @@
 | `cross1.webp` `cross2.webp` `ribbon.webp` | 見出しの飾り（今日の指針／いま、これ／今日の箱）。`ribbon.webp`（羽とリボン）は `heart.webp` と入れ替えた |
 | `icons/*.webp` | 下のタブのアイコン。名前は `data-tab` と同じ。絵文字は `font-size:0` で消している |
 | `chara-diary.webp` | 日記タブの右下（帽子と眼鏡の子） |
-| `chara-week.webp` | 1週間タブの左下（座っている子。横長） |
+| `chara-philo.webp` | 哲学タブの真ん中の下（座っている子。横長）。もとは `chara-week.webp` で1週間タブの左下にいた（2026-10-11 本人：1週間から消して哲学へ） |
 | `chara-tasks.webp` | やりたいことタブの左下（ピンクの子） |
 
 - タブごとの人物は `body[data-tab="…"]::after`。印は `switchTab()` が付ける（`document.body.dataset.tab`）。

@@ -1622,10 +1622,10 @@ html[data-theme="angel"] body.now-fixed::after{
   background:url("img/angel/chara.webp") left bottom/contain no-repeat;
   filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
 }
-/* 日記・1週間・やりたいことのタブにも1人ずつ。中身の少ない所（下の方・左右の余白）に置く。
+/* 日記・哲学・やりたいことのタブにも1人ずつ。中身の少ない所（下の方・左右の余白）に置く。
    中身が伸びてきたら、ガラスのカードの後ろに回るだけ（押す邪魔はしない） */
 html[data-theme="angel"] body[data-tab="diary"]::after,
-html[data-theme="angel"] body[data-tab="week"]::after,
+html[data-theme="angel"] body[data-tab="philo"]::after,
 html[data-theme="angel"] body[data-tab="tasks"]::after{
   content:"";position:fixed;z-index:-1;pointer-events:none;bottom:var(--navh);
   filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
@@ -1647,11 +1647,13 @@ html[data-theme="angel"] body[data-tab="diary"]::after{
     margin-left:0;margin-right:auto;padding-left:18px;
   }
 }
-/* 1週間：左下。平日の列は8箱で終わるので、列の下が空く（横長の絵なので、横に寝かせて置く） */
-html[data-theme="angel"] body[data-tab="week"]::after{
-  left:0;width:min(62vw, 900px);aspect-ratio:1536/1024;max-height:calc(100vh - var(--navh) - 300px);
-  background-position:left bottom;
-  background-image:url("img/angel/chara-week.webp");
+/* 哲学：真ん中の下。もとは1週間タブの左下にいた人（2026-10-11 本人：1週間からは消して哲学の真ん中へ）。
+   大きさは1週間のときのまま。言葉の箱はガラスで透けるので、後ろにいる人が見える。
+   左右 0 と margin:auto で横の真ん中に置く（高さが max-height で縮んでも、絵は background-position で真ん中に残る） */
+html[data-theme="angel"] body[data-tab="philo"]::after{
+  left:0;right:0;margin:0 auto;width:min(62vw, 900px);aspect-ratio:1536/1024;max-height:calc(100vh - var(--navh) - 300px);
+  background-position:center bottom;
+  background-image:url("img/angel/chara-philo.webp");
 }
 /* やりたいこと：左下。入力欄とリストで中ほどが埋まるので、左の余白からのぞかせる */
 html[data-theme="angel"] body[data-tab="tasks"]::after{
