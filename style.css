@@ -1350,6 +1350,24 @@ html[data-theme="angel"] .wkcol{
   -webkit-backdrop-filter:blur(14px) saturate(1.2);
   backdrop-filter:blur(14px) saturate(1.2);
 }
+/* 設定タブは、入力欄（.form）のほかに、枠のない説明文・ボタンの行・一覧がそのまま並んでいて、
+   後ろの絵に字が溶けて読みにくかった。見出し以外の中身を、入力欄と同じガラスのカードに乗せる（2026-10-11.15 本人）。
+   中身が空のもの（同期していないときの #syncNote など）は箱だけ出ないように :not(:empty) */
+html[data-theme="angel"] #sec-set > :not(h2):not(.form):not(input):not(.btn):not(:empty){
+  background-color:var(--glass);
+  border:1px solid var(--glass-edge);border-radius:var(--radius);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
+  padding:10px 12px;margin-bottom:10px;
+}
+/* カードの中の説明文は、カードの余白があるので上下を詰める */
+html[data-theme="angel"] #sec-set > :not(.form) .empty-note{padding:6px 0 0}
+/* 枠のないボタン（.btn.ghost）は地が透けているので、カードの上でも白く敷く */
+html[data-theme="angel"] #sec-set .btn.ghost{background:rgba(255,255,255,.75)}
+/* 説明文には style="padding-top:0" が直に書いてあるので、カードの上の余白は !important で戻す
+   （リセットのボタンはボタン1つだけなので、カードに乗せず、上の白いボタンのまま） */
+html[data-theme="angel"] #sec-set > .empty-note{padding-top:10px !important}
 html[data-theme="angel"] .wkcol.today{background-color:rgba(255,255,255,.78);border-color:var(--accent)}
 html[data-theme="angel"] .dcard.same{border-left:3px solid var(--accent2)}
 html[data-theme="angel"] .dcard.editing{border-color:var(--accent)}
