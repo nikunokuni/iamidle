@@ -1663,8 +1663,10 @@ html[data-theme="angel"] body[data-tab="tasks"]::after{
      人物は左の 25vw に収め（上の max-width）、中身の列は残りの 75vw に右寄せで置く。
      右端との間は今日タブと同じ 18px。スマホ（600px 以下）は人物を出さないので何もしない */
 @media (min-width:601px){
+  /* 幅は 75vw をやめ、入力欄の箱の左端が人物の絵の右端に 10px かぶるところまで広げる（2026-10-11 本人）。
+     絵の幅は上の ::after と同じ式。+34px は、.wrap の左の余白 24px と、かぶる 10px */
   html[data-theme="angel"] body[data-tab="tasks"] .wrap{
-    width:75vw;max-width:none;
+    width:calc(100% - min(25vw, (100vh - var(--navh) - 120px) * 1088 / 1445) + 34px);max-width:none;
     margin-left:auto;margin-right:0;padding-right:18px;
   }
 }
