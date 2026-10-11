@@ -1382,6 +1382,12 @@ html[data-theme="angel"] .bhead h2::before{
   width:21px;height:27px;background:url("img/angel/cross1.webp") center/contain no-repeat;
 }
 html[data-theme="angel"] .now .label::before{background-image:url("img/angel/cross2.webp")}
+/* いま、これ：十字だけ大きく。箱の大きさは変えない。まわりの字や枠と少し重なってよい（2026-10-11 本人）。
+   負の margin で、見出しの行の高さは十字に引っぱられないようにする */
+html[data-theme="angel"] .now .label::before{
+  width:42px;height:54px;vertical-align:middle;margin:-13px 4px -14px -8px;
+  position:relative;z-index:1;
+}
 /* 今日の箱：羽とリボンの飾りを大きく。今日の指針の十字と同じく、上下は枠から少しはみ出してよい（2026-10-11 本人）。
    負の margin で、見出しの行の高さは飾りに引っぱられないようにする */
 html[data-theme="angel"] .bhead h2::before{
