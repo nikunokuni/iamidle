@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1115">
+<!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
+<meta name="app-version" content="2026-10-11.12">
+<title>自己管理</title>
+<!-- ▼ 画面のデザイン（設定タブで選ぶ。この端末だけ）。CSS より先に印を付けないと、
+     開いた瞬間に一瞬だけダークが出てから切り替わる。選び方の本体は app.js の THEMES -->
+<script>try{var th=localStorage.getItem("jiko-kanri-theme");if(th)document.documentElement.dataset.theme=th;}catch(e){}</script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="stylesheet" href="style.css?v=2026-10-11.12">
+</head>
+<body>
+
+<!-- 古いキャッシュで動いていることを検知したら出る -->
+<div class="updatebar" id="updateBar">
+  <span>新しい版があります。読み込み直してください。</span>
+  <button id="updateNow">最新に更新</button>
+  <span class="note">やりたいことや画像は消えません</span>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="hleft">
+      <div class="date" id="date"></div>
+      <div class="greet" id="greet"></div>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+
+  <!-- ============ 今日（2カラム）============
+       枠は画面の高さに固定して、左右それぞれの中でスクロールする。
+       左：今日の指針／いま、これ／今日の箱　右：ルーレット／やりたいこと／ルーティーン
+       平日・休みの切り替えと ＋− は「今日の箱」の中（app.js の renderBoxes）にある。
+       ルーレットは右カラムの一番上に貼り付く（下までスクロールしてもドラッグ先が消えない） -->
+  <section id="sec-now" class="on">
+    <div class="home">
+      <div class="col main">
+        <div class="philo-bar" id="philoBar">
+          <div class="label">今日の指針</div>
+          <div class="text" id="philoText">哲学タブから、大事にしたい言葉を登録してください。</div>
+        </div>
+        <div class="now" id="nowCard"></div>
+        <div id="boxList"></div>
+        <div id="skippedList"></div>
+        <div id="doneToday"></div>
+      </div>
+      <aside class="col side">
+        <div id="rouletteBox"></div>
+        <div id="unplaced"></div>
+        <div id="routineBox"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ 1週間の予定（日曜はじまり。今週／来週の切り替え） ============ -->
+  <section id="sec-week">
+    <!-- この週に置くもの。一番上に置いて、スクロールしても貼り付く -->
+    <div class="side weekside" id="weekSide"></div>
+    <div id="weekWrap"></div>
+  </section>
+
+  <!-- ============ やりたいこと管理 ============ -->
+  <section id="sec-tasks">
+    <!-- やりたいことを見つけよう／メモ帳（どちらも同じ全画面で重なって開く。中身は app.js の renderFinder） -->
+    <div class="row mt10"><button class="btn ghost" id="finderOpen">🌱 やりたいことを見つけよう</button><button class="btn ghost" id="memoOpen">📝 メモ帳</button></div>
+    <h2>やりたいことを追加</h2>
+    <div class="form">
+      <input id="taskInput" placeholder="やりたいことを入力" autocomplete="off">
+      <input class="mt8" id="taskUrl" placeholder="リンク（任意） https://..." autocomplete="off" inputmode="url" list="taskUrlList">
+      <datalist id="taskUrlList"></datalist>
+      <div class="row mt10">
+        <span class="flabel">必要な箱</span>
+        <input type="number" id="taskSize" min="1" max="16" value="1">
+        <span class="fnote" id="taskSizeNote">箱 ＝ 30分</span>
+      </div>
+      <!-- タグ（せきにん／ごほうび／おきらく）。中身は app.js の CATS から組み立てる -->
+      <div class="chips cats mt10" id="catChips"></div>
+      <div class="chips mt10" id="whenChips">
+        <button class="chip on" data-when="any">いつでも</button>
+        <button class="chip" data-when="am">☀ 午前</button>
+        <button class="chip" data-when="pm">🌙 午後</button>
+      </div>
+      <div class="chips mt10" id="freqChips">
+        <button class="chip on" data-unit="once">単発</button>
+        <button class="chip" data-unit="day">毎日</button>
+        <button class="chip" data-unit="work">仕事の日</button>
+        <button class="chip" data-unit="off">休みの日</button>
+        <button class="chip" data-unit="week">週に</button>
+        <button class="chip" data-unit="month">月に</button>
+        <button class="chip" data-unit="days">N日に</button>
+      </div>
+      <div class="freqline mt10" id="freqLine" style="display:none">
+        <span id="freqPre"></span>
+        <input type="number" id="freqN" min="1" max="365" value="3" style="display:none">
+        <span id="freqMid" style="display:none">日に</span>
+        <input type="number" id="freqCount" min="1" max="99" value="1">
+        <span>回</span>
+      </div>
+      <!-- グループ（単発だけ。グループが1つでもあるときだけ出る。中身は app.js の syncTaskGroupRow） -->
+      <div class="row mt10" id="taskGroupRow" style="display:none">
+        <span class="flabel">グループ</span>
+        <select id="taskGroup"></select>
+      </div>
+      <div class="row mt10" style="justify-content:flex-end">
+        <button class="btn" id="taskAdd">追加</button>
+      </div>
+    </div>
+
+    <div id="taskList"></div>
+
+    <h2>ルーティーン</h2>
+    <div class="form">
+      <input id="routineInput" placeholder="例: 机の上を片付ける" autocomplete="off">
+      <div class="chips mt10" id="routineSlotChips">
+        <button class="chip on" data-slot="am">☀ 午前</button>
+        <button class="chip" data-slot="pm">🌙 午後</button>
+      </div>
+      <div class="row mt10" style="justify-content:flex-end">
+        <button class="btn" id="routineAdd">追加</button>
+      </div>
+    </div>
+    <div id="routineList"></div>
+  </section>
+
+  <!-- ============ 日記 ============ -->
+  <section id="sec-diary">
+    <div class="diary-today">
+      <div class="dhead">
+        <div class="dtitle" id="diaryTitle"></div>
+        <div class="dstate" id="diaryState"></div>
+      </div>
+      <div class="dfield" id="dDoneWrap">
+        <label for="dDone">今日できたこと</label>
+        <textarea id="dDone" placeholder="小さいことでいい。ひとつ書ければ十分"></textarea>
+      </div>
+      <div class="dfield" id="dGripeWrap" style="display:none">
+        <label for="dGripe">今日の気持ち</label>
+        <textarea id="dGripe" placeholder="誰にも見せない。好きに書く"></textarea>
+      </div>
+      <div class="dfield" id="dThanksWrap" style="display:none">
+        <label for="dThanks">日常に感謝</label>
+        <textarea id="dThanks" placeholder="あたりまえの中から、ひとつ"></textarea>
+      </div>
+      <!-- 自分で足したタグの欄。名前は自由なので app.js が組み立てる。
+           打ちかけを消さないよう、並びが変わったときだけ作り直している -->
+      <div id="diaryTags"></div>
+      <div class="dmore" id="diaryMore">
+        <button class="dtog" data-open="gripe">＋ 今日の気持ち</button>
+        <button class="dtog" data-open="thanks">＋ 日常に感謝</button>
+        <span id="diaryTagTogs"></span>
+        <button class="dtog dtognew" id="diaryTagNew">＋ タグ</button>
+      </div>
+      <div class="dsave">
+        <button class="btn" id="diarySaveBtn">保存する</button>
+      </div>
+    </div>
+
+    <!-- 過去のもの。「同じ日に書いたもの」→「これまでの日記」の順。
+         月の絞り込みの入力は静的に置いてある。描き直しで作り直すと、
+         年を打っている途中で input が消えてフォーカスが飛ぶため -->
+    <div id="diarySame"></div>
+    <div class="dpasthead" id="diaryPastHead">
+      <h2>これまでの日記</h2>
+      <span class="dpcount" id="diaryCountLabel"></span>
+      <div class="sp"></div>
+      <input type="month" id="diaryMonthPick" aria-label="年月でしぼりこむ">
+      <button class="dclear" id="diaryMonthAll">すべて</button>
+    </div>
+    <div id="diaryPast"></div>
+  </section>
+
+  <!-- ============ 哲学 ============ -->
+  <section id="sec-philo">
+    <h2>人生哲学</h2>
+    <button class="addtoggle" data-form="philoForm">＋ 言葉を追加</button>
+    <div class="form" id="philoForm" style="display:none">
+      <textarea id="philoInput" placeholder="大事にしたい考え方を書く&#10;例: 迷ったら、面倒な方を選ぶ"></textarea>
+      <div class="row mt8" style="justify-content:flex-end">
+        <button class="btn" id="philoAdd">追加</button>
+      </div>
+    </div>
+    <div id="philoList"></div>
+
+    <h2>やったときの一言</h2>
+    <button class="addtoggle" data-form="cheerForm">＋ 一言を追加</button>
+    <div class="form" id="cheerForm" style="display:none">
+      <input id="cheerInput" placeholder="例: やったぜ！" autocomplete="off">
+      <div class="row mt8" style="justify-content:flex-end">
+        <button class="btn" id="cheerAdd">追加</button>
+      </div>
+    </div>
+    <div id="cheerList"></div>
+
+    <h2>お気に入りの画像</h2>
+    <div class="empty-note" style="padding-top:0">
+      <b>8枚まで。</b>その日の1枚が「今日の箱」の背景になります。
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="btnAddImg">画像を追加</button>
+      <span class="fnote" id="imgNote"></span>
+    </div>
+    <input type="file" id="imgInput" accept="image/*" multiple style="display:none">
+    <div id="imgList"></div>
+  </section>
+
+  <!-- ============ 設定 ============ -->
+  <section id="sec-set">
+    <h2>1日の箱数（基本値）</h2>
+    <div class="form">
+      <div class="row">
+        <span class="flabel">平日</span>
+        <input type="number" id="baseWeekday" min="0" max="48">
+        <span class="fnote">箱</span>
+      </div>
+      <div class="row mt8">
+        <span class="flabel">休みの日</span>
+        <input type="number" id="baseHoliday" min="0" max="48">
+        <span class="fnote">箱</span>
+      </div>
+    </div>
+
+    <h2>箱が始まる時刻（目安）</h2>
+    <div class="form">
+      <div class="row">
+        <span class="flabel">平日</span>
+        <input type="time" id="startWeekday">
+        <span class="fnote">から</span>
+      </div>
+      <div class="row mt8">
+        <span class="flabel">休みの日</span>
+        <input type="time" id="startHoliday">
+        <span class="fnote">から</span>
+      </div>
+      <div class="empty-note" id="startNote"></div>
+    </div>
+
+    <h2>ほかの端末と同期</h2>
+    <div class="empty-note" style="padding-top:0">
+      <b>合言葉を忘れると、預けたものは二度と開けません。</b>紙に控えておいてください。
+    </div>
+    <div class="form">
+      <div class="row">
+        <span class="flabel">アドレス</span>
+        <input id="syncUrl" style="flex:1" spellcheck="false" autocomplete="off"
+               placeholder="https://iamidle.vercel.app/api/sync">
+      </div>
+      <div class="row mt8">
+        <span class="flabel">名前</span>
+        <input id="syncName" style="flex:1" spellcheck="false" autocomplete="off" placeholder="niku">
+      </div>
+      <div class="row mt8">
+        <span class="flabel">合言葉</span>
+        <input id="syncPass" type="password" style="flex:1" spellcheck="false" autocomplete="off"
+               placeholder="ほかの端末と同じもの">
+      </div>
+      <div class="row mt10" style="justify-content:flex-end">
+        <button class="btn" id="syncSave">つなぐ</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="syncGo">いま合わせる</button>
+      <button class="btn ghost" id="syncOff" style="display:none">この端末の同期をやめる</button>
+    </div>
+    <div id="syncNote"></div>
+
+    <h2>画面のデザイン</h2>
+    <div class="chips" id="themeChips"></div>
+
+    <h2>タイマーの音</h2>
+    <div class="empty-note" style="padding-top:0">
+      <b>最初の10秒だけ</b>鳴ります。
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="btnAddSnd">音を選ぶ</button>
+      <button class="btn ghost" id="btnTestSnd">試しに鳴らす</button>
+      <button class="btn ghost" id="btnResetSnd">既定の音に戻す</button>
+    </div>
+    <input type="file" id="sndInput" accept="audio/*" style="display:none">
+    <div id="sndNote"></div>
+
+    <h2>ブラウザの場所（起動ファイル用）</h2>
+    <div class="empty-note" style="padding-top:0">
+      ふつうは<b>空のままでかまいません</b>。起動ファイルに「見つかりませんでした」と出たときだけ入れてください。
+    </div>
+    <div class="form" id="browserPaths"></div>
+
+    <h2>減らした箱（今月）</h2>
+    <div id="cutStats"></div>
+
+    <h2>データ</h2>
+    <div id="stats"></div>
+    <div class="row mt8" style="margin-top:16px">
+      <button class="btn ghost" id="btnExport">バックアップ書き出し</button>
+      <button class="btn ghost" id="btnImport">読み込み</button>
+    </div>
+    <input type="file" id="fileInput" accept="application/json" style="display:none">
+
+    <h2>バージョンと更新</h2>
+    <div id="verBox"></div>
+
+    <h2>リセット</h2>
+    <button class="btn ghost" id="btnClearDone">完了した単発のやりたいことを消す</button>
+    <div class="empty-note">
+      データはこの端末のブラウザ内にのみ保存されます。<br>
+      ブラウザのデータ削除に備えて、ときどき書き出しておくと安全です。
+    </div>
+  </section>
+</div>
+
+<nav>
+  <div class="inner">
+    <button data-tab="now" class="on"><span class="ic">🎯</span>今日</button>
+    <button data-tab="diary"><span class="ic">📔</span>日記</button>
+    <button data-tab="week"><span class="ic">🗓</span>1週間</button>
+    <button data-tab="tasks"><span class="ic">📋</span>やりたいこと</button>
+    <button data-tab="philo"><span class="ic">🧭</span>哲学</button>
+    <button data-tab="set"><span class="ic">⚙️</span>設定</button>
+  </div>
+</nav>
+
+<!-- やりたいことを見つけよう。やりたいことタブの上に全画面で重なる（PC用）。
+     中身は app.js の renderFinder が組み立てる。保存は別のキー（jiko-kanri-finder-v1）で、同期しない -->
+<div class="finder" id="finder">
+  <div class="fdbar">
+    <div class="fdtitle" id="fdTitle">やりたいことを見つけよう</div>
+    <div class="fdsteps" id="fdSteps"></div>
+    <div class="fdend">
+      <button class="btn ghost" id="fdReset">まっさらに戻す</button>
+      <button class="iconbtn" id="fdClose" title="閉じる">✕</button>
+    </div>
+  </div>
+  <div class="fdbody" id="fdBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 完了したときの一言（ドーンと出る） -->
+<div class="cheer" id="cheer"><div class="ctxt" id="cheerText"></div></div>
+
+<!-- アプリ内ダイアログ（confirm/prompt の代わり） -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="mtitle" id="mTitle"></div>
+    <div class="mdesc" id="mDesc"></div>
+    <input id="mInput" style="display:none" autocomplete="off">
+    <div class="mextra" id="mExtra" style="display:none"></div>
+    <div class="mbtns">
+      <button class="btn ghost" id="mCancel">やめる</button>
+      <button class="btn" id="mOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- やりたいことの編集（名前・くり返し・回数・箱数・曜日と時刻・まだ先の予定） -->
+<div class="modal" id="editModal">
+  <div class="sheet wide">
+    <div class="mtitle" id="edTitle"></div>
+    <div id="edBody"></div>
+    <div class="mbtns">
+      <button class="btn ghost" id="edCancel">やめる</button>
+      <button class="btn" id="edOk">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- やりたいことに紐づくリンク・アプリの編集 -->
+<div class="modal" id="linkModal">
+  <div class="sheet wide">
+    <div class="mtitle" id="lkTitle"></div>
+    <div id="lkRows"></div>
+    <div class="row mt10 lkadd">
+      <button class="btn ghost" id="lkAddUrl">＋ リンク</button>
+      <button class="btn ghost" id="lkAddApp">＋ アプリ</button>
+      <button class="btn ghost" id="lkBat">起動ファイル(.bat)を書き出す</button>
+    </div>
+    <div class="empty-note" id="lkNote"></div>
+    <div class="mbtns">
+      <button class="btn ghost" id="lkCancel">やめる</button>
+      <button class="btn" id="lkOk">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=2026-10-11.12"></script>
+</body>
+</html>
