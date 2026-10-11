@@ -1382,7 +1382,14 @@ html[data-theme="angel"] .bhead h2::before{
   width:21px;height:27px;background:url("img/angel/cross1.webp") center/contain no-repeat;
 }
 html[data-theme="angel"] .now .label::before{background-image:url("img/angel/cross2.webp")}
-html[data-theme="angel"] .bhead h2::before{width:45px;height:30px;vertical-align:-8px;background-image:url("img/angel/heart.webp")}
+/* 今日の箱：羽とリボンの飾りを大きく。今日の指針の十字と同じく、上下は枠から少しはみ出してよい（2026-10-11 本人）。
+   負の margin で、見出しの行の高さは飾りに引っぱられないようにする */
+html[data-theme="angel"] .bhead h2::before{
+  width:66px;height:90px;vertical-align:middle;margin:-30px 6px -30px -10px;
+  background-image:url("img/angel/ribbon.webp");position:relative;z-index:1;
+  transform:translateY(-18px);   /* 下にはみ出すと 1つ目の箱の時刻の札にかぶるので、上へ逃がす */
+  filter:drop-shadow(0 0 6px rgba(255,255,255,.95)) drop-shadow(0 2px 8px rgba(var(--accent-rgb),.45));
+}
 
 /* ---------- header ---------- */
 html[data-theme="angel"] header{color:var(--hdr-fg)}
