@@ -1640,8 +1640,10 @@ html[data-theme="angel"] body[data-tab="diary"]::after{
      人物（最大 48vw）とは 8vw ほど重なるが、本人が「少し重なってもよい」と。
      左端との間はやりたいことタブの右端と同じ 18px。スマホ（600px 以下）は人物を出さないので何もしない */
 @media (min-width:601px){
+  /* 幅は 60vw をやめ、入力欄の右端が人物の絵の左端に少しかぶるところまで広げる（2026-10-11 本人）。
+     絵の幅は下の ::after と同じ式。+70px は、.wrap の右の余白 24px と枠の内側 16px を越えて、入力欄が 30px ほどかぶるぶん */
   html[data-theme="angel"] body[data-tab="diary"] .wrap{
-    width:60vw;max-width:none;
+    width:calc(100% - min(48vw, (100vh - var(--navh) - 160px) * 1086 / 1448) + 70px);max-width:none;
     margin-left:0;margin-right:auto;padding-left:18px;
   }
 }
