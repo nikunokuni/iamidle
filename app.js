@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-11.1";
+const APP_VERSION = "2026-10-11.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -5049,6 +5049,8 @@ function switchTab(name){
   // 今日タブだけ、枠を画面の高さに固定して中でスクロールさせる（style.css の body.now-fixed）。
   // ほかのタブは、これまでどおりページ全体がスクロールする
   document.body.classList.toggle("now-fixed", name === "now");
+  // いま開いているタブの印。デザインごとの絵（タブごとの人物など）を CSS で出し分けるのに使う
+  document.body.dataset.tab = name;
   window.scrollTo(0,0);
 }
 switchTab("now");        // 最初は今日タブ。body の印を付けるためにここでも通す

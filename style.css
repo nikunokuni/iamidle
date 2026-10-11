@@ -1454,6 +1454,8 @@ html[data-theme="angel"] .roulette .spinbtn{background:linear-gradient(180deg,#9
 html[data-theme="angel"] .item{
   background:rgba(255,255,255,.72);border:1px solid var(--glass-edge);border-radius:14px;
   box-shadow:0 2px 8px rgba(70,110,180,.08);
+  /* 後ろに人物が来ても字が読めるように、透けた絵をぼかす */
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
 }
 html[data-theme="angel"] #unplaced .item,
 html[data-theme="angel"] .wksidelist .item{border-left:3px solid var(--cat,var(--glass-edge))}
@@ -1524,9 +1526,38 @@ html[data-theme="angel"] body.now-fixed .wrap::before{
   background:url("img/angel/halo.webp") center/contain no-repeat;
   opacity:.9;transform:rotate(-8deg);
 }
-@media (max-width:600px){
-  html[data-theme="angel"] body.now-fixed::after{display:none}
+/* 日記・1週間・やりたいことのタブにも1人ずつ。中身の少ない所（下の方・左右の余白）に置く。
+   中身が伸びてきたら、ガラスのカードの後ろに回るだけ（押す邪魔はしない） */
+html[data-theme="angel"] body[data-tab="diary"]::after,
+html[data-theme="angel"] body[data-tab="week"]::after,
+html[data-theme="angel"] body[data-tab="tasks"]::after{
+  content:"";position:fixed;z-index:-1;pointer-events:none;bottom:var(--navh);
+  filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
+  background:right bottom/contain no-repeat;
 }
+/* 日記：右下。日記の欄は上の方に収まるので、その下が空く */
+html[data-theme="angel"] body[data-tab="diary"]::after{
+  right:0;height:calc(100vh - var(--navh) - 160px);aspect-ratio:1086/1448;max-width:48vw;
+  background-image:url("img/angel/chara-diary.webp");
+}
+/* 1週間：左下。平日の列は8箱で終わるので、列の下が空く（横長の絵なので、横に寝かせて置く） */
+html[data-theme="angel"] body[data-tab="week"]::after{
+  left:0;width:min(62vw, 900px);aspect-ratio:1536/1024;max-height:calc(100vh - var(--navh) - 300px);
+  background-position:left bottom;
+  background-image:url("img/angel/chara-week.webp");
+}
+/* やりたいこと：左下。入力欄とリストで中ほどが埋まるので、左の余白からのぞかせる */
+html[data-theme="angel"] body[data-tab="tasks"]::after{
+  left:0;height:calc(100vh - var(--navh) - 120px);aspect-ratio:1088/1445;max-width:45vw;
+  background-position:left bottom;
+  background-image:url("img/angel/chara-tasks.webp");
+}
+@media (max-width:600px){
+  html[data-theme="angel"] body.now-fixed::after,
+  html[data-theme="angel"] body[data-tab]::after{display:none}
+}
+/* 絵の上に乗る見出し（「やりたいことを追加」など）が埋もれないように、白く光らせる */
+html[data-theme="angel"] h2{text-shadow:0 0 6px #fff, 0 0 12px #fff, 0 0 2px #fff}
 /* 輪っかは、左に人物のぶんが空いているときだけ（狭いと日付の上に重なってうるさい） */
 @media (max-width:1359px){
   html[data-theme="angel"] body.now-fixed .wrap::before{display:none}
