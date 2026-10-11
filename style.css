@@ -1246,16 +1246,15 @@ html[data-theme="angel"]{
   --on-accent2:#fff;
 
   /* このデザインだけで使う値 */
-  --glass:rgba(255,255,255,.55);          /* カードの地。後ろの絵がうっすら透ける */
+  --glass:rgba(255,255,255,.64);          /* カードの地。後ろの絵がうっすら透ける */
   --glass-strong:rgba(255,255,255,.82);   /* 字が多い所・上に重なる所 */
   --glass-edge:rgba(255,255,255,.9);      /* カードのふちの白い光 */
   --glass-shadow:0 8px 26px rgba(70,110,180,.16), inset 0 1px 0 rgba(255,255,255,.95);
   --btn-grad:linear-gradient(180deg,#62a8ff 0%,#2f7be8 100%);
-  --hdr-fg:var(--fg);                     /* 日付・時計の字。背景の絵が入ったら白に変える */
-  /* 背景の絵。img/angel/ に置いたら url("img/angel/…") を入れる。
-     none のままでも、下のグラデーションだけで成り立つようにしてある */
-  --theme-bg:none;
-  --theme-bg-sp:var(--theme-bg);          /* スマホ用（縦長）。無ければPC用を切り取って使う */
+  --hdr-fg:var(--fg);                     /* 日付・時計の字。部屋の絵の上の方は明るいので、濃い字のまま */
+  /* 背景の絵。画像が読めなくても、下のグラデーションだけで成り立つようにしてある */
+  --theme-bg:url("img/angel/room.webp");
+  --theme-bg-sp:var(--theme-bg);          /* スマホ用（縦長）。いまは無いので、部屋の絵の真ん中を使う */
   color-scheme:light;                     /* 日付の入力欄・スクロールバーを明るい側に */
 }
 
@@ -1263,8 +1262,9 @@ html[data-theme="angel"]{
    body の背景ではなく、画面に貼り付けた板（::before）に描く。
    今日タブ以外はページ全体がスクロールするが、絵は動かさないため
    （background-attachment:fixed はスマホで効かないことがある） */
-html[data-theme="angel"],
-html[data-theme="angel"] body{background:var(--bg)}
+/* ▼ body には地の色を塗らないこと。塗ると、z-index:-1 の絵（背景・人物・輪っか）がその下に隠れる */
+html[data-theme="angel"]{background:var(--bg)}
+html[data-theme="angel"] body{background:transparent}
 html[data-theme="angel"] body::before{
   content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
   background-image:
@@ -1277,7 +1277,7 @@ html[data-theme="angel"] body::before{
   background-repeat:no-repeat;
 }
 @media (max-width:600px){
-  html[data-theme="angel"] body::before{background-image:
+  html[data-theme="angel"] body::before{background-position:center,center,center;background-image:
     var(--theme-bg-sp),
     radial-gradient(ellipse 80% 40% at 30% 15%, rgba(255,255,255,.85), rgba(255,255,255,0) 70%),
     linear-gradient(170deg,#f1f7ff 0%,#d9e8fc 50%,#e6e1fa 100%)}
@@ -1317,7 +1317,12 @@ html[data-theme="angel"] .tgroup{border-left:3px solid var(--cat,var(--glass-edg
 html[data-theme="angel"] h2{color:var(--fg-dim)}
 html[data-theme="angel"] .philo-bar .label::before,
 html[data-theme="angel"] .now .label::before,
-html[data-theme="angel"] .bhead h2::before{content:"✦ ";color:var(--accent);opacity:.8}
+html[data-theme="angel"] .bhead h2::before{
+  content:"";display:inline-block;vertical-align:-4px;margin-right:6px;
+  width:14px;height:18px;background:url("img/angel/cross1.webp") center/contain no-repeat;
+}
+html[data-theme="angel"] .now .label::before{background-image:url("img/angel/cross2.webp")}
+html[data-theme="angel"] .bhead h2::before{width:30px;height:20px;vertical-align:-4px;background-image:url("img/angel/heart.webp")}
 
 /* ---------- header ---------- */
 html[data-theme="angel"] header{color:var(--hdr-fg)}
@@ -1498,3 +1503,70 @@ html[data-theme="angel"] .toast{background:rgba(255,255,255,.95);border-color:va
 html[data-theme="angel"] .cheer .ctxt{text-shadow:0 0 30px rgba(255,255,255,.9), 0 6px 30px rgba(var(--accent2-rgb),.45)}
 html[data-theme="angel"] .fdbar{background:rgba(255,255,255,.75)}
 html[data-theme="angel"] .boxarea.has-img .boxrow.done .iconbtn{color:rgba(255,255,255,.85)}
+
+/* ---------- 絵（人物・マスコット・飾り） ----------
+   どれも押せないただの絵。pointer-events:none にして、下の部品の邪魔をしない */
+
+/* 人物：今日タブだけ、左下に立たせる。狭い画面では部品の後ろに隠れる（本人了承）。
+   スマホ（600px 以下）は縦に並んで部品が画面を埋めるので出さない */
+html[data-theme="angel"] body.now-fixed::after{
+  content:"";position:fixed;z-index:-1;pointer-events:none;
+  left:0;bottom:var(--navh);
+  height:calc(100vh - var(--navh) - 40px);aspect-ratio:1088/1445;max-width:60vw;
+  background:url("img/angel/chara.webp") left bottom/contain no-repeat;
+  filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
+}
+/* 輪っか：人物の頭の上に浮かべる */
+html[data-theme="angel"] body.now-fixed .wrap::before{
+  content:"";position:fixed;z-index:-1;pointer-events:none;
+  top:6px;left:calc((100vh - var(--navh) - 40px) * .16);
+  width:calc((100vh - var(--navh) - 40px) * .42);aspect-ratio:640/427;
+  background:url("img/angel/halo.webp") center/contain no-repeat;
+  opacity:.9;transform:rotate(-8deg);
+}
+@media (max-width:600px){
+  html[data-theme="angel"] body.now-fixed::after{display:none}
+}
+/* 輪っかは、左に人物のぶんが空いているときだけ（狭いと日付の上に重なってうるさい） */
+@media (max-width:1359px){
+  html[data-theme="angel"] body.now-fixed .wrap::before{display:none}
+}
+
+/* 羽：時計の後ろに広げる */
+html[data-theme="angel"] .clock{position:relative;isolation:isolate}
+html[data-theme="angel"] .clock::before{
+  content:"";position:absolute;z-index:-1;pointer-events:none;
+  left:50%;top:50%;width:230px;aspect-ratio:560/373;transform:translate(-50%,-50%);
+  background:url("img/angel/wings.webp") center/contain no-repeat;opacity:.6;
+}
+@media (max-width:600px){ html[data-theme="angel"] .clock::before{width:170px} }
+
+/* マスコット：「いま、これ」の右下からのぞく。ごほうびの画像が出ているときは引っこめる */
+html[data-theme="angel"] .now{position:relative}
+html[data-theme="angel"] .now::before{
+  content:"";position:absolute;z-index:1;pointer-events:none;
+  right:8px;bottom:6px;width:112px;height:112px;
+  background:url("img/angel/mascot.webp") center/contain no-repeat;
+  filter:drop-shadow(0 4px 10px rgba(70,110,180,.25));
+}
+html[data-theme="angel"] .now.reward::before{display:none}
+@media (max-width:600px){ html[data-theme="angel"] .now::before{width:72px;height:72px;right:4px;bottom:4px} }
+
+/* 下のタブのアイコン。絵文字（.ic の中の字）は消して、画像に差し替える */
+html[data-theme="angel"] nav button .ic{
+  font-size:0;width:36px;height:36px;
+  background:center/contain no-repeat;opacity:.8;transition:transform .15s, opacity .15s;
+}
+html[data-theme="angel"] nav button:hover .ic{opacity:1}
+html[data-theme="angel"] nav button.on .ic{opacity:1;transform:scale(1.12);filter:drop-shadow(0 0 6px rgba(var(--accent-rgb),.5))}
+html[data-theme="angel"] nav [data-tab="now"]   .ic{background-image:url("img/angel/icons/now.webp")}
+html[data-theme="angel"] nav [data-tab="diary"] .ic{background-image:url("img/angel/icons/diary.webp")}
+html[data-theme="angel"] nav [data-tab="week"]  .ic{background-image:url("img/angel/icons/week.webp")}
+html[data-theme="angel"] nav [data-tab="tasks"] .ic{background-image:url("img/angel/icons/tasks.webp")}
+html[data-theme="angel"] nav [data-tab="philo"] .ic{background-image:url("img/angel/icons/philo.webp")}
+html[data-theme="angel"] nav [data-tab="set"]   .ic{background-image:url("img/angel/icons/set.webp")}
+@media (max-width:600px){ html[data-theme="angel"] nav button .ic{width:30px;height:30px} }
+/* 過ぎた日は、列ごと opacity で薄くすると後ろの絵に溶けて見えなくなる。中身だけ薄くする */
+html[data-theme="angel"] .wkcol.past{opacity:1}
+html[data-theme="angel"] .wkcol.past > *{opacity:.5}
+html[data-theme="angel"] .wkbox.empty{background:rgba(255,255,255,.5)}
