@@ -1316,8 +1316,8 @@ html[data-theme="angel"] body::before{
    ・1週間タブは7列で幅が要るので寄せない。スマホ（600px 以下）は1列なので何もしない */
 @media (min-width:601px){
   html[data-theme="angel"] body.now-fixed{
-    --a-mid:clamp(240px, 40vw, 380px);
-    --a-side:340px;
+    --a-mid:clamp(270px, 45vw, 432px);   /* 真ん中:右 ＝ 3:2（2026-10-11.11 本人）。2列の合計はもとのまま */
+    --a-side:288px;
     --a-gap:22px;
     --a-mr:max(16px, 2vw);
     --a-wrapw:calc(var(--a-mid) + var(--a-gap) + var(--a-side) + 48px);   /* 48px は .wrap の左右の padding */
@@ -1332,7 +1332,7 @@ html[data-theme="angel"] body::before{
   }
 }
 @media (min-width:601px) and (max-width:900px){
-  html[data-theme="angel"] body.now-fixed{--a-side:clamp(230px, 38vw, 340px);--a-gap:14px}
+  html[data-theme="angel"] body.now-fixed{--a-side:clamp(180px, 30vw, 288px);--a-gap:14px}
 }
 
 /* ---------- 共通のガラスのカード ---------- */
