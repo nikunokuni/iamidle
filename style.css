@@ -1599,6 +1599,15 @@ html[data-theme="angel"] body[data-tab="diary"]::after{
   right:0;height:calc(100vh - var(--navh) - 160px);aspect-ratio:1086/1448;max-width:48vw;
   background-image:url("img/angel/chara-diary.webp");
 }
+/* ▼ 日記タブは、中身の列を幅 60vw にして左に寄せ、右の人物を見せる（2026-10-11.14 本人）。
+     人物（最大 48vw）とは 8vw ほど重なるが、本人が「少し重なってもよい」と。
+     左端との間はやりたいことタブの右端と同じ 18px。スマホ（600px 以下）は人物を出さないので何もしない */
+@media (min-width:601px){
+  html[data-theme="angel"] body[data-tab="diary"] .wrap{
+    width:60vw;max-width:none;
+    margin-left:0;margin-right:auto;padding-left:18px;
+  }
+}
 /* 1週間：左下。平日の列は8箱で終わるので、列の下が空く（横長の絵なので、横に寝かせて置く） */
 html[data-theme="angel"] body[data-tab="week"]::after{
   left:0;width:min(62vw, 900px);aspect-ratio:1536/1024;max-height:calc(100vh - var(--navh) - 300px);
