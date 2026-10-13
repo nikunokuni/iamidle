@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-11.15";
+const APP_VERSION = "2026-10-13.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -4480,6 +4480,9 @@ const STK_W = 100, STK_H = 40;               // ふせん1枚のおおよその�
 
 let fdFailed = "";
 const INK_COLORS = ["#26332a", "#d6453d", "#2f6fd0"];   // メモ帳のペンの色（黒・赤・青）
+// メモ帳のふせんの色（黄・ピンク・水色・緑・白）。中身は style.css の .stk.memo.c-○
+const MEMO_COLORS = [["y", "黄"], ["p", "ピンク"], ["b", "水色"], ["g", "緑"], ["w", "白"]];
+const MEMO_SZ_MIN = 0.5, MEMO_SZ_MAX = 3;   // メモ帳のふせんの大きさ（倍。字も同じだけ大きくなる）
 const FD_AREA_MAX = 12;   // 区切りの名前の字数の上限（長いと隣の区切りにはみ出す）
 const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[], memo:[], ink:[] });
 function normFinder(d){
@@ -4496,7 +4499,10 @@ function normFinder(d){
       text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
     // メモ帳のふせん（ノートとは別のまっさらなページに貼る）。形は notes と同じで kind は "memo"
     memo: (Array.isArray(d.memo) ? d.memo : []).filter(n => n && n.id).map(n => ({
-      id: String(n.id), kind: "memo", text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
+      id: String(n.id), kind: "memo", text: String(n.text || ""), x: num(n.x), y: num(n.y),
+      // c は色（MEMO_COLORS の頭の字）、s は大きさ（倍）。古いデータは黄色・1倍
+      c: MEMO_COLORS.some(([k]) => k === n.c) ? n.c : "y",
+      s: (typeof n.s === "number" && isFinite(n.s)) ? Math.min(MEMO_SZ_MAX, Math.max(MEMO_SZ_MIN, n.s)) : 1 })),
     // メモ帳の手書きの線。p は [x, y, x, y, …]（ページの幅・高さに対する割合）
     ink: (Array.isArray(d.ink) ? d.ink : []).filter(k => k && k.id && Array.isArray(k.p) && k.p.length >= 2).map(k => ({
       id: String(k.id), c: INK_COLORS.includes(k.c) ? k.c : INK_COLORS[0], p: k.p.map(num) })),
@@ -4644,10 +4650,17 @@ function fdPickArea(i){
   hl.setAttribute("d", fdAreaPath(fdArea));
   document.querySelectorAll("#fdBoard .fbl").forEach(t => t.classList.toggle("on", Number(t.dataset.area) === fdArea));
 }
+// ページの上の端に近いふせんは、色の丸を下に出す（ページの外は切れて見えないので）
+const fdColsBelow = n => n.y < 0.08 ? " cb" : "";
 function fdStickyHTML(n){
-  return '<div class="stk ' + n.kind + '" data-id="' + esc(n.id) + '" style="left:' + (n.x * 100).toFixed(2) +
-    '%;top:' + (n.y * 100).toFixed(2) + '%"><div class="stx">' + esc(n.text) + '</div>' +
-    '<button class="stdel" data-act="stdel" title="はがす">✕</button></div>';
+  const memo = n.kind === "memo";
+  return '<div class="stk ' + n.kind + (memo ? " c-" + n.c + fdColsBelow(n) : "") + '" data-id="' + esc(n.id) + '" style="left:' + (n.x * 100).toFixed(2) +
+    '%;top:' + (n.y * 100).toFixed(2) + '%' + (memo ? ';--s:' + n.s : '') + '"><div class="stx">' + esc(n.text) + '</div>' +
+    '<button class="stdel" data-act="stdel" title="はがす">✕</button>' +
+    // メモ帳だけ：色の丸（上）と、大きさを変えるつまみ（右下）
+    (memo ? '<div class="stcols">' + MEMO_COLORS.map(([k, l]) =>
+      '<button class="stcol c-' + k + (n.c === k ? " on" : "") + '" data-stc="' + k + '" title="' + l + '"></button>').join("") + '</div>' +
+      '<div class="stsz" title="ドラッグで大きさを変える"></div>' : '') + '</div>';
 }
 const fdBoardHTML = () => fdMemo
   ? '<div class="fdboard memo' + (inkTool === "erase" ? " erase" : "") + '" id="fdBoard">' +
@@ -4690,7 +4703,8 @@ function addNote(kind){
   const text = inp.value.trim();
   if(!text){ inp.focus(); return; }
   const at = fdSpot(kind);
-  fdNotes().push({ id: uid(), kind, text, x: at.x, y: at.y });
+  fdNotes().push(kind === "memo" ? { id: uid(), kind, text, x: at.x, y: at.y, c: memoColor, s: 1 }
+                                 : { id: uid(), kind, text, x: at.x, y: at.y });
   saveFinder();
   inp.value = "";
   renderFinder();
@@ -4724,7 +4738,9 @@ let fdDrag = null;
 function fdPointerDown(e){
   if(fdMemo && !e.target.closest(".stk")){ inkDown(e); return; }
   const st = e.target.closest(".stk");
-  if(!st || e.button !== 0 || e.target.closest(".stdel") || st.classList.contains("editing")) return;
+  if(!st || e.button !== 0 || e.target.closest(".stdel,.stcols")) return;
+  if(e.target.closest(".stsz")){ szDown(e, st); return; }
+  if(st.classList.contains("editing")) return;
   const n = fdNote(st.dataset.id); if(!n) return;
   e.preventDefault();
   const board = $("fdBoard");
@@ -4739,6 +4755,7 @@ function fdPointerDown(e){
 }
 function fdPointerMove(e){
   if(inkDrag){ inkMove(e); return; }
+  if(szDrag){ szMove(e); return; }
   const g = fdDrag; if(!g) return;
   const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
   if(!g.moved && Math.hypot(dx, dy) < 4) return;
@@ -4751,9 +4768,11 @@ function fdPointerMove(e){
 }
 function fdPointerUp(){
   if(inkDrag){ inkUp(); return; }
+  if(szDrag){ szUp(); return; }
   const g = fdDrag; if(!g) return;
   fdDrag = null;
   g.st.classList.remove("moving");
+  if(g.n.kind === "memo") g.st.classList.toggle("cb", !!fdColsBelow(g.n));
   saveFinder();                         // 動かさなくても重なり順は変わっているので保存する
   if(!g.moved) editNote(g.st);
 }
@@ -4775,12 +4794,54 @@ function editNote(st){
     tx.onblur = null; tx.onkeydown = null;
     tx.contentEditable = "false";
     st.classList.remove("editing");
-    const text = tx.innerText.replace(/\s+$/,"").replace(/^\s+/,"");
+    const text = tx.innerText.replace(/\s+$/,"").replace(/^\s+/,"");   // 中の改行（Shift+Enter）は残す
     if(cancel || text === n.text){ tx.textContent = n.text; return; }
     if(!text){ tx.textContent = n.text; removeNote(n.id); return; }
     n.text = text; saveFinder();
     tx.textContent = text;
   };
+}
+
+/* ---------- メモ帳のふせんの色・大きさ ----------
+   色は左の列で選んでから貼る（memoColor）。貼ったあとは、ふせんの上に出る丸で変える。
+   大きさは右下のつまみをドラッグ。字・余白・幅の上限が全部同じ倍率で大きくなる（CSS の --s） */
+let memoColor = "y";     // 次に貼るふせんの色。メモリだけ
+let szDrag = null;       // 大きさを変えている最中のもの
+function memoPick(k){
+  memoColor = k;
+  document.querySelectorAll("#finder [data-memoc]").forEach(b => b.classList.toggle("on", b.dataset.memoc === k));
+}
+function setNoteColor(st, k){
+  const n = fdNote(st.dataset.id); if(!n || n.c === k) return;
+  n.c = k; saveFinder();
+  // 組み直さずに付けかえる（書き直しの途中でも消えないように）
+  MEMO_COLORS.forEach(([c]) => st.classList.toggle("c-" + c, c === k));
+  st.querySelectorAll(".stcol").forEach(b => b.classList.toggle("on", b.dataset.stc === k));
+}
+function szDown(e, st){
+  const n = fdNote(st.dataset.id); if(!n) return;
+  e.preventDefault(); e.stopPropagation();
+  st.setPointerCapture(e.pointerId);
+  st.classList.add("sizing");
+  szDrag = { n, st, sx: e.clientX, sy: e.clientY, s0: n.s, w0: st.offsetWidth, h0: st.offsetHeight,
+             rect: $("fdBoard").getBoundingClientRect() };
+}
+function szMove(e){
+  const g = szDrag;
+  // 右下へ引けば大きく、左上へ戻せば小さく。縦横の動きを足して、元の大きさに対する割合で倍率にする
+  const r = (g.w0 + g.h0 + (e.clientX - g.sx) + (e.clientY - g.sy)) / (g.w0 + g.h0);
+  g.n.s = Math.round(Math.min(MEMO_SZ_MAX, Math.max(MEMO_SZ_MIN, g.s0 * r)) * 100) / 100;
+  g.st.style.setProperty("--s", g.n.s);
+}
+function szUp(){
+  const g = szDrag; szDrag = null;
+  g.st.classList.remove("sizing");
+  // 大きくしてページの端からはみ出したぶんは、内側へ寄せる
+  g.n.x = Math.max(0, Math.min(g.n.x, 1 - g.st.offsetWidth / g.rect.width));
+  g.n.y = Math.max(0, Math.min(g.n.y, 1 - g.st.offsetHeight / g.rect.height));
+  g.st.style.left = (g.n.x * 100).toFixed(2) + "%";
+  g.st.style.top  = (g.n.y * 100).toFixed(2) + "%";
+  saveFinder();
 }
 
 /* ---------- メモ帳の手書き ----------
@@ -4954,9 +5015,12 @@ function renderFinder(){
   let html = "";
   if(fdMemo){
     // メモ帳：書く欄と、まっさらなページだけ。Enter でふせんになる
+    // 書く欄は複数行（Shift+Enter で改行）。その下にふせんの色
     html = '<div class="fdwork"><div class="fdside">' +
-      '<div class="row fdadd"><input id="fdNoteIn" autocomplete="off" maxlength="80" placeholder="ふせんに書く">' +
+      '<div class="row fdadd memo"><textarea id="fdNoteIn" rows="3" maxlength="300" placeholder="ふせんに書く（Shift+Enter で改行）"></textarea>' +
       '<button class="btn" id="fdNoteAdd" data-kind="memo">貼る</button></div>' +
+      '<div class="row memocols">' + MEMO_COLORS.map(([k, l]) =>
+        '<button class="stcol c-' + k + (memoColor === k ? " on" : "") + '" data-memoc="' + k + '" title="ふせんの色：' + l + '"></button>').join("") + '</div>' +
       '<div class="inktools"><div class="row">' +
       [["pen", "✏️ ペン"], ["erase", "🧽 消しゴム"]].map(([t, l]) =>
         '<button class="chip' + (inkTool === t ? " on" : "") + '" data-tool="' + t + '">' + l + '</button>').join("") +
@@ -4993,7 +5057,7 @@ function renderFinder(){
   if($("fdNoteIn")){
     const kind = $("fdNoteAdd").dataset.kind;
     $("fdNoteAdd").onclick = ()=> addNote(kind);
-    $("fdNoteIn").onkeydown = e => { if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); addNote(kind); } };
+    $("fdNoteIn").onkeydown = e => { if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); addNote(kind); } };
   }
   if($("fdStepIn")){
     $("fdStepAdd").onclick = addStep;
@@ -5023,6 +5087,10 @@ $("memoOpen").onclick = ()=> openFinder(true);
 $("fdClose").onclick = closeFinder;
 $("fdReset").onclick = resetFinder;
 $("finder").addEventListener("click", e => {
+  const sc = e.target.closest(".stk [data-stc]");
+  if(sc){ setNoteColor(sc.closest(".stk"), sc.dataset.stc); return; }
+  const mc = e.target.closest("[data-memoc]");
+  if(mc){ memoPick(mc.dataset.memoc); return; }
   const ip = e.target.closest("[data-tool],[data-color]");
   if(ip){ inkPick(ip); return; }
   const ia = (e.target.closest('[data-act="inkback"],[data-act="inkclear"]') || {}).dataset?.act;
@@ -5040,6 +5108,8 @@ $("finder").addEventListener("click", e => {
   else if(act === "totask") openStepTask(row.dataset.id);
   else if(act === "stdel") removeStep(row.dataset.id);
 });
+// 色の丸を押しても、書き直し中のふせんから字のカーソルが外れないように
+$("finder").addEventListener("mousedown", e => { if(e.target.closest(".stcols")) e.preventDefault(); });
 $("finder").addEventListener("dblclick", e => {
   const area = e.target.closest("#fdBoard [data-area]");
   if(area) renameArea(Number(area.dataset.area));

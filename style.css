@@ -1070,7 +1070,11 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   background:var(--bg);
   --stk-ideal:#ffe08a;   /* ①のふせん */
   --stk-vision:#ffb3c7;  /* ②のふせん */
-  --stk-memo:#ffe08a;    /* メモ帳のふせん（ページが薄い緑なので黄色） */
+  --stk-memo:#ffe08a;    /* メモ帳のふせん（黄。色を選ばなかったとき） */
+  --stk-memo-p:#ffc2d4;  /* メモ帳のふせん：ピンク */
+  --stk-memo-b:#bfe3ff;  /* メモ帳のふせん：水色 */
+  --stk-memo-g:#9fd88a;  /* メモ帳のふせん：緑（ページの薄い緑と見分けられるように濃いめ） */
+  --stk-memo-w:#ffffff;  /* メモ帳のふせん：白 */
   --memo-bg:#e4f2dc;     /* メモ帳のページ */
 }
 /* 上の帯＋中身（.fdbody）の縦並び。①②③は中身を画面の高さぴったりにして、ページ全体はスクロールさせない */
@@ -1122,6 +1126,10 @@ body.fd-open{overflow:hidden}
 .fdadd{margin-top:12px;flex-wrap:nowrap;gap:6px}
 .fdadd input{flex:1;min-width:0}
 .fdadd .btn{flex:none;padding:8px 12px}
+/* メモ帳の書く欄は複数行。「貼る」は下に回す */
+.fdadd.memo{flex-direction:column;align-items:stretch}
+.fdadd.memo textarea{min-height:72px;resize:vertical}
+.memocols{gap:10px;padding:4px;margin-top:8px}
 
 /* ビジョンノート。中身（ふせんの幅・字の大きさ）はノートの幅に合わせて伸び縮みする（cqw） */
 /* ▼ ノートは画面いっぱいまで大きくする。.fdmain（右の空き）の幅と高さの、どちらか先に当たるところまで */
@@ -1163,15 +1171,22 @@ body.fd-open{overflow:hidden}
 
 .stk{
   /* 幅は中身なり（短いふせんは小さく）。内側の楕円は狭いので、決め打ちの幅だとすぐ埋まる */
-  position:absolute;width:max-content;max-width:13cqw;min-width:5cqw;min-height:3.6cqw;
-  padding:.7cqw .9cqw;border-radius:.4cqw;
-  font-size:max(8px, 1.35cqw);line-height:1.4;color:#2a2410;
+  /* --s はメモ帳のふせんの大きさ（倍）。幅・余白・字が同じだけ大きくなる。①②は 1 のまま */
+  --s:1;
+  position:absolute;width:max-content;max-width:calc(13cqw * var(--s));min-width:calc(5cqw * var(--s));
+  min-height:calc(3.6cqw * var(--s));
+  padding:calc(.7cqw * var(--s)) calc(.9cqw * var(--s));border-radius:.4cqw;
+  font-size:max(8px, calc(1.35cqw * var(--s)));line-height:1.4;color:#2a2410;
   background:var(--stk-ideal);
   box-shadow:0 .3cqw .9cqw rgba(0,0,0,.35);
   cursor:grab;touch-action:none;
 }
 .stk.vision{background:var(--stk-vision);color:#3a1622}
 .stk.memo{background:var(--stk-memo);color:#16301a}
+.stk.memo.c-p{background:var(--stk-memo-p);color:#3a1622}
+.stk.memo.c-b{background:var(--stk-memo-b);color:#132a3e}
+.stk.memo.c-g{background:var(--stk-memo-g)}
+.stk.memo.c-w{background:var(--stk-memo-w);color:#26332a}
 .stk.moving{cursor:grabbing;box-shadow:0 .8cqw 2cqw rgba(0,0,0,.5);transform:scale(1.03)}
 .stk .stx{white-space:pre-wrap;word-break:break-word;outline:none;min-height:1.4em}
 .stk.editing{cursor:text;user-select:text;outline:2px solid var(--accent)}
@@ -1184,6 +1199,26 @@ body.fd-open{overflow:hidden}
 .stk:hover .stdel{display:block}
 .stk.editing .stdel,.stk.moving .stdel{display:none}
 .stk .stdel:hover{color:var(--danger);border-color:var(--danger)}
+/* メモ帳のふせんの色の丸。ふせんの上に、乗せたとき・書き直しのときだけ出す */
+.stcol{width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.25);cursor:pointer;padding:0;background:var(--stk-memo)}
+.stcol.c-p{background:var(--stk-memo-p)}
+.stcol.c-b{background:var(--stk-memo-b)}
+.stcol.c-g{background:var(--stk-memo-g)}
+.stcol.c-w{background:var(--stk-memo-w)}
+.stcol.on{outline:2px solid var(--accent);outline-offset:2px}
+.stk .stcols{position:absolute;left:0;bottom:100%;display:none;gap:6px;padding:4px 6px;margin-bottom:6px;
+  border-radius:14px;background:var(--bg2);border:1px solid var(--line);white-space:nowrap}
+.stk .stcols::after{content:"";position:absolute;left:0;right:0;top:100%;height:8px}   /* 丸へ動かすあいだに消えないように */
+.stk .stcols .stcol{width:18px;height:18px}
+.stk.cb .stcols{bottom:auto;top:100%;margin:6px 0 0}
+.stk.cb .stcols::after{top:auto;bottom:100%}
+.stk:hover .stcols,.stk.editing .stcols{display:flex}
+.stk.moving .stcols,.stk.sizing .stcols{display:none}
+/* 大きさを変えるつまみ（右下の三角） */
+.stk .stsz{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;display:none;
+  background:linear-gradient(135deg, transparent 50%, rgba(0,0,0,.3) 50%);border-bottom-right-radius:.4cqw}
+.stk:hover .stsz,.stk.editing .stsz,.stk.sizing .stsz{display:block}
+.stk.moving .stsz{display:none}
 
 /* ③ 左の細い列に書く欄と一覧。一覧はそこだけスクロールする */
 .fdstepform{margin:12px 0 0;padding:10px}
