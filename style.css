@@ -164,6 +164,8 @@ body.now-fixed .home .col::after{content:"";display:block;height:10px}
        ルーレットだけで枠が埋まって、ドラッグの元になる一覧に手が届かなくなる。
        落とし先（「ここにドラッグして候補を足す」）はパネルの先頭にあるので、
        丈を切っても、落とし先そのものは必ず見えている */
+/* ルーレットの上のメモ帳のボタン */
+.side .nowmemo{margin-bottom:10px}
 body.now-fixed .side #rouletteBox{
   position:sticky;top:0;z-index:20;
   background:var(--bg);
