@@ -1758,3 +1758,459 @@ html[data-theme="angel"] nav [data-tab="set"]   .ic{background-image:url("img/an
 html[data-theme="angel"] .wkcol.past{opacity:1}
 html[data-theme="angel"] .wkcol.past > *{opacity:.5}
 html[data-theme="angel"] .wkbox.empty{background:rgba(255,255,255,.5)}
+
+/* ============================================================
+   デザイン：闇（2026-10-13）
+   設定タブ「画面のデザイン」で選ぶ。印は <html data-theme="yami">。画面の名前は「闇」（「ダーク」とは別物）。
+   天使の節を写して、白いガラスを夜色のガラスに、絵を img/yami/ に差し替えたもの。
+   上の指定はそのまま（＝ダーク）で、ここで上書きしている。天使の節には手を入れていない。
+
+   ▼ 本人と決めたこと（2026-10-13）
+     ・人物：今日タブはヘッドホンの子（chara.webp）で固定。日記・哲学・やりたいことは、
+       タブを開くたびに chara-1〜6 から1人をくじで選ぶ（app.js の YAMI_CHARAS／pickTabChara）。置き場所は天使と同じ
+     ・午前・午後のマークは太陽と月の絵（.mk-am／.mk-pm）。☀ 🌙 が出ていた所は全部
+     ・やったときの印は絵を使わず、まわりに合う色（ピンクから青のネオン）
+     ・img/yami/hold/ の4枚（首輪・ばんそうこう・バーコード・鎖）は置き場所を決めていない。いまはどこにも出していない
+     ・見出しの飾り（十字・リボン・輪っか・時計の後ろのハート）は、天使と同じ場所に仮に置いたもの。あとで本人と決め直す
+   ▼ ごほうびの画像との関係は天使と同じ（背景の絵は箱の外側だけ／まだの箱はほとんど透けない）
+   ============================================================ */
+html[data-theme="yami"]{
+  --bg:#07081a;
+  --bg2:rgba(12,14,38,.7);
+  --card:rgba(14,16,42,.78);
+  --card2:rgba(26,28,66,.94);
+  --line:rgba(122,132,255,.3);
+  --fg:#eceeff;
+  --fg-dim:#b0b6e6;
+  --fg-faint:#7a82b8;
+  --accent:#6a8dff;
+  --accent-rgb:106,141,255;
+  --accent2:#ff63d1;            /* ダークの黄色の役。絵に合わせてネオンのピンク */
+  --accent2-rgb:255,99,209;
+  --ok:#55e0c6;
+  --ok-rgb:85,224,198;
+  --warn:#ffa552;
+  --warn-rgb:255,165,82;
+  --danger:#ff5c7f;
+  --cat-resp:#6e9bff;
+  --cat-reward:#ffc96b;
+  --cat-easy:#55e0c6;
+  --cat-none:#6d75a8;
+  --on-accent:#fff;
+  --on-accent2:#fff;
+
+  /* このデザインだけで使う値 */
+  --glass:rgba(10,12,34,.62);             /* カードの地。後ろの絵がうっすら透ける */
+  --glass-strong:rgba(10,12,34,.82);      /* 字が多い所・上に重なる所 */
+  --glass-edge:rgba(140,150,255,.32);     /* カードのふちの青い光 */
+  --glass-shadow:0 8px 26px rgba(0,0,0,.45), 0 0 18px rgba(var(--accent-rgb),.12), inset 0 1px 0 rgba(255,255,255,.07);
+  --btn-grad:linear-gradient(135deg,#6a8dff 0%,#a65cff 100%);
+  --neon:0 0 8px rgba(var(--accent-rgb),.55), 0 0 2px rgba(var(--accent-rgb),.8);
+  --hdr-fg:#eef0ff;
+  --theme-bg:url("img/yami/room.webp");
+  --theme-bg-sp:url("img/yami/room-sp.webp");   /* スマホ用（縦長） */
+  color-scheme:dark;
+}
+
+/* ---------- 地（背景） ----------
+   天使と同じく、画面に貼り付けた板（::before）に描く。body に地の色を塗らないこと */
+html[data-theme="yami"]{background:var(--bg)}
+html[data-theme="yami"] body{background:transparent}
+html[data-theme="yami"] body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:
+    var(--theme-bg),
+    radial-gradient(ellipse 60% 45% at 20% 25%, rgba(70,60,200,.35), rgba(70,60,200,0) 70%),
+    linear-gradient(160deg,#0a0c24 0%,#05060f 60%,#120a26 100%);
+  background-size:cover,auto,auto;
+  background-position:center,center,center;
+  background-repeat:no-repeat;
+}
+@media (max-width:600px){
+  html[data-theme="yami"] body::before{background-image:
+    var(--theme-bg-sp),
+    linear-gradient(170deg,#0a0c24 0%,#05060f 60%,#120a26 100%)}
+}
+
+/* ---------- 並び：今日タブは天使と同じ（真ん中と右の列を右に寄せ、左に人物のぶんを空ける） ---------- */
+@media (min-width:601px){
+  html[data-theme="yami"] body.now-fixed{
+    --a-mid:clamp(270px, 45vw, 432px);
+    --a-side:288px;
+    --a-gap:22px;
+    --a-mr:0px;
+    --a-wrapw:calc(var(--a-mid) + var(--a-gap) + var(--a-side) + 42px);
+    --a-free:calc(100vw - var(--a-wrapw) - var(--a-mr));
+  }
+  html[data-theme="yami"] body.now-fixed .wrap{
+    width:var(--a-wrapw);max-width:none;padding-right:18px;
+    margin-left:auto;margin-right:var(--a-mr);
+  }
+  html[data-theme="yami"] body.now-fixed .home{
+    grid-template-columns:var(--a-mid) var(--a-side);gap:var(--a-gap);
+  }
+}
+@media (min-width:601px) and (max-width:900px){
+  html[data-theme="yami"] body.now-fixed{--a-side:clamp(180px, 30vw, 288px);--a-gap:14px}
+}
+
+/* ---------- 共通のガラスのカード ---------- */
+html[data-theme="yami"] .philo-bar,
+html[data-theme="yami"] .now,
+html[data-theme="yami"] .side .panel,
+html[data-theme="yami"] .form,
+html[data-theme="yami"] .diary-today,
+html[data-theme="yami"] .dcard,
+html[data-theme="yami"] .tgroup,
+html[data-theme="yami"] .wkcol{
+  background-color:var(--glass);
+  border:1px solid var(--glass-edge);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);
+  backdrop-filter:blur(12px) saturate(1.2);
+}
+/* 設定タブ：見出し以外の中身をガラスのカードに乗せる（天使の 2026-10-11.15 と同じ） */
+html[data-theme="yami"] #sec-set > :not(h2):not(.form):not(input):not(.btn):not(:empty){
+  background-color:var(--glass);
+  border:1px solid var(--glass-edge);border-radius:var(--radius);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);
+  backdrop-filter:blur(12px) saturate(1.2);
+  padding:10px 12px;margin-bottom:10px;
+}
+html[data-theme="yami"] #sec-set > :not(.form) .empty-note{padding:6px 0 0}
+html[data-theme="yami"] #sec-set .btn.ghost{background:rgba(20,22,56,.8)}
+html[data-theme="yami"] #sec-set > .empty-note{padding-top:10px !important}
+html[data-theme="yami"] .wkcol.today{background-color:rgba(24,26,70,.8);border-color:var(--accent)}
+html[data-theme="yami"] .dcard.same{border-left:3px solid var(--accent2)}
+html[data-theme="yami"] .dcard.editing{border-color:var(--accent)}
+html[data-theme="yami"] .tgroup{border-left:3px solid var(--cat,var(--glass-edge))}
+
+/* ---------- 見出しの飾り（仮の置き場所。天使と同じ所） ---------- */
+html[data-theme="yami"] h2{color:var(--fg-dim)}
+/* いま、これ：輪っかとリボンと十字 */
+html[data-theme="yami"] .now .label::before{
+  content:"";display:inline-block;pointer-events:none;
+  width:58px;height:46px;vertical-align:middle;margin:-12px 4px -12px -8px;
+  background:url("img/yami/halo.webp") center/contain no-repeat;
+  position:relative;z-index:1;
+  filter:drop-shadow(0 0 6px rgba(var(--accent-rgb),.6));
+}
+/* 今日の箱：大きなリボン。下の方は箱の後ろに隠れる（天使と同じく z-index を付けない） */
+html[data-theme="yami"] .bhead h2::before{
+  content:"";display:inline-block;pointer-events:none;
+  width:72px;height:90px;vertical-align:middle;margin:-30px 6px -30px -10px;
+  background:url("img/yami/ribbon.webp") center/contain no-repeat;
+  position:relative;
+  filter:drop-shadow(0 0 6px rgba(var(--accent-rgb),.55));
+}
+
+/* ---------- header ---------- */
+html[data-theme="yami"] header{color:var(--hdr-fg)}
+html[data-theme="yami"] .date{color:var(--hdr-fg);opacity:.75}
+html[data-theme="yami"] .greet{color:var(--hdr-fg);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+html[data-theme="yami"] .clock{
+  color:var(--hdr-fg);font-size:40px;font-weight:200;letter-spacing:.02em;
+  text-shadow:0 0 14px rgba(var(--accent-rgb),.8), 0 0 3px rgba(0,0,0,.9);
+}
+
+/* ---------- 今日の指針 ---------- */
+html[data-theme="yami"] .philo-bar{border-radius:18px;background-image:none}
+html[data-theme="yami"] .philo-bar .label{color:var(--accent2);opacity:1}
+/* 十字は箱の左に2行ぶんの高さで大きく置く（天使と同じ形） */
+html[data-theme="yami"] .philo-bar{
+  display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;align-items:center;
+}
+html[data-theme="yami"] .philo-bar::before{
+  content:"";grid-row:1 / 3;align-self:center;
+  width:64px;height:92px;background:url("img/yami/cross.webp") center/contain no-repeat;
+  margin:-26px -2px -26px -10px;position:relative;z-index:1;
+  filter:drop-shadow(0 0 8px rgba(var(--accent-rgb),.7));
+}
+html[data-theme="yami"] .philo-bar .label,
+html[data-theme="yami"] .philo-bar .text{grid-column:2}
+
+/* ---------- やったときの印 ----------
+   絵は使わず、ピンクから青のネオン（2026-10-13 本人：全体の雰囲気に合う色で）。.check.on 全部 */
+html[data-theme="yami"] .check.on{
+  background:linear-gradient(135deg,#ff6fd8,#7a7dff 60%,#5fc8ff);border-color:#c48bff;color:#fff;
+  box-shadow:0 0 10px rgba(255,111,216,.45), 0 0 4px rgba(122,125,255,.8);
+}
+
+/* ---------- いま、これ ---------- */
+html[data-theme="yami"] .now{
+  border-radius:20px;
+  background-image:linear-gradient(135deg,rgba(40,36,110,.45),rgba(10,12,34,.2));
+}
+html[data-theme="yami"] .now .label{color:var(--accent2)}
+html[data-theme="yami"] .now button{background:var(--btn-grad);box-shadow:0 0 14px rgba(var(--accent-rgb),.45);border-radius:12px;color:#fff}
+html[data-theme="yami"] .now .open{background:rgba(20,22,56,.75);border:1px solid var(--line);color:var(--fg);box-shadow:none}
+html[data-theme="yami"] .now .skip{background:none;box-shadow:none;color:var(--fg-dim)}
+html[data-theme="yami"] .now .timer{
+  background:rgba(6,8,24,.55);border:1px solid var(--glass-edge);border-radius:16px;
+  padding:10px 14px;box-shadow:inset 0 1px 4px rgba(0,0,0,.5);
+}
+html[data-theme="yami"] .now .timer .ttime{color:var(--fg)}
+html[data-theme="yami"] .now .timer.run .ttime{color:var(--accent);text-shadow:var(--neon)}
+html[data-theme="yami"] .now .timer.done .ttime{color:var(--warn)}
+html[data-theme="yami"] .now .tadj{
+  background:rgba(20,22,56,.9);border:1px solid var(--line);color:var(--accent);
+  border-radius:50%;box-shadow:0 0 6px rgba(var(--accent-rgb),.25);
+}
+html[data-theme="yami"] .now .tgo{border-radius:12px;padding:10px 22px}
+html[data-theme="yami"] .now .tgo.off{background:rgba(20,22,56,.75);border:1px solid var(--line);color:var(--fg-dim);box-shadow:none}
+html[data-theme="yami"] .now .tquiet{background:rgba(20,22,56,.9);box-shadow:none}
+html[data-theme="yami"] .now .timer.done{animation-name:tblink-yami}
+@keyframes tblink-yami{
+  0%,100%{background:rgba(6,8,24,.55)}
+  50%{background:rgba(var(--warn-rgb),.25)}
+}
+/* ごほうびの画像が出ているとき（.reward）は、ダークと同じ黒いぼかしと白い字 */
+html[data-theme="yami"] .now.reward{border-color:rgba(255,255,255,.4)}
+html[data-theme="yami"] .now.reward .label{color:#fff}
+html[data-theme="yami"] .now.reward .rbare{background:rgba(0,0,0,.5);box-shadow:none}
+
+/* ---------- 今日の箱 ---------- */
+html[data-theme="yami"] .boxarea{
+  background-color:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);backdrop-filter:blur(12px) saturate(1.2);
+  border-radius:20px;padding:12px 12px 10px;
+}
+html[data-theme="yami"] .bhead h2{font-size:15px;color:var(--fg);letter-spacing:.14em}
+html[data-theme="yami"] .daytype{
+  background:rgba(20,22,56,.9);border:1px solid var(--line);color:var(--accent);border-radius:99px;padding:5px 16px;
+  box-shadow:0 0 8px rgba(var(--accent-rgb),.2);
+}
+html[data-theme="yami"] .daytype.off{color:var(--accent2);border-color:rgba(var(--accent2-rgb),.45)}
+html[data-theme="yami"] .bfoot button{background:rgba(20,22,56,.9);border:1px solid var(--line);color:var(--accent);border-radius:50%}
+
+html[data-theme="yami"] .boxrow{
+  background:rgba(16,18,48,.7);border:1px solid var(--glass-edge);border-radius:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.3);
+}
+html[data-theme="yami"] .boxrow .bi{border-right-color:var(--line)}
+html[data-theme="yami"] .boxrow .bi.pick{text-decoration-color:rgba(var(--accent-rgb),.4)}
+html[data-theme="yami"] .boxrow.empty{background:rgba(10,12,34,.45);border-style:solid}
+html[data-theme="yami"] .boxrow.empty.tap::after{
+  content:"＋";flex:none;width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:var(--accent);border:1px solid rgba(var(--accent-rgb),.45);background:rgba(20,22,56,.9);
+}
+html[data-theme="yami"] .boxrow.empty.tap:hover{background:rgba(24,26,70,.8);border-color:var(--accent)}
+html[data-theme="yami"] .boxrow.over{background:rgba(var(--accent-rgb),.2);border-color:var(--accent)}
+html[data-theme="yami"] .boxrow.current{
+  background:rgba(28,30,80,.9);border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(var(--accent-rgb),.25), 0 0 16px rgba(var(--accent-rgb),.35);
+}
+html[data-theme="yami"] .boxrow .bclock{
+  top:-9px;padding:0 8px;font-weight:700;
+  background:#0d0f2a;color:var(--accent);border:1px solid rgba(var(--accent-rgb),.45);
+  box-shadow:0 0 6px rgba(var(--accent-rgb),.3);
+}
+html[data-theme="yami"] .boxrow .bclock::before{content:"✦ ";opacity:.7}
+
+/* ごほうびの画像を敷いている日 */
+html[data-theme="yami"] .boxarea.has-img{border-color:rgba(255,255,255,.3);box-shadow:var(--glass-shadow)}
+html[data-theme="yami"] .boxarea.has-img .bhead,
+html[data-theme="yami"] .boxarea.has-img .bfoot{background:rgba(10,12,34,.9)}
+/* まだの箱：ほとんど透けない夜色 */
+html[data-theme="yami"] .boxarea.has-img .boxrow{background:rgba(12,14,38,.95);border-color:var(--glass-edge)}
+html[data-theme="yami"] .boxarea.has-img .boxrow.current{background:#161944;border-color:var(--accent)}
+html[data-theme="yami"] .boxarea.has-img .boxrow.empty{
+  background:rgba(10,12,34,var(--emptyveil,.88));border-color:rgba(255,255,255,.3);
+}
+html[data-theme="yami"] .boxarea.has-img .boxrow.empty .bt,
+html[data-theme="yami"] .boxarea.has-img .boxrow.empty .bi{
+  color:var(--fg);text-shadow:0 0 6px #000, 0 0 12px #000;
+}
+html[data-theme="yami"] .boxarea.has-img .boxrow.empty.tap:hover{background:rgba(10,12,34,.9)}
+html[data-theme="yami"] .boxarea.has-img .boxrow.empty.over{background:rgba(var(--accent-rgb),.35)}
+html[data-theme="yami"] .boxarea.has-img .boxrow.done{background:transparent;border-color:rgba(255,255,255,.45);box-shadow:none}
+html[data-theme="yami"] .boxarea.has-img .boxrow.done .iconbtn{color:rgba(255,255,255,.85)}
+
+/* ---------- 右の列 ---------- */
+html[data-theme="yami"] .side .panel{border-radius:18px}
+html[data-theme="yami"] .side .panel .ph{color:var(--fg-dim)}
+html[data-theme="yami"] body.now-fixed .side #rouletteBox{background:none}
+html[data-theme="yami"] .side .panel.roulette{background-color:var(--glass-strong)}
+html[data-theme="yami"] .roulette .drop{
+  border:1px dashed rgba(var(--accent-rgb),.5);background:rgba(10,12,34,.45);border-radius:14px;
+  padding:18px 14px;color:var(--fg-dim);
+}
+html[data-theme="yami"] .roulette .drop::before{
+  content:"＋";display:block;width:28px;height:28px;margin:0 auto 4px;border-radius:50%;
+  line-height:26px;color:var(--accent);border:1px solid rgba(var(--accent-rgb),.5);background:rgba(20,22,56,.9);
+}
+html[data-theme="yami"] .roulette .face{background:rgba(16,18,48,.85)}
+html[data-theme="yami"] .roulette .face.won{background:rgba(28,30,80,.95);box-shadow:0 0 14px rgba(var(--accent2-rgb),.35)}
+html[data-theme="yami"] .roulette .spinbtn{background:linear-gradient(135deg,#ff63d1,#8a5cff)}
+
+html[data-theme="yami"] .item{
+  background:rgba(14,16,42,.72);border:1px solid var(--glass-edge);border-radius:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.3);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+html[data-theme="yami"] #unplaced .item,
+html[data-theme="yami"] .wksidelist .item{border-left:3px solid var(--cat,var(--glass-edge))}
+html[data-theme="yami"] .item.ingroup.next{border-color:var(--accent)}
+
+/* ---------- ボタン・入力欄 ---------- */
+html[data-theme="yami"] .btn{background:var(--btn-grad);color:#fff;box-shadow:0 0 12px rgba(var(--accent-rgb),.35)}
+html[data-theme="yami"] .btn.ghost{background:rgba(14,16,42,.75);border:1px solid var(--line);color:var(--fg-dim);box-shadow:none}
+html[data-theme="yami"] .modal .btn.danger{background:var(--danger)}
+html[data-theme="yami"] input,
+html[data-theme="yami"] textarea,
+html[data-theme="yami"] select{background:rgba(8,10,28,.8)}
+html[data-theme="yami"] .chip{background:rgba(14,16,42,.75)}
+html[data-theme="yami"] .chip.on{background:var(--accent);color:#fff}
+html[data-theme="yami"] .chips.cats .chip.on{background:var(--cat,var(--accent))}
+html[data-theme="yami"] .iconbtn:hover{background:rgba(var(--accent-rgb),.15)}
+html[data-theme="yami"] .dpasthead input[type=month]{color-scheme:dark}
+
+/* ---------- 下のタブ ---------- */
+html[data-theme="yami"] nav{
+  background:rgba(8,10,28,.78);border-top:1px solid var(--glass-edge);
+  box-shadow:0 -6px 20px rgba(0,0,0,.5), 0 -1px 12px rgba(var(--accent-rgb),.15);
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);backdrop-filter:blur(12px) saturate(1.2);
+}
+html[data-theme="yami"] nav button{color:var(--fg-dim)}
+html[data-theme="yami"] nav button.on{color:#fff;font-weight:700;text-shadow:var(--neon)}
+
+/* ---------- 1週間 ---------- */
+html[data-theme="yami"] .weekside{
+  background:rgba(8,10,28,.55);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+html[data-theme="yami"] .weekside .panel{background-color:var(--glass-strong)}
+html[data-theme="yami"] .wktabs{background:rgba(14,16,42,.75)}
+html[data-theme="yami"] .wkbox{background:rgba(20,22,56,.8)}
+html[data-theme="yami"] .wkbtns button,
+html[data-theme="yami"] .wkov button{background:rgba(20,22,56,.9)}
+html[data-theme="yami"] .wkcol.past{opacity:1}
+html[data-theme="yami"] .wkcol.past > *{opacity:.5}
+html[data-theme="yami"] .wkbox.empty{background:rgba(10,12,34,.45)}
+
+/* ---------- 上に重なるもの ---------- */
+html[data-theme="yami"] .modal{background:rgba(2,3,12,.6)}
+html[data-theme="yami"] .modal .sheet{
+  background:rgba(14,16,42,.96);border:1px solid var(--glass-edge);
+  box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 24px rgba(var(--accent-rgb),.15);
+}
+html[data-theme="yami"] .toast{background:rgba(14,16,42,.96);border-color:var(--glass-edge);box-shadow:0 6px 20px rgba(0,0,0,.5)}
+html[data-theme="yami"] .cheer .ctxt{text-shadow:0 0 30px rgba(var(--accent-rgb),.9), 0 6px 30px rgba(var(--accent2-rgb),.6)}
+html[data-theme="yami"] .fdbar{background:rgba(14,16,42,.8)}
+
+/* ---------- 絵（人物・マスコット・飾り） ----------
+   どれも押せないただの絵。pointer-events:none にして、下の部品の邪魔をしない */
+
+/* 人物（今日タブ）：ヘッドホンの子。左下に立たせる。600px 以下は出さない。
+   ▼ 天使と同じしくみ。絵の中で頭（髪とヘッドホン）は横 12%〜88% のあたり。
+     大きさは「画面の高さいっぱい」と「空き ÷ 0.76」の小さいほう。空きが狭いときは左を画面の外に出して顔を残す */
+html[data-theme="yami"] body.now-fixed{
+  --a-charaw:min(calc((100vh - var(--navh) - 40px) * 992 / 1300), calc(var(--a-free, 100vw) / .76));
+  --a-charal:min(0px, calc(var(--a-free, 100vw) - var(--a-charaw) * .88));
+}
+html[data-theme="yami"] body.now-fixed::after{
+  content:"";position:fixed;z-index:-1;pointer-events:none;
+  left:var(--a-charal);bottom:var(--navh);
+  width:var(--a-charaw);aspect-ratio:992/1300;
+  background:url("img/yami/chara.webp") left bottom/contain no-repeat;
+  filter:drop-shadow(0 0 24px rgba(var(--accent-rgb),.3));
+}
+/* 日記・哲学・やりたいことのタブ：開くたびに入れ替わる人（app.js の pickTabChara が --yc-img と --yc-ar を入れる）。
+   置き場所と大きさの決め方は天使と同じ。絵ごとに縦横の比が違うので、天使の決め打ちの比を --yc-ar に置き換えてある */
+html[data-theme="yami"] body[data-tab="diary"]::after,
+html[data-theme="yami"] body[data-tab="philo"]::after,
+html[data-theme="yami"] body[data-tab="tasks"]::after{
+  content:"";position:fixed;z-index:-1;pointer-events:none;bottom:var(--navh);
+  filter:drop-shadow(0 0 24px rgba(var(--accent-rgb),.3));
+  background:var(--yc-img, none) right bottom/contain no-repeat;
+  aspect-ratio:var(--yc-ar, .55);
+}
+/* 日記：右下 */
+html[data-theme="yami"] body[data-tab="diary"]::after{
+  right:0;height:calc(100vh - var(--navh) - 160px);max-width:48vw;
+}
+@media (min-width:601px){
+  html[data-theme="yami"] body[data-tab="diary"] .wrap{
+    width:calc(100% - min(48vw, (100vh - var(--navh) - 160px) * var(--yc-ar, .55)) + 70px);max-width:none;
+    margin-left:0;margin-right:auto;padding-left:18px;
+  }
+}
+/* 哲学：真ん中の下。天使は横長の絵だったが、闇の人はみな縦長なので、高さで決める */
+html[data-theme="yami"] body[data-tab="philo"]::after{
+  left:0;right:0;margin:0 auto;height:calc(100vh - var(--navh) - 240px);max-width:62vw;
+  background-position:center bottom;
+}
+/* やりたいこと：左下。人物 1：中身 3（天使と同じ） */
+html[data-theme="yami"] body[data-tab="tasks"]::after{
+  left:0;height:calc(100vh - var(--navh) - 120px);max-width:25vw;
+  background-position:left bottom;
+}
+@media (min-width:601px){
+  html[data-theme="yami"] body[data-tab="tasks"] .wrap{
+    width:calc(100% - min(25vw, (100vh - var(--navh) - 120px) * var(--yc-ar, .55)) + 34px);max-width:none;
+    margin-left:auto;margin-right:0;padding-right:18px;
+  }
+}
+@media (max-width:600px){
+  html[data-theme="yami"] body.now-fixed::after,
+  html[data-theme="yami"] body[data-tab]::after{display:none}
+}
+/* 絵の上に乗る見出しが埋もれないように、暗く縁どる */
+html[data-theme="yami"] h2{text-shadow:0 0 6px #000, 0 0 12px #000, 0 0 2px #000}
+
+/* 時計の後ろ：ネオンのハート（仮。天使の羽の場所） */
+html[data-theme="yami"] .clock{position:relative;isolation:isolate}
+html[data-theme="yami"] .clock::before{
+  content:"";position:absolute;z-index:-1;pointer-events:none;
+  left:50%;top:50%;width:210px;aspect-ratio:560/495;transform:translate(-50%,-50%);
+  background:url("img/yami/heart.webp") center/contain no-repeat;opacity:.55;
+}
+@media (max-width:600px){ html[data-theme="yami"] .clock::before{width:160px} }
+
+/* マスコット：猫。「いま、これ」の右上（天使のうさぎと同じ所）。ごほうびの画像が出ているときは引っこめる */
+html[data-theme="yami"] #nowCard{position:relative}
+html[data-theme="yami"] #nowCard::before{
+  content:"";position:absolute;z-index:0;pointer-events:none;
+  right:8px;top:6px;width:112px;height:112px;
+  background:url("img/yami/mascot.webp") center/contain no-repeat;
+  filter:drop-shadow(0 0 10px rgba(var(--accent-rgb),.4));
+}
+html[data-theme="yami"] #nowCard.reward::before{display:none}
+html[data-theme="yami"] #nowCard:not(.reward) > *{position:relative;z-index:1}
+@media (max-width:600px){ html[data-theme="yami"] #nowCard::before{width:72px;height:72px;right:4px;top:4px} }
+
+/* 下のタブのアイコン。絵文字は消して画像に差し替える */
+html[data-theme="yami"] nav button .ic{
+  font-size:0;width:36px;height:36px;
+  background:center/contain no-repeat;opacity:.75;transition:transform .15s, opacity .15s;
+}
+html[data-theme="yami"] nav button:hover .ic{opacity:1}
+html[data-theme="yami"] nav button.on .ic{opacity:1;transform:scale(1.12);filter:drop-shadow(0 0 6px rgba(var(--accent2-rgb),.6))}
+html[data-theme="yami"] nav [data-tab="now"]   .ic{background-image:url("img/yami/icons/now.webp")}
+html[data-theme="yami"] nav [data-tab="diary"] .ic{background-image:url("img/yami/icons/diary.webp")}
+html[data-theme="yami"] nav [data-tab="week"]  .ic{background-image:url("img/yami/icons/week.webp")}
+html[data-theme="yami"] nav [data-tab="tasks"] .ic{background-image:url("img/yami/icons/tasks.webp")}
+html[data-theme="yami"] nav [data-tab="philo"] .ic{background-image:url("img/yami/icons/philo.webp")}
+html[data-theme="yami"] nav [data-tab="set"]   .ic{background-image:url("img/yami/icons/set.webp")}
+@media (max-width:600px){ html[data-theme="yami"] nav button .ic{width:30px;height:30px} }
+
+/* 字のマーク（.mk）を絵に差し替える。午前・午後（☀ 🌙）、ルーレット、メモ帳、やりたいことを見つけよう。
+   字の大きさに合わせて 1.35 字ぶんの四角に絵を入れ、字そのものは四角の外へ押し出して見えなくする
+   （font-size:0 にすると em の大きさも 0 になるので使わない） */
+html[data-theme="yami"] .mk{
+  display:inline-block;width:1.35em;height:1.35em;vertical-align:-.32em;
+  overflow:hidden;text-indent:200%;white-space:nowrap;
+  background:center/contain no-repeat;
+}
+html[data-theme="yami"] .mk-am{background-image:url("img/yami/am.webp")}
+html[data-theme="yami"] .mk-pm{background-image:url("img/yami/pm.webp")}
+html[data-theme="yami"] .mk-roulette{background-image:url("img/yami/roulette.webp")}
+html[data-theme="yami"] .mk-memo{background-image:url("img/yami/memo.webp")}
+html[data-theme="yami"] .mk-finder{background-image:url("img/yami/finder.webp")}
+/* 箱を使い切ったときの大きな月 */
+html[data-theme="yami"] .allclear .big .mk{width:56px;height:56px}
+/* 絵の上にじかに乗る字（日付、「＋ 言葉を追加」）が背景の飾りに溶けないように */
+html[data-theme="yami"] .date{text-shadow:0 0 6px #000, 0 0 2px #000}
+html[data-theme="yami"] .addtoggle{background:rgba(10,12,34,.6);border-radius:var(--radius)}

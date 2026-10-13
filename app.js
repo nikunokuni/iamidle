@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-13.2";
+const APP_VERSION = "2026-10-13.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -289,6 +289,15 @@ function nowSlot(){
   return (h >= CUT && h < PM_FROM) ? "am" : "pm";
 }
 const SLOT = { am:{label:"午前", icon:"☀"}, pm:{label:"午後", icon:"🌙"}, any:{label:"いつでも", icon:"・"} };
+/* 午前・午後のマークを HTML で。<span class="mk mk-am">☀</span> の形にしておくと、
+   デザインによって絵に差し替えられる（闇は太陽と月の絵。style.css の .mk）。ほかのデザインは字のまま */
+function slotMark(s){
+  return (s === "am" || s === "pm") ? '<span class="mk mk-' + s + '">' + SLOT[s].icon + '</span>' : SLOT[s].icon;
+}
+/* esc() したあと、☀ と 🌙 だけを上のマークにする。下の行（「☀午前 ・ 1箱」など）を組み立てるとき用 */
+function escMark(str){
+  return esc(str).replace(/☀|🌙/g, m => slotMark(m === "☀" ? "am" : "pm"));
+}
 const WD = ["日","月","火","水","木","金","土"];
 
 /* ================= カテゴリー（タグ） =================
@@ -1541,7 +1550,7 @@ function renderHeader(){
   $("date").textContent = `${ds.getFullYear()}年${ds.getMonth()+1}月${ds.getDate()}日（${wd}）${late}`;
   $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
   const s = nowSlot();
-  $("greet").textContent = SLOT[s].icon + " " + SLOT[s].label + (isHoliday(key) ? " ・休み" : " ・平日");
+  $("greet").innerHTML = slotMark(s) + " " + SLOT[s].label + (isHoliday(key) ? " ・休み" : " ・平日");
 }
 /* ================= 描画：哲学バー ================= */
 function renderPhiloBar(){
@@ -1853,7 +1862,7 @@ function renderNow(){
   el.innerHTML =
     '<div class="label">いま、これ</div>' +
     '<div class="txt">' + title + '</div>' +
-    '<div class="sub">' + esc(parts.join(" ・ ")) + '</div>' +
+    '<div class="sub">' + escMark(parts.join(" ・ ")) + '</div>' +
     '<div class="btnrow">' +
       '<button id="nowDone">' + (t.freq.unit === "once" ? "できた" : "やった") + '</button>' +
       (ls.length ? '<button class="open" id="nowOpen">' + (ls.length > 1 ? ls.length + "件ひらく" : "開く") + '</button>' : '') +
@@ -1990,7 +1999,7 @@ function renderBoxes(){
       '<span class="bi' + (done ? '' : ' pick') + '"' +
         (done ? '' : ' data-act="boxsize" title="箱の数を変える"') + '>' + no + '</span>' +
       '<button class="check' + (done ? " on" : "") + '" data-act="boxdo" title="完了">✓</button>' +
-      '<div class="bt">' + esc(t.text) + '<div class="bs">' + esc(sub.join(" ・ ")) + '</div></div>' +
+      '<div class="bt">' + esc(t.text) + '<div class="bs">' + escMark(sub.join(" ・ ")) + '</div></div>' +
       (linksOf(t).length
         ? '<button class="iconbtn" data-act="openall" title="' + esc(linksOf(t).map(linkLabel).join(" / ")) + '">🔗' +
           (linksOf(t).length > 1 ? '<span class="badge">' + linksOf(t).length + '</span>' : '') + '</button>'
@@ -2004,7 +2013,7 @@ function renderBoxes(){
 
   el.innerHTML = head + rows +
     (dayFinished(d)
-      ? '<div class="allclear"><span class="big">🌙</span>箱を使い切りました。今日は終了。<br>' +
+      ? '<div class="allclear"><span class="big"><span class="mk mk-pm">🌙</span></span>箱を使い切りました。今日は終了。<br>' +
         esc(SLEEP_LINE) + '<br>まだやるなら、下の ＋ で箱を足してください。</div>'
       : '') + foot;
   wire();
@@ -2305,7 +2314,7 @@ function renderUnplaced(){
     if(groupOf(t)) sub.push(groupPos(t));
     return '<div class="item ' + catClass(listCatOf(t)) + '" data-id="' + t.id + '" draggable="true">' +
       '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
-      '<div class="grow">' + taskTitle(t) + '<div class="s">' + esc(sub.join(" ・ ")) + '</div></div>' +
+      '<div class="grow">' + taskTitle(t) + '<div class="s">' + escMark(sub.join(" ・ ")) + '</div></div>' +
       (late ? '<span class="tag late">遅れ</span>' : '') +
       (canSkip(t) ? '<button class="iconbtn" data-act="skip" title="今日はやらない">⏭</button>' : '') +
     '</div>';
@@ -2351,7 +2360,7 @@ function renderRoutines(){
   const done = routineDoneIds();
   $("routineBox").innerHTML =
     '<div class="panel">' +
-      '<div class="ph"><span>' + SLOT[s].icon + ' ' + SLOT[s].label + 'のルーティーン</span>' +
+      '<div class="ph"><span>' + slotMark(s) + ' ' + SLOT[s].label + 'のルーティーン</span>' +
         '<span class="cnt">' + list.filter(r => done.includes(r.id)).length + '/' + list.length + '</span></div>' +
       list.map(r => {
         const on = done.includes(r.id);
@@ -2432,7 +2441,7 @@ function renderRoulette(){
 
   $("rouletteBox").innerHTML =
     '<div class="panel roulette">' +
-      '<div class="ph"><span>🎲 ルーレット</span><span class="cnt">' + ids.length + ' 件</span></div>' +
+      '<div class="ph"><span><span class="mk mk-roulette">🎲</span> ルーレット</span><span class="cnt">' + ids.length + ' 件</span></div>' +
       '<div class="drop" id="rouDrop">ここへドラッグ</div>' +
       cands + face +
       (ids.length >= 2
@@ -2628,7 +2637,7 @@ $("taskUrl").addEventListener("keydown", e => { if(e.key === "Enter") addTask();
 function whenBtn(t){
   const w = whenOf(t);
   return '<button class="iconbtn' + (w === "any" ? " faint" : "") + '" data-act="when" title="午前／午後の切り替え">' +
-    (w === "any" ? "🕘" : SLOT[w].icon) + '</button>';
+    (w === "any" ? "🕘" : slotMark(w)) + '</button>';
 }
 function cycleWhen(id){
   const t = taskById(id); if(!t) return;
@@ -2909,7 +2918,7 @@ function buildTaskForm(v, isNew){
       '<input type="number" id="edSize" min="1" max="16" value="' + size + '">' +
       '<span class="fnote" id="edSizeNote">' + boxTime(size) + '</span></label>' +
     '<div class="edrow"><span>いつ</span><div class="chips" id="edWhen">' +
-      [["any","いつでも"],["am","☀ 午前"],["pm","🌙 午後"]].map(([w,l]) =>
+      [["any","いつでも"],["am",slotMark("am") + " 午前"],["pm",slotMark("pm") + " 午後"]].map(([w,l]) =>
         '<button class="chip' + (v.when === w ? " on" : "") + '" data-when="' + w + '">' + l + '</button>'
       ).join("") + '</div></div>' +
     '<div class="edrow"><span>決まった時間</span>' +
@@ -3270,7 +3279,7 @@ function renderRoutineList(){
   el.innerHTML = ["am","pm"].map(s => {
     const list = S.routines.filter(r => r.slot === s);
     if(!list.length) return "";
-    return '<h2>' + SLOT[s].icon + ' ' + SLOT[s].label + '</h2>' + list.map(r =>
+    return '<h2>' + slotMark(s) + ' ' + SLOT[s].label + '</h2>' + list.map(r =>
       '<div class="item" data-id="' + r.id + '">' +
         '<div class="grow"><div class="t">' + esc(r.text) + '</div></div>' +
         '<button class="iconbtn" data-act="rslot" title="午前／午後を入れ替え">⇅</button>' +
@@ -3966,11 +3975,15 @@ function renderSettings(){
    印は <html data-theme="…">。開いた瞬間に付けないと一瞬ダークが出るので、
    読み込みは index.html の <head> でやっている。ここは選ぶ側だけ。
    ▼ デザインを足すときは、ここに1行と、style.css の「デザイン：◯◯」の節を1つ。
-     id が空のものがダーク（style.css の上のほう、印なしの見た目） */
+     id が空のものがダーク（style.css の上のほう、印なしの見た目）
+   ▼ 何も選んでいない端末は天使（2026-10-13 本人）。index.html の <head> の1行も同じ決まりで読む。
+     ダークを選んだときは "dark" と保存する（保存しないと「選んでいない」＝天使に戻ってしまう） */
 const THEME_KEY = "jiko-kanri-theme";
+const THEME_DEFAULT = "angel";
 const THEMES = [
   { id:"",      name:"ダーク", bar:"#0f1115" },
   { id:"angel", name:"天使",   bar:"#e6f0fc" },   // bar はスマホの上の帯の色（meta theme-color）
+  { id:"yami",  name:"闇",     bar:"#07081a" },
 ];
 function currentTheme(){
   const t = document.documentElement.dataset.theme || "";
@@ -3984,7 +3997,7 @@ function applyThemeBar(){
 function setTheme(id){
   if(id) document.documentElement.dataset.theme = id;
   else   delete document.documentElement.dataset.theme;
-  try{ if(id) localStorage.setItem(THEME_KEY, id); else localStorage.removeItem(THEME_KEY); }catch(e){}
+  try{ localStorage.setItem(THEME_KEY, id || "dark"); }catch(e){}
   applyThemeBar();
   renderTheme();
 }
@@ -3993,6 +4006,28 @@ function renderTheme(){
   $("themeChips").innerHTML = THEMES.map(th =>
     '<button class="chip' + (th.id === cur ? " on" : "") + '" data-theme="' + esc(th.id) + '">' + esc(th.name) + '</button>'
   ).join("");
+}
+/* 闇の、タブごとの人物（2026-10-13 本人）。今日タブは固定（style.css の chara.webp）。
+   日記・哲学・やりたいことは、タブを開くたびにこの中から1人をくじで選ぶ（前と同じ子は続けて出さない）。
+   置き場所は天使と同じ。絵ごとに縦横の比が違うので、比（ar ＝ 幅÷高さ）も CSS へ渡す（--yc-ar）。
+   印は body の style に直に入れる。ほかのデザインでは使わないので、付けっぱなしでかまわない */
+const YAMI_CHARAS = [
+  { src:"img/yami/chara-1.webp", ar:686/1300 },
+  { src:"img/yami/chara-2.webp", ar:713/1300 },
+  { src:"img/yami/chara-3.webp", ar:718/1300 },
+  { src:"img/yami/chara-4.webp", ar:713/1300 },
+  { src:"img/yami/chara-5.webp", ar:764/1300 },
+  { src:"img/yami/chara-6.webp", ar:734/1300 },
+];
+let yamiCharaLast = -1;
+function pickTabChara(tab){
+  if(!["diary","philo","tasks"].includes(tab)) return;
+  let i = Math.floor(Math.random() * YAMI_CHARAS.length);
+  if(i === yamiCharaLast) i = (i + 1 + Math.floor(Math.random() * (YAMI_CHARAS.length - 1))) % YAMI_CHARAS.length;
+  yamiCharaLast = i;
+  const c = YAMI_CHARAS[i];
+  document.body.style.setProperty("--yc-img", 'url("' + c.src + '")');
+  document.body.style.setProperty("--yc-ar", c.ar.toFixed(4));
 }
 $("themeChips").addEventListener("click", e => {
   const b = e.target.closest("[data-theme]"); if(b) setTheme(b.dataset.theme);
@@ -5146,6 +5181,7 @@ function switchTab(name){
   document.body.classList.toggle("now-fixed", name === "now");
   // いま開いているタブの印。デザインごとの絵（タブごとの人物など）を CSS で出し分けるのに使う
   document.body.dataset.tab = name;
+  pickTabChara(name);      // 闇のタブごとの人物を選び直す（開くたびに変わる）
   window.scrollTo(0,0);
   document.querySelector(".wrap").scrollTop = 0;   // スマホは .wrap の中がスクロールする（style.css）
 }
