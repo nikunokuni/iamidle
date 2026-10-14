@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-10-14.2">
+<meta name="app-version" content="2026-10-14.3">
 <title>自己管理</title>
 <!-- ▼ 画面のデザイン（設定タブで選ぶ。この端末だけ）。CSS より先に印を付けないと、
      開いた瞬間に一瞬だけダークが出てから切り替わる。選び方の本体は app.js の THEMES -->
 <!--   何も選んでいない端末は天使。ダークを選ぶと "dark" が入る（印は付けない） -->
 <script>try{var th=localStorage.getItem("jiko-kanri-theme");if(th===null)th="angel";if(th&&th!=="dark")document.documentElement.dataset.theme=th;}catch(e){document.documentElement.dataset.theme="angel";}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-10-14.2">
+<link rel="stylesheet" href="style.css?v=2026-10-14.3">
 </head>
 <body>
 
@@ -253,7 +253,7 @@
       </div>
       <div class="row mt8">
         <span class="flabel">名前</span>
-        <input id="syncName" style="flex:1" spellcheck="false" autocomplete="off" placeholder="niku">
+        <input id="syncName" style="flex:1" spellcheck="false" autocomplete="off" placeholder="nikunokuni">
       </div>
       <div class="row mt8">
         <span class="flabel">合言葉</span>
@@ -443,6 +443,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-10-14.2"></script>
+<script src="app.js?v=2026-10-14.3"></script>
 </body>
 </html>
