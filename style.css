@@ -1330,7 +1330,7 @@ html[data-theme="angel"]{
   --hdr-fg:var(--fg);                     /* 日付・時計の字。部屋の絵の上の方は明るいので、濃い字のまま */
   /* 背景の絵。画像が読めなくても、下のグラデーションだけで成り立つようにしてある */
   --theme-bg:url("img/angel/room.webp");
-  --theme-bg-sp:var(--theme-bg);          /* スマホ用（縦長）。いまは無いので、部屋の絵の真ん中を使う */
+  --theme-bg-sp:url("img/angel/room-sp.webp");   /* スマホ用（縦長。空のお城。2026-10-14 本人） */
   color-scheme:light;                     /* 日付の入力欄・スクロールバーを明るい側に */
 }
 
@@ -1766,6 +1766,21 @@ html[data-theme="angel"] nav [data-tab="tasks"] .ic{background-image:url("img/an
 html[data-theme="angel"] nav [data-tab="philo"] .ic{background-image:url("img/angel/icons/philo.webp")}
 html[data-theme="angel"] nav [data-tab="set"]   .ic{background-image:url("img/angel/icons/set.webp")}
 @media (max-width:600px){ html[data-theme="angel"] nav button .ic{width:30px;height:30px} }
+
+/* 字のマーク（.mk）を絵に差し替える（2026-10-14 本人）。午前・午後（☀ 🌙）、ルーレット、メモ帳、やりたいことを見つけよう。
+   しくみは闇と同じ。字は四角の外へ押し出して見えなくする（font-size:0 にすると em の大きさも 0 になるので使わない） */
+html[data-theme="angel"] .mk{
+  display:inline-block;width:1.35em;height:1.35em;vertical-align:-.32em;
+  overflow:hidden;text-indent:200%;white-space:nowrap;
+  background:center/contain no-repeat;
+}
+html[data-theme="angel"] .mk-am{background-image:url("img/angel/am.webp")}
+html[data-theme="angel"] .mk-pm{background-image:url("img/angel/pm.webp")}
+html[data-theme="angel"] .mk-roulette{background-image:url("img/angel/roulette.webp")}
+html[data-theme="angel"] .mk-memo{background-image:url("img/angel/memo.webp")}
+html[data-theme="angel"] .mk-finder{background-image:url("img/angel/finder.webp")}
+/* 箱を使い切ったときの大きな月 */
+html[data-theme="angel"] .allclear .big .mk{width:56px;height:56px}
 /* 過ぎた日は、列ごと opacity で薄くすると後ろの絵に溶けて見えなくなる。中身だけ薄くする */
 html[data-theme="angel"] .wkcol.past{opacity:1}
 html[data-theme="angel"] .wkcol.past > *{opacity:.5}
