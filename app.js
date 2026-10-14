@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-14.1";
+const APP_VERSION = "2026-10-14.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -5269,23 +5269,27 @@ const KIND_ORDER = ["task","routine","philo","cheer","set","wkov","rdone","day",
 const SYNC_ADMIN = "niku";
 /* 登録するときの名前。ヘッダーで送るので英数字だけ。api/sync.js の NAME_RE と同じ */
 const SYNC_NAME_RE = /^[A-Za-z0-9_-]{2,20}$/;
-const loadSyncBlank = () => ({ url:"", name:"", pass:"", cursor:0, marks:{}, at:0, dirtyAt:0 });
+/* ▼ 合言葉そのものは置かない（2026-10-14〜）。置くのは合言葉から作った鍵（keys）だけ。
+   抜かれてもこのアプリの中身までで済み、ほかで使い回している合言葉は漏れない。
+   pass は古い版が置いていたもの。読んだら keys に作り替えて消す（syncKeysReady） */
+const loadSyncBlank = () => ({ url:"", name:"", keys:null, cursor:0, marks:{}, at:0, dirtyAt:0 });
 
 function loadSync(){
   try{
     const d = JSON.parse(localStorage.getItem(SKEY_LS) || "null");
-    if(d && typeof d === "object") return Object.assign({ url:"", name:"", pass:"", cursor:0, marks:{}, at:0, dirtyAt:0 }, d);
+    if(d && typeof d === "object") return Object.assign(loadSyncBlank(), d);
   }catch(e){}
-  return { url:"", name:"", pass:"", cursor:0, marks:{}, at:0, dirtyAt:0 };
+  return loadSyncBlank();
 }
 let SY = loadSync();
 function saveSync(){ try{ localStorage.setItem(SKEY_LS, JSON.stringify(SY)); }catch(e){} }
-const syncOn = () => !!(SY.url && SY.name && SY.pass);
+const syncOn = () => !!(SY.url && SY.name && (SY.keys || SY.pass));
 
 /* ---- 鍵 ---- */
-let syncKeys = null;      // { auth, enc, id }。合言葉から作る。localStorage には置かない
+let syncKeys = null;      // { auth, enc, id, raw }。SY.keys から作る（合言葉からは、つなぐときだけ）
 const te = new TextEncoder();
 const hex = u8 => [...u8].map(b => b.toString(16).padStart(2,"0")).join("");
+const unhex = s => new Uint8Array((String(s).match(/../g) || []).map(h => parseInt(h, 16)));
 function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s += String.fromCharCode.apply(null, u8.subarray(i,i+0x8000)); return btoa(s); }
 function unb64(str){ const b = atob(str); const u = new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
 
@@ -5300,11 +5304,25 @@ async function makeKeys(name, pass){
     b.set(master, 0); b.set(te.encode(label), master.length);
     return new Uint8Array(await crypto.subtle.digest("SHA-256", b));
   };
+  return keysFrom({ auth: hex(await part("auth")), enc: hex(await part("enc")), id: hex(await part("id")) });
+}
+/* 3つの鍵（16進）から、使える形にする。raw は端末に置く形（SY.keys）そのもの */
+async function keysFrom(raw){
   return {
-    auth: hex(await part("auth")),                                     // これだけ送る
-    enc:  await crypto.subtle.importKey("raw", await part("enc"), { name:"AES-GCM" }, false, ["encrypt","decrypt"]),
-    id:   await crypto.subtle.importKey("raw", await part("id"), { name:"HMAC", hash:"SHA-256" }, false, ["sign"])
+    auth: raw.auth,                                                    // これだけ送る
+    enc:  await crypto.subtle.importKey("raw", unhex(raw.enc), { name:"AES-GCM" }, false, ["encrypt","decrypt"]),
+    id:   await crypto.subtle.importKey("raw", unhex(raw.id), { name:"HMAC", hash:"SHA-256" }, false, ["sign"]),
+    raw
   };
+}
+/* 鍵を用意する。古い版が残した合言葉があれば、ここで鍵に作り替えて合言葉を消す */
+async function syncKeysReady(){
+  if(syncKeys) return syncKeys;
+  if(SY.keys) syncKeys = await keysFrom(SY.keys);
+  else if(SY.pass) syncKeys = await makeKeys(SY.name, SY.pass);
+  else throw new Error("合言葉が入っていません。つなぎ直してください");
+  if(SY.pass !== undefined || !SY.keys){ SY.keys = syncKeys.raw; delete SY.pass; saveSync(); }
+  return syncKeys;
 }
 async function seal(obj){
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -5442,7 +5460,7 @@ async function syncNow(quiet){
   if(syncTimer){ clearTimeout(syncTimer); syncTimer = 0; }
   syncNote = "合わせています…"; renderSync();
   try{
-    if(!syncKeys) syncKeys = await makeKeys(SY.name, SY.pass);
+    await syncKeysReady();
 
     /* ---- 1. 先に受け取るだけ。送るのはそのあと ----
        ▼ 同じ回で送ってしまうと、その日を作ったばかりの端末が、
@@ -5576,9 +5594,11 @@ function renderSync(){
     const f = $(id);
     if(f && document.activeElement !== f){
       // アドレスは、まだ決めていなければ既定を出しておく（そのまま「つなぐ」で使える）
-      f.value = id === "syncUrl" ? (SY.url || SYNC_URL_DEFAULT) : id === "syncName" ? SY.name : SY.pass;
+      // 合言葉は置いていないので、欄はいつも空。つなぎ直すときだけ入れる
+      f.value = id === "syncUrl" ? (SY.url || SYNC_URL_DEFAULT) : id === "syncName" ? SY.name : "";
     }
   });
+  $("syncPass").placeholder = on ? "この端末には鍵だけ置いてあります（つなぎ直すときだけ入れる）" : "ほかの端末と同じもの";
   $("syncGo").disabled = !on;
   $("syncGo").style.opacity = on ? "" : ".45";
   $("syncOff").style.display = on ? "" : "none";
@@ -5601,8 +5621,13 @@ function bindSync(){
       "最初の1回は、先に同期した端末の中身が優先されます。念のため、つなぐ前に" +
       "「バックアップ書き出し」をしておくと安全です。");
     if(!ok) return;
-    SY.url = url; SY.name = name; SY.pass = pass;
-    syncKeys = null; invState = null; saveSync(); renderSync();
+    if(!window.crypto || !crypto.subtle){ toast("この開き方では暗号が使えません（https で開いてください）"); return; }
+    // ▼ 合言葉はここで鍵にして、その場で捨てる。端末に置くのは鍵だけ
+    const keys = await makeKeys(name, pass);
+    SY.url = url; SY.name = name; SY.keys = keys.raw; delete SY.pass;
+    syncKeys = keys; invState = null; saveSync();
+    $("syncPass").value = "";
+    renderSync();
     syncNow();
   };
   $("syncGo").onclick  = ()=> syncNow();
@@ -5610,7 +5635,7 @@ function bindSync(){
     const ok = await askConfirm("この端末の同期をやめますか？", "やめる",
       "この端末に入っているものは消えません。サーバーに預けたものも消えません。");
     if(!ok) return;
-    SY = { url:"", name:"", pass:"", cursor:0, marks:{}, at:0 };
+    SY = loadSyncBlank();
     syncKeys = null; invState = null; saveSync(); renderSync();
     toast("同期をやめました");
   };
@@ -5646,7 +5671,7 @@ function bindSync(){
       });
       const d = await r.json().catch(()=> ({}));
       if(!r.ok) throw new Error(d.error || ("つながりませんでした（" + r.status + "）"));
-      SY = Object.assign(loadSyncBlank(), { url, name, pass });
+      SY = Object.assign(loadSyncBlank(), { url, name, keys: keys.raw });
       syncKeys = keys; saveSync();
       ["regCode","regName","regPass","regPass2"].forEach(id => $(id).value = "");
       $("regForm").style.display = "none";
@@ -5665,7 +5690,7 @@ function bindSync(){
     if(!(uses >= 1 && uses <= 100)){ toast("回数は1〜100にしてください"); return; }
     if(!(days >= 1 && days <= 90)){ toast("期限は1〜90日にしてください"); return; }
     try{
-      if(!syncKeys) syncKeys = await makeKeys(SY.name, SY.pass);
+      await syncKeysReady();
       const d = await callSync({ op: "invite.create", uses, days, label: $("invLabel").value.trim() });
       $("invLabel").value = "";
       // ▼ コードが見られるのはこの1回だけ（サーバーにはハッシュしか残らない）
@@ -5702,7 +5727,7 @@ async function loadInvites(){
   if(!isSyncAdmin()) return;
   invState = invState || { list: [], err: "" };
   try{
-    if(!syncKeys) syncKeys = await makeKeys(SY.name, SY.pass);
+    await syncKeysReady();
     const d = await callSync({ op: "invite.list" });
     invState = { list: d.invites || [], err: "" };
   }catch(e){ invState = { list: invState.list, err: String(e && e.message || e) }; }
