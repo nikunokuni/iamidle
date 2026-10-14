@@ -1804,7 +1804,7 @@ html[data-theme="angel"] .wkbox.empty{background:rgba(255,255,255,.5)}
    上の指定はそのまま（＝ダーク）で、ここで上書きしている。天使の節には手を入れていない。
 
    ▼ 本人と決めたこと（2026-10-13）
-     ・人物：今日タブはヘッドホンの子（chara.webp）で固定。日記・哲学・やりたいことは、
+     ・人物：今日タブはヘッドホンの子（chara.webp）で固定。日記・哲学・やりたいこと・設定（2026-10-14〜）は、
        タブを開くたびに chara-1〜6 から1人をくじで選ぶ（app.js の YAMI_CHARAS／pickTabChara）。置き場所は天使と同じ
      ・午前・午後のマークは太陽と月の絵（.mk-am／.mk-pm）。☀ 🌙 が出ていた所は全部
      ・やったときの印は絵を使わず、まわりに合う色（ピンクから青のネオン）
@@ -2190,6 +2190,18 @@ html[data-theme="yami"] body[data-tab="tasks"]::after{
     width:calc(100% - min(25vw, (100vh - var(--navh) - 120px) * var(--yc-ar, .55)) + 34px);max-width:none;
     margin-left:auto;margin-right:0;padding-right:18px;
   }
+}
+/* 設定：右下（天使のパーカーの子と同じ所。2026-10-14 本人）。人はほかのタブと同じくくじ。
+   そのぶん設定の中身（#sec-set）を幅 8 割にして左に寄せる（天使と同じ） */
+html[data-theme="yami"] body[data-tab="set"]::after{
+  content:"";position:fixed;z-index:-1;pointer-events:none;bottom:var(--navh);
+  filter:drop-shadow(0 0 24px rgba(var(--accent-rgb),.3));
+  background:var(--yc-img, none) right bottom/contain no-repeat;
+  aspect-ratio:var(--yc-ar, .55);
+  right:0;height:calc(100vh - var(--navh) - 120px);max-width:30vw;
+}
+@media (min-width:601px){
+  html[data-theme="yami"] body[data-tab="set"] #sec-set{width:80%}
 }
 @media (max-width:600px){
   html[data-theme="yami"] body.now-fixed::after,

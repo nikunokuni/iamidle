@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-14.7";
+const APP_VERSION = "2026-10-14.8";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -4008,7 +4008,7 @@ function renderTheme(){
   ).join("");
 }
 /* 闇の、タブごとの人物（2026-10-13 本人）。今日タブは固定（style.css の chara.webp）。
-   日記・哲学・やりたいことは、タブを開くたびにこの中から1人をくじで選ぶ（前と同じ子は続けて出さない）。
+   日記・哲学・やりたいこと・設定（設定は 2026-10-14 から）は、タブを開くたびにこの中から1人をくじで選ぶ（前と同じ子は続けて出さない）。
    置き場所は天使と同じ。絵ごとに縦横の比が違うので、比（ar ＝ 幅÷高さ）も CSS へ渡す（--yc-ar）。
    印は body の style に直に入れる。ほかのデザインでは使わないので、付けっぱなしでかまわない */
 const YAMI_CHARAS = [
@@ -4021,7 +4021,7 @@ const YAMI_CHARAS = [
 ];
 let yamiCharaLast = -1;
 function pickTabChara(tab){
-  if(!["diary","philo","tasks"].includes(tab)) return;
+  if(!["diary","philo","tasks","set"].includes(tab)) return;
   let i = Math.floor(Math.random() * YAMI_CHARAS.length);
   if(i === yamiCharaLast) i = (i + 1 + Math.floor(Math.random() * (YAMI_CHARAS.length - 1))) % YAMI_CHARAS.length;
   yamiCharaLast = i;
