@@ -1721,6 +1721,17 @@ html[data-theme="angel"] body[data-tab="tasks"]::after{
     margin-left:auto;margin-right:0;padding-right:18px;
   }
 }
+/* 設定：右下にパーカーの子（2026-10-14 本人）。そのぶん設定の中身（#sec-set）を幅 8 割にして左に寄せる。
+   ヘッダー（日付・時計）は .wrap のままなので動かない。人物が中身に少しかぶったときはガラスのカードの後ろに回る */
+html[data-theme="angel"] body[data-tab="set"]::after{
+  content:"";position:fixed;z-index:-1;pointer-events:none;bottom:var(--navh);
+  filter:drop-shadow(0 10px 30px rgba(70,110,180,.25));
+  right:0;height:calc(100vh - var(--navh) - 120px);aspect-ratio:1088/1445;max-width:30vw;
+  background:url("img/angel/chara-set.webp") right bottom/contain no-repeat;
+}
+@media (min-width:601px){
+  html[data-theme="angel"] body[data-tab="set"] #sec-set{width:80%}
+}
 @media (max-width:600px){
   html[data-theme="angel"] body.now-fixed::after,
   html[data-theme="angel"] body[data-tab]::after{display:none}
@@ -1742,7 +1753,7 @@ html[data-theme="angel"] .clock::before{
 html[data-theme="angel"] #nowCard{position:relative}
 html[data-theme="angel"] #nowCard::before{
   content:"";position:absolute;z-index:0;pointer-events:none;
-  right:8px;top:6px;width:112px;height:112px;
+  right:8px;top:6px;width:136px;height:100px;   /* 溶けたうさぎ（横長、2026-10-14 本人）。前の正方形 112px と面積をそろえた */
   background:url("img/angel/mascot.webp") center/contain no-repeat;
   filter:drop-shadow(0 4px 10px rgba(70,110,180,.25));
 }
@@ -1750,7 +1761,7 @@ html[data-theme="angel"] #nowCard.reward::before{display:none}
 /* マスコットが文字やボタンにかぶったときは、文字とボタンを手前に出す
    （ごほうびの時は引っこむので要らない。.rbare の absolute を上書きしないよう :not(.reward)） */
 html[data-theme="angel"] #nowCard:not(.reward) > *{position:relative;z-index:1}
-@media (max-width:600px){ html[data-theme="angel"] #nowCard::before{width:72px;height:72px;right:4px;top:4px} }
+@media (max-width:600px){ html[data-theme="angel"] #nowCard::before{width:88px;height:64px;right:4px;top:4px} }
 
 /* 下のタブのアイコン。絵文字（.ic の中の字）は消して、画像に差し替える */
 html[data-theme="angel"] nav button .ic{
