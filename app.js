@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-13.3";
+const APP_VERSION = "2026-10-14.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
