@@ -480,6 +480,12 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 }
 .btn.ghost{background:none;border:1px solid var(--line);color:var(--fg-dim);font-weight:500}
 .btn:hover{filter:brightness(1.08)}
+/* 一覧の行に置く小さいボタン（招待コードの「取り消す」など） */
+.btn.sm{font-size:12px;padding:4px 10px;margin-left:6px}
+/* 招待コードを出したときに1回だけ見せるコード。選んでコピーしやすいように */
+.inv-code{font-family:ui-monospace,Consolas,monospace;font-size:22px;letter-spacing:.08em;text-align:center;
+  padding:14px;border:1px dashed var(--line);border-radius:10px;user-select:all;color:var(--fg)}
+.inv-row > span:last-child{text-align:right}
 .mt8{margin-top:8px}
 .mt10{margin-top:10px}
 

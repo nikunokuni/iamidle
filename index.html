@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-10-13.3">
+<meta name="app-version" content="2026-10-14.1">
 <title>自己管理</title>
 <!-- ▼ 画面のデザイン（設定タブで選ぶ。この端末だけ）。CSS より先に印を付けないと、
      開いた瞬間に一瞬だけダークが出てから切り替わる。選び方の本体は app.js の THEMES -->
 <!--   何も選んでいない端末は天使。ダークを選ぶと "dark" が入る（印は付けない） -->
 <script>try{var th=localStorage.getItem("jiko-kanri-theme");if(th===null)th="angel";if(th&&th!=="dark")document.documentElement.dataset.theme=th;}catch(e){document.documentElement.dataset.theme="angel";}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-10-13.3">
+<link rel="stylesheet" href="style.css?v=2026-10-14.1">
 </head>
 <body>
 
@@ -270,6 +270,61 @@
     </div>
     <div id="syncNote"></div>
 
+    <!-- 招待コードで始める（はじめての人だけ。つないでいる端末では隠す。中身は app.js の bindSync） -->
+    <div id="regWrap">
+      <div class="row mt10">
+        <button class="btn ghost" id="regOpen">招待コードで新しく始める</button>
+      </div>
+      <div class="form mt8" id="regForm" style="display:none">
+        <div class="row">
+          <span class="flabel">招待コード</span>
+          <input id="regCode" style="flex:1" spellcheck="false" autocomplete="off" placeholder="ABCD-EFGH-JKMN">
+        </div>
+        <div class="row mt8">
+          <span class="flabel">名前</span>
+          <input id="regName" style="flex:1" spellcheck="false" autocomplete="off" placeholder="英数字と - _ で2〜20文字">
+        </div>
+        <div class="row mt8">
+          <span class="flabel">合言葉</span>
+          <input id="regPass" type="password" style="flex:1" spellcheck="false" autocomplete="new-password"
+                 placeholder="12文字以上。自分で決める">
+        </div>
+        <div class="row mt8">
+          <span class="flabel">もう一度</span>
+          <input id="regPass2" type="password" style="flex:1" spellcheck="false" autocomplete="new-password"
+                 placeholder="同じ合言葉">
+        </div>
+        <div class="row mt10" style="justify-content:flex-end">
+          <button class="btn" id="regGo">登録してつなぐ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 招待コードを出す（管理者だけに出る。中身は app.js の renderInvites） -->
+    <div id="invWrap" style="display:none">
+      <h2>招待コード</h2>
+      <div class="form">
+        <div class="row">
+          <span class="flabel">使える回数</span>
+          <input type="number" id="invUses" min="1" max="100" value="1" style="width:80px">
+          <span class="fnote">回</span>
+        </div>
+        <div class="row mt8">
+          <span class="flabel">期限</span>
+          <input type="number" id="invDays" min="1" max="90" value="7" style="width:80px">
+          <span class="fnote">日後まで</span>
+        </div>
+        <div class="row mt8">
+          <span class="flabel">メモ</span>
+          <input id="invLabel" style="flex:1" maxlength="40" autocomplete="off" placeholder="誰に渡すか（なくてもよい）">
+        </div>
+        <div class="row mt10" style="justify-content:flex-end">
+          <button class="btn" id="invMake">コードを出す</button>
+        </div>
+      </div>
+      <div id="invList"></div>
+    </div>
+
     <h2>画面のデザイン</h2>
     <div class="chips" id="themeChips"></div>
 
@@ -388,6 +443,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-10-13.3"></script>
+<script src="app.js?v=2026-10-14.1"></script>
 </body>
 </html>

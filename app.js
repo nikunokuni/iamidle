@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-13.3";
+const APP_VERSION = "2026-10-14.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -5265,6 +5265,12 @@ const SYNC_MIN  = 60000;                    // 戻ってきたとき、前回か
 /* 送る順番。やりたいことを先に入れないと、箱が「知らないID」として片付けられてしまう */
 const KIND_ORDER = ["task","routine","philo","cheer","set","wkov","rdone","day","diary"];
 
+/* 招待コードを出せる人。画面に出すかどうかだけに使う（決めるのはサーバーの ADMIN_USERS） */
+const SYNC_ADMIN = "niku";
+/* 登録するときの名前。ヘッダーで送るので英数字だけ。api/sync.js の NAME_RE と同じ */
+const SYNC_NAME_RE = /^[A-Za-z0-9_-]{2,20}$/;
+const loadSyncBlank = () => ({ url:"", name:"", pass:"", cursor:0, marks:{}, at:0, dirtyAt:0 });
+
 function loadSync(){
   try{
     const d = JSON.parse(localStorage.getItem(SKEY_LS) || "null");
@@ -5576,6 +5582,9 @@ function renderSync(){
   $("syncGo").disabled = !on;
   $("syncGo").style.opacity = on ? "" : ".45";
   $("syncOff").style.display = on ? "" : "none";
+  // 招待コードで始めるのは、まだつないでいない端末だけ
+  if($("regWrap")) $("regWrap").style.display = on ? "none" : "";
+  renderInvites();
   el.innerHTML = !on
     ? ''
     : '<div class="kv"><span>' + esc(SY.name) + ' として同期</span><span>' +
@@ -5593,7 +5602,7 @@ function bindSync(){
       "「バックアップ書き出し」をしておくと安全です。");
     if(!ok) return;
     SY.url = url; SY.name = name; SY.pass = pass;
-    syncKeys = null; saveSync(); renderSync();
+    syncKeys = null; invState = null; saveSync(); renderSync();
     syncNow();
   };
   $("syncGo").onclick  = ()=> syncNow();
@@ -5602,9 +5611,125 @@ function bindSync(){
       "この端末に入っているものは消えません。サーバーに預けたものも消えません。");
     if(!ok) return;
     SY = { url:"", name:"", pass:"", cursor:0, marks:{}, at:0 };
-    syncKeys = null; saveSync(); renderSync();
+    syncKeys = null; invState = null; saveSync(); renderSync();
     toast("同期をやめました");
   };
+
+  /* ---- 招待コードで新しく始める ---- */
+  $("regOpen").onclick = ()=>{
+    const f = $("regForm");
+    f.style.display = f.style.display === "none" ? "" : "none";
+  };
+  $("regGo").onclick = async ()=>{
+    const url  = $("syncUrl").value.trim() || SYNC_URL_DEFAULT;
+    const code = $("regCode").value.trim(), name = $("regName").value.trim();
+    const pass = $("regPass").value, pass2 = $("regPass2").value;
+    if(!code || !name || !pass){ toast("招待コード・名前・合言葉を入れてください"); return; }
+    if(!SYNC_NAME_RE.test(name)){ toast("名前は英数字と - _ で2〜20文字にしてください"); return; }
+    if(pass.length < 12){ toast("合言葉は12文字以上にしてください"); return; }
+    if(pass !== pass2){ toast("合言葉が2つで違います"); return; }
+    if(!/^https?:\/\//.test(url)){ toast("アドレスは https:// から入れてください"); return; }
+    if(!window.crypto || !crypto.subtle){ toast("この開き方では暗号が使えません（https で開いてください）"); return; }
+    const ok = await askConfirm("「" + name + "」で登録しますか？", "登録する",
+      "名前はあとから変えられません。合言葉を忘れると、預けたものは誰にも開けなくなります" +
+      "（管理者にも戻せません）。紙に控えて、バックアップ書き出しも続けてください。" +
+      "この端末に入っているものが、そのまま最初の中身になります。");
+    if(!ok) return;
+    $("regGo").disabled = true;
+    try{
+      // ▼ 鍵の作り方は「つなぐ」と同じ makeKeys。送るのは入口用（auth）だけで、合言葉は送らない
+      const keys = await makeKeys(name, pass);
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: "register", code, name, auth: keys.auth })
+      });
+      const d = await r.json().catch(()=> ({}));
+      if(!r.ok) throw new Error(d.error || ("つながりませんでした（" + r.status + "）"));
+      SY = Object.assign(loadSyncBlank(), { url, name, pass });
+      syncKeys = keys; saveSync();
+      ["regCode","regName","regPass","regPass2"].forEach(id => $(id).value = "");
+      $("regForm").style.display = "none";
+      toast("登録しました。ほかの端末では、名前と合言葉で「つなぐ」を押してください");
+      renderSync();
+      syncNow(true);
+    }catch(e){
+      toast(String(e && e.message || e));
+    }
+    $("regGo").disabled = false;
+  };
+
+  /* ---- 招待コードを出す（管理者だけ） ---- */
+  $("invMake").onclick = async ()=>{
+    const uses = Math.floor(Number($("invUses").value)), days = Math.floor(Number($("invDays").value));
+    if(!(uses >= 1 && uses <= 100)){ toast("回数は1〜100にしてください"); return; }
+    if(!(days >= 1 && days <= 90)){ toast("期限は1〜90日にしてください"); return; }
+    try{
+      if(!syncKeys) syncKeys = await makeKeys(SY.name, SY.pass);
+      const d = await callSync({ op: "invite.create", uses, days, label: $("invLabel").value.trim() });
+      $("invLabel").value = "";
+      // ▼ コードが見られるのはこの1回だけ（サーバーにはハッシュしか残らない）
+      openModal({
+        title: "招待コードを出しました",
+        desc: "このコードはいまだけ表示されます。閉じる前に控えてください。" +
+              uses + "回まで・" + days + "日後まで使えます。",
+        html: '<div class="inv-code">' + esc(d.code) + '</div>',
+        ok: "コピーして閉じる", cancel: "閉じる"
+      }).then(copy => {
+        if(copy && navigator.clipboard) navigator.clipboard.writeText(d.code).then(()=>toast("コピーしました"), ()=>{});
+      });
+      loadInvites();
+    }catch(e){ toast(String(e && e.message || e)); }
+  };
+  $("invList").onclick = async e => {
+    const b = e.target.closest("[data-inv-revoke]"); if(!b) return;
+    const ok = await askConfirm("この招待コードを取り消しますか？", "取り消す",
+      "まだ使っていない人は、このコードで登録できなくなります。登録ずみの人には影響しません。");
+    if(!ok) return;
+    try{
+      await callSync({ op: "invite.revoke", id: Number(b.dataset.invRevoke) });
+      toast("取り消しました");
+      loadInvites();
+    }catch(err){ toast(String(err && err.message || err)); }
+  };
+}
+
+/* ---- 招待コードの一覧（管理者だけ） ----
+   ▼ 画面に出すかどうかは名前で決めているだけ。本当に出せるかはサーバーが ADMIN_USERS で決める */
+let invState = null;     // null=まだ読んでいない / { list, err }
+function isSyncAdmin(){ return syncOn() && SY.name === SYNC_ADMIN; }
+async function loadInvites(){
+  if(!isSyncAdmin()) return;
+  invState = invState || { list: [], err: "" };
+  try{
+    if(!syncKeys) syncKeys = await makeKeys(SY.name, SY.pass);
+    const d = await callSync({ op: "invite.list" });
+    invState = { list: d.invites || [], err: "" };
+  }catch(e){ invState = { list: invState.list, err: String(e && e.message || e) }; }
+  renderInvites();
+}
+function renderInvites(){
+  const w = $("invWrap"); if(!w) return;
+  const show = isSyncAdmin();
+  w.style.display = show ? "" : "none";
+  if(!show) return;
+  if(!invState){ invState = { list: [], err: "" }; loadInvites(); return; }
+  const now = Date.now();
+  const md = iso => { const t = new Date(iso); return (t.getMonth()+1) + "/" + t.getDate(); };
+  const rows = invState.list.map(x => {
+    const expired = new Date(x.expires_at).getTime() <= now;
+    const state = x.revoked ? "取り消し" : expired ? "期限切れ" : x.used >= x.max_uses ? "使い切り" : "使える";
+    const live = state === "使える";
+    return '<div class="kv inv-row"><span>…' + esc(x.hint) +
+      (x.label ? '　' + esc(x.label) : '') +
+      (x.names.length ? '<br><span class="fnote">登録：' + x.names.map(esc).join("、") + '</span>' : '') +
+      '</span><span>' + x.used + "/" + x.max_uses + "回 ・ " + md(x.expires_at) + "まで ・ <b>" + state + "</b>" +
+      (live ? ' <button class="btn ghost sm" data-inv-revoke="' + x.id + '">取り消す</button>' : '') +
+      '</span></div>';
+  }).join("");
+  $("invList").innerHTML =
+    (invState.err ? '<div class="empty-note">' + esc(invState.err) + '</div>' : '') +
+    (rows || '<div class="empty-note">まだ出していません</div>');
 }
 
 /* 古い日のデータを捨てる（保存を太らせない） */
