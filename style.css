@@ -1791,7 +1791,14 @@ html[data-theme="angel"] .mk-roulette{background-image:url("img/angel/roulette.w
 html[data-theme="angel"] .mk-memo{background-image:url("img/angel/memo.webp")}
 html[data-theme="angel"] .mk-finder{background-image:url("img/angel/finder.webp")}
 /* 箱を使い切ったときの大きな月 */
+/* 太陽・月・メモ帳・やりたいことを見つけよう は、絵だけ大きく見せる（2026-10-14 本人：「枠の大きさは変えず、ちょっと枠にかぶさる感じで」）。
+   transform は並びに効かないので、ボタンやチップの大きさ・字の位置は変わらない */
+html[data-theme="angel"] .mk-am,
+html[data-theme="angel"] .mk-pm,
+html[data-theme="angel"] .mk-memo,
+html[data-theme="angel"] .mk-finder{transform:scale(1.6)}
 html[data-theme="angel"] .allclear .big .mk{width:56px;height:56px}
+html[data-theme="angel"] .allclear .big .mk{transform:none}
 /* 過ぎた日は、列ごと opacity で薄くすると後ろの絵に溶けて見えなくなる。中身だけ薄くする */
 html[data-theme="angel"] .wkcol.past{opacity:1}
 html[data-theme="angel"] .wkcol.past > *{opacity:.5}
@@ -2260,7 +2267,14 @@ html[data-theme="yami"] .mk-roulette{background-image:url("img/yami/roulette.web
 html[data-theme="yami"] .mk-memo{background-image:url("img/yami/memo.webp")}
 html[data-theme="yami"] .mk-finder{background-image:url("img/yami/finder.webp")}
 /* 箱を使い切ったときの大きな月 */
+/* 太陽・月・メモ帳・やりたいことを見つけよう は、絵だけ大きく見せる（2026-10-14 本人：「枠の大きさは変えず、ちょっと枠にかぶさる感じで」）。
+   transform は並びに効かないので、ボタンやチップの大きさ・字の位置は変わらない */
+html[data-theme="yami"] .mk-am,
+html[data-theme="yami"] .mk-pm,
+html[data-theme="yami"] .mk-memo,
+html[data-theme="yami"] .mk-finder{transform:scale(1.6)}
 html[data-theme="yami"] .allclear .big .mk{width:56px;height:56px}
+html[data-theme="yami"] .allclear .big .mk{transform:none}
 /* 絵の上にじかに乗る字（日付、「＋ 言葉を追加」）が背景の飾りに溶けないように */
 html[data-theme="yami"] .date{text-shadow:0 0 6px #000, 0 0 2px #000}
 html[data-theme="yami"] .addtoggle{background:rgba(10,12,34,.6);border-radius:var(--radius)}
