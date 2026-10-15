@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-14.9";
+const APP_VERSION = "2026-10-15.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -80,9 +80,15 @@ const DEFAULTS = {
   foldSkip: false,
   // 今日タブのリストで、畳んでいるカテゴリー { resp:true, reward:false, easy:false, none:false }
   catFold: {},
-  // やりたいことのグループ（2026-10-02）。[{ id, name, cat, ids:[taskId…] }]
-  //   並び順 ＝ 優先順。ids の並び ＝ グループの中の優先順（上ができたら下をやる）。入るのは単発だけ
-  tgroups: []
+  // 掴む未来（2026-10-02 に「グループ」として作り、2026-10-15 に呼び名を変えた）。
+  //   [{ id, name, cat, why, due:""|"2026-10-31", ids:[taskId…] }]
+  //   並び順 ＝ 優先順。ids の並び ＝ 中の優先順（単発だけ、上ができたら下をやる）。くり返しも入る
+  tgroups: [],
+  // 掴んだ未来（達成した掴む未来の記録）。[{ id, name, at:"2026-10-15" }]。中身は残さない
+  achieved: [],
+  // やりたいことタブの「掴んだ未来」「達成したもの」を畳んでいるか。この端末だけ（同期しない）
+  foldAchieved: false,
+  foldDoneTasks: false
 };
 
 /* 読み込みに失敗したときの理由。起動時に知らせるために持っておく */
@@ -216,20 +222,32 @@ function migrate(d){
   // タイマーの音。中身が無ければ既定（ピッピッピッ）に戻す
   d.timerSound = (d.timerSound && typeof d.timerSound.data === "string") ? d.timerSound : null;
   d.tgroups = normGroups(d.tgroups);
+  d.achieved = normAchieved(d.achieved);
   delete d.links;   // v2 までの未使用フィールド
   return d;
 }
-/* グループの形をそろえる。load() の途中（migrate）と同期の受け取りから呼ぶ。
+/* 掴む未来（tgroups）の形をそろえる。load() の途中（migrate）と同期の受け取りから呼ぶ。
    ▼ load() の途中で動くので、あとで宣言される const（CATS など）には触れないこと。
      cat は文字のまま持ち、読むときに catOf() を通す
-   ▼ 1つのやりたいことが2つのグループに入っていたら、先のグループを採る */
+   ▼ 1つのやりたいことが2つの掴む未来に入っていたら、先のほうを採る
+   ▼ why / due は 2026-10-15 に足した。持っていない古いデータは空で読む（データ版は v7 のまま） */
 function normGroups(list){
   const seen = new Set();
   return (Array.isArray(list) ? list : []).filter(g => g && g.id).map(g => ({
     id: String(g.id),
     name: String(g.name || "").slice(0, 40),
     cat: typeof g.cat === "string" ? g.cat : "",
+    why: String(g.why || "").slice(0, 200),
+    due: /^\d{4}-\d{2}-\d{2}$/.test(g.due || "") ? g.due : "",
     ids: (Array.isArray(g.ids) ? g.ids : []).map(String).filter(x => !seen.has(x) && seen.add(x))
+  }));
+}
+/* 掴んだ未来の記録の形をそろえる。normGroups と同じく migrate の途中で動くので、あとの const に触れないこと */
+function normAchieved(list){
+  return (Array.isArray(list) ? list : []).filter(a => a && a.id).map(a => ({
+    id: String(a.id),
+    name: String(a.name || "").slice(0, 40),
+    at: /^\d{4}-\d{2}-\d{2}$/.test(a.at || "") ? a.at : ""
   }));
 }
 /* 書けたら true。画像を足すときは、これで先に試して駄目なら戻す */
@@ -381,39 +399,44 @@ function catTag(t){
   const k = catOf(t);
   return k ? '<span class="cattag ' + catClass(k) + '">' + esc(catInfo(k).label) + '</span>' : '';
 }
-/* ---------- グループ（2026-10-02） ----------
-   単発のやりたいことをグループにまとめる。グループの並びも、中の並びも優先順。
-   **今日タブ・1週間タブには、グループの中でまだやり切っていない一番上の1件だけを出す。**
+/* ---------- 掴む未来（2026-10-02 に「グループ」として追加、2026-10-15 に呼び名を変えた） ----------
+   やりたいことを、向かう先（掴む未来）ごとにまとめる。掴む未来の並びも、中の単発の並びも優先順。
+   **今日タブ・1週間タブには、単発はまだやり切っていない一番上の1件だけを出す。**
    それをやり切ると（「達成したもの」になると）、次の1件が出てくる。
-   ▼ 入るのは単発だけ（くり返しには「やり切った」が無く、次へ進めないため）。
-     くり返しに直したものは、保存するときにグループから外す
-   ▼ カテゴリーはグループが持つ。中のものは、リストではグループのカテゴリーに出る */
+   ▼ くり返しも入る（2026-10-15）。くり返しには順番が無く、いつも出す
+   ▼ カテゴリー（重さ）は掴む未来が持つ。中のものは、リストでは掴む未来のカテゴリーに出る。
+     やりたいこと自身の t.cat は消さずに持っておき、外れたらそちらに戻る
+   ▼ コードの名前（tgroups / groupOf …）と保存の形は「グループ」のまま */
 const groupById = id => S.tgroups.find(g => g.id === id) || null;
 function groupOf(t){
-  if(!t || t.freq.unit !== "once") return null;
+  if(!t) return null;
   return S.tgroups.find(g => g.ids.includes(t.id)) || null;
 }
-/* グループの中身。消えたもの・くり返しに変わったものは数えない */
-const groupMembers = g => g.ids.map(taskById).filter(t => t && t.freq.unit === "once");
-const groupHead = g => groupMembers(g).find(t => !isDone(t)) || null;
-/* 上にまだやり切っていないものがあって、順番待ちになっているか */
+/* 中身。消えたものは数えない */
+const groupMembers = g => g.ids.map(taskById).filter(Boolean);
+/* 順番があるのは単発だけ */
+const groupOnce = g => groupMembers(g).filter(t => t.freq.unit === "once");
+const groupHead = g => groupOnce(g).find(t => !isDone(t)) || null;
+/* 上にまだやり切っていない単発があって、順番待ちになっているか。くり返しはいつも通す */
 function groupWaiting(t){
+  if(!t || t.freq.unit !== "once") return false;
   const g = groupOf(t); if(!g) return false;
   const h = groupHead(g);
   return !!h && h.id !== t.id;
 }
-/* リスト（今日タブ・1週間タブ）で使うカテゴリー。グループに入っていれば、グループのもの */
+/* リスト（今日タブ・1週間タブ）で使うカテゴリー。掴む未来に入っていれば、掴む未来のもの */
 function listCatOf(t){
   const g = groupOf(t);
   return g ? catOf({ cat: g.cat }) : catOf(t);
 }
-/* 「英語 2/5」（グループの名前と、その中の何番目か） */
+/* 「英語 2/5」（掴む未来の名前と、その中の単発の何番目か）。くり返しは順番が無いので「英語」だけ */
 function groupPos(t){
   const g = groupOf(t); if(!g) return "";
-  const ms = groupMembers(g);
+  if(t.freq.unit !== "once") return g.name;
+  const ms = groupOnce(g);
   return g.name + " " + (ms.indexOf(t) + 1) + "/" + ms.length;
 }
-/* グループに入れる（gid が空なら外す）。入れるときは、そのグループの一番下 */
+/* 掴む未来に入れる（gid が空なら外す）。入れるときは、その一番下 */
 function setTaskGroup(id, gid){
   const cur = S.tgroups.find(g => g.ids.includes(id));
   if(cur && cur.id === gid) return;
@@ -421,10 +444,10 @@ function setTaskGroup(id, gid){
   const g = groupById(gid);
   if(g) g.ids.push(id);
 }
-/* グループを選ぶ欄の中身。グループが無ければ "" */
+/* 掴む未来を選ぶ欄の中身。1つも無ければ "" */
 function groupOptions(cur){
   if(!S.tgroups.length) return "";
-  return '<option value="">グループなし</option>' + S.tgroups.map(g =>
+  return '<option value="">フリー（どれにも入れない）</option>' + S.tgroups.map(g =>
     '<option value="' + esc(g.id) + '"' + (g.id === cur ? " selected" : "") + '>' + esc(g.name) + '</option>').join("");
 }
 
@@ -544,6 +567,9 @@ function openModal(opt){
   ex.style.display = opt.html ? "" : "none";
   $("mOk").textContent = opt.ok || "OK";
   $("mOk").className = "btn" + (opt.danger ? " danger" : "");
+  // 3つ目のボタン（左端）。押すと "alt" を返す。危ないほうの選択肢に使う
+  $("mAlt").textContent = opt.alt || "";
+  $("mAlt").style.display = opt.alt ? "" : "none";
   $("mCancel").textContent = opt.cancel || "やめる";
   $("mCancel").style.display = opt.hideCancel ? "none" : "";
   m.classList.add("on");
@@ -557,6 +583,7 @@ function closeModal(val){
 }
 $("mOk").onclick     = ()=> closeModal($("mInput").style.display === "none" ? true : $("mInput").value);
 $("mCancel").onclick = ()=> closeModal(null);
+$("mAlt").onclick    = ()=> closeModal("alt");
 $("modal").onclick   = e => { if(e.target === $("modal")) closeModal(null); };
 $("mInput").addEventListener("keydown", e => { if(e.key === "Enter") $("mOk").click(); });
 
@@ -892,7 +919,7 @@ function fixedFor(key){
     if(!t.fixed) return false;
     if(t.fixed.dow !== null && t.fixed.dow !== dow) return false;
     if(isDone(t)) return false;
-    if(groupWaiting(t)) return false;                       // グループの中で、上のものがまだ
+    if(groupWaiting(t)) return false;                       // 掴む未来の中で、上の単発がまだ
     if(t.remindAt && t.remindAt > key) return false;
     if(!fitsDayType(t, key)) return false;                  // 仕事の日だけ／休みの日だけ
     // その期間ぶんの回数を、もう置ききっているなら足さない
@@ -1171,7 +1198,7 @@ function todayNeed(t){
   if(t.remindAt && t.remindAt > k) return null;               // 遠い予定。まだ隠しておく
   if(canSkip(t) && t.skipDay === k) return null;              // 今日は見送り
   if(isDone(t)) return null;                                  // 単発をやり切った
-  if(groupWaiting(t)) return null;                            // グループの中で、上のものがまだ
+  if(groupWaiting(t)) return null;                            // 掴む未来の中で、上の単発がまだ
   const st = statOf(t);
   if(st.met) return null;
   if(remainingToPlan(t) <= 0) return null;                    // 置ききった（「入れきったら、もう終わり」）
@@ -2187,7 +2214,7 @@ function renderWeekSide(){
   const list = S.tasks
     .map(t => {
       if(isDone(t)) return null;
-      if(groupWaiting(t)) return null;                        // グループの中で、上のものがまだ
+      if(groupWaiting(t)) return null;                        // 掴む未来の中で、上の単発がまだ
       if(t.remindAt && t.remindAt > dayKey()) return null;
       const left = remainingToPlan(t, key);
       return left > 0 ? { t, left } : null;
@@ -2593,12 +2620,12 @@ function syncFreqLine(){
   $("freqMid").style.display = freqUnit === "days" ? "" : "none";
   syncTaskGroupRow();
 }
-/* 追加フォームの「グループ」。単発で、グループが1つでもあるときだけ出す。
-   選んだものは次の追加にも残す（同じグループに続けて足すことが多いので） */
+/* 追加フォームの「掴む未来」。掴む未来が1つでもあるときだけ出す（単発でもくり返しでも）。
+   選んだものは次の追加にも残す（同じところに続けて足すことが多いので） */
 function syncTaskGroupRow(){
   const sel = $("taskGroup"), cur = sel.value;
   sel.innerHTML = groupOptions(cur);
-  $("taskGroupRow").style.display = (freqUnit === "once" && S.tgroups.length) ? "" : "none";
+  $("taskGroupRow").style.display = S.tgroups.length ? "" : "none";
 }
 $("taskSize").addEventListener("input", ()=>{
   const n = Math.min(16, Math.max(1, parseInt($("taskSize").value, 10) || 1));
@@ -2625,7 +2652,7 @@ function addTask(){
     when: taskWhen, cat: taskCat, freq, size, goal, fixed: null, remindAt: "",
     log: [], actuals: [], createdAt: Date.now()
   });
-  if(freq.unit === "once") setTaskGroup(id, $("taskGroup").value);
+  setTaskGroup(id, $("taskGroup").value);
   $("taskInput").value = ""; $("taskUrl").value = "";
   save(); renderAll(); toast("追加しました（" + size + "箱）");
 }
@@ -2664,80 +2691,163 @@ const GROUPS = [
   { key:"month", title:"今月" },
   { key:"days",  title:"◯日ごと" }
 ];
+/* やりたいことタブ。
+   掴む未来ごとの枠 → フリー（どれにも入っていないもの）→ まだ先の予定 → 掴んだ未来 → 達成したもの。
+   枠の中は 単発／毎日／… の見出しで分ける（GROUPS）。
+   ▼ 掴む未来が1つも無いときは「フリー」の枠を出さず、これまでどおりの見た目にする */
 function renderTasks(){
   const el = $("taskList");
-  if(!S.tasks.length){ el.innerHTML = '<div class="empty-note">やりたいことはまだありません。</div>'; return; }
   const k = dayKey();
   const isFar = t => !!t.remindAt && t.remindAt > k;
-  // グループに入っているものは、グループの中にだけ出す（単発・まだ先・達成したもの には出さない）
+  // 掴む未来に入っているものは、その枠の中にだけ出す（フリー・まだ先・達成したもの には出さない）
   const rest = S.tasks.filter(t => !groupOf(t));
   const far  = rest.filter(t => isFar(t) && !isDone(t));
   const done = rest.filter(isDone);
   const live = rest.filter(t => !isDone(t) && !isFar(t));
   let html = groupsHTML();
-  GROUPS.forEach(g => {
+  const free = GROUPS.map(g => {
     const list = live.filter(t => t.freq.unit === g.key);
-    if(!list.length) return;
-    html += '<h2>' + g.title + '</h2>' + list.map(t => g.key === "once" ? onceRow(t) : repeatRow(t)).join("");
-  });
+    // 枠の中では、掴む未来の枠とそろえて「単発」とだけ書く
+    const title = g.key === "once" && S.tgroups.length ? "単発" : g.title;
+    return list.length ? freqHead(title, list.length) + list.map(t => g.key === "once" ? onceRow(t) : repeatRow(t)).join("") : "";
+  }).join("");
+  if(free) html += S.tgroups.length
+    ? '<div class="tgroup tgfree"><div class="tghead"><div class="grow"><div class="t">フリー</div></div></div>' + free + '</div>'
+    : free;
   // 遠い予定。その日が近づくまで、ふだんのリストには出さない
   if(far.length){
     html += '<h2>まだ先の予定（' + far.length + '）</h2>' + far.map(farRow).join("");
   }
+  if(S.achieved.length){
+    html += foldH2("achieved", S.foldAchieved, "掴んだ未来", S.achieved.length) +
+      (S.foldAchieved ? "" : S.achieved.slice().reverse().map(achievedRow).join(""));
+  }
   if(done.length){
-    html += '<h2>達成したもの（' + done.length + '）</h2>' + done.map(onceRow).join("");
+    html += foldH2("doneTasks", S.foldDoneTasks, "達成したもの", done.length) +
+      (S.foldDoneTasks ? "" : done.map(t => onceRow(t)).join(""));
   }
   el.innerHTML = html || '<div class="empty-note">やりたいことはまだありません。</div>';
   syncTaskGroupRow();
 }
-/* グループ（優先順）。上から 1, 2, 3… と番号を振る。中の並びも上からやる順。
-   いま今日タブ・1週間タブに出ているのは、各グループの「次はこれ」の1件だけ */
+/* 単発／毎日／… の見出し。掴む未来・フリーの枠の中では小さい見出し、枠が無いときは h2 */
+const freqHead = (title, n) => S.tgroups.length
+  ? '<div class="tgsub">' + esc(title) + '</div>'
+  : '<h2>' + esc(title) + '</h2>';
+/* 畳める見出し（掴んだ未来・達成したもの）。押すと ▸ ⇄ ▾ */
+const foldH2 = (key, shut, title, n) =>
+  '<h2 class="h2fold"><button type="button" data-tfold="' + key + '" aria-expanded="' + (shut ? "false" : "true") + '">' +
+    (shut ? "▸ " : "▾ ") + esc(title) + '（' + n + '）</button></h2>';
+/* 掴んだ未来の1行。名前と達成した日だけ */
+function achievedRow(a){
+  return '<div class="item achieved" data-aid="' + esc(a.id) + '">' +
+    '<span class="grip">🏁</span>' +
+    '<div class="grow"><div class="t">' + esc(a.name) + '</div>' +
+      '<div class="s">' + (a.at ? esc(a.at.replace(/-/g, "/")) + ' に掴んだ' : '掴んだ') + '</div></div>' +
+    '<button class="iconbtn del" data-aact="del" title="この記録を消す">✕</button>' +
+  '</div>';
+}
+/* 掴む未来（優先順）。上から 1, 2, 3… と番号を振る。中の単発の並びも上からやる順。
+   いま今日タブ・1週間タブに出ているのは、各掴む未来の単発の「次はこれ」の1件と、くり返し全部 */
 function groupsHTML(){
   const k = dayKey();
   const blocks = S.tgroups.map((g, gi) => {
-    const ms = groupMembers(g);
+    const ms = groupMembers(g), once = groupOnce(g);
     const head = groupHead(g);
-    const nDone = ms.filter(isDone).length;
+    const nDone = once.filter(isDone).length, nRep = ms.length - once.length;
     const c = catOf({ cat: g.cat });
     const top = gi === 0, bottom = gi === S.tgroups.length - 1;
+    const late = !!g.due && g.due < k;
+    const sub = [];
+    if(once.length) sub.push("単発 " + nDone + "/" + once.length);
+    if(nRep) sub.push("くり返し " + nRep);
+    // 中身：単発（順番つき）→ 毎日 → … の順に、見出しを立てて並べる
+    const inner = GROUPS.map(fg => {
+      if(fg.key === "once"){
+        if(!once.length) return "";
+        return freqHead("単発", once.length) + once.map((t, i) => onceRow(t, {
+          no: i + 1, next: head === t, far: !!t.remindAt && t.remindAt > k && !isDone(t),
+          first: i === 0, last: i === once.length - 1 })).join("");
+      }
+      const list = ms.filter(t => t.freq.unit === fg.key);
+      return list.length ? freqHead(fg.title, list.length) + list.map(t => repeatRow(t, true)).join("") : "";
+    }).join("");
     return '<div class="tgroup ' + catClass(c) + '" data-gid="' + esc(g.id) + '">' +
       '<div class="tghead">' +
         '<span class="tgno">' + (gi + 1) + '</span>' +
         '<div class="grow"><div class="t">' + esc(g.name) + '</div>' +
-          '<div class="s">' + (ms.length ? "達成 " + nDone + "/" + ms.length : "まだ空です") + '</div></div>' +
+          (g.why ? '<div class="tgwhy">' + esc(g.why) + '</div>' : '') +
+          '<div class="s">' + (ms.length ? esc(sub.join(" ・ ")) : "まだ空です") +
+            (g.due ? ' ・ <span class="tgdue' + (late ? " late" : "") + '">' + esc(g.due.replace(/-/g, "/")) + ' までに</span>' : '') +
+          '</div></div>' +
         (c ? '<span class="cattag ' + catClass(c) + '">' + esc(catInfo(c).label) + '</span>' : '') +
-        '<button class="btn ghost tgpick" data-gact="pick" title="このグループに入れるやりたいことを選ぶ">＋ 入れる</button>' +
-        '<button class="iconbtn" data-gact="up" title="グループを上へ"' + (top ? " disabled" : "") + '>↑</button>' +
-        '<button class="iconbtn" data-gact="down" title="グループを下へ"' + (bottom ? " disabled" : "") + '>↓</button>' +
-        '<button class="iconbtn" data-gact="edit" title="名前とタグを直す">✎</button>' +
-        '<button class="iconbtn del" data-gact="del" title="グループを消す（中のやりたいことは残ります）">✕</button>' +
-      '</div>' +
-      ms.map((t, i) => onceRow(t, {
-        no: i + 1, next: head === t, far: !!t.remindAt && t.remindAt > k && !isDone(t),
-        first: i === 0, last: i === ms.length - 1 })).join("") +
+        '<button class="btn ghost tgpick" data-gact="pick" title="この掴む未来に入れるやりたいことを選ぶ">＋ 入れる</button>' +
+        '<button class="iconbtn" data-gact="up" title="上へ"' + (top ? " disabled" : "") + '>↑</button>' +
+        '<button class="iconbtn" data-gact="down" title="下へ"' + (bottom ? " disabled" : "") + '>↓</button>' +
+        '<button class="iconbtn" data-gact="edit" title="直す">✎</button>' +
+        '<button class="iconbtn" data-gact="win" title="掴んだ（中身ごと消して、名前と日付だけ残す）">🏁</button>' +
+        '<button class="iconbtn del" data-gact="del" title="消す">✕</button>' +
+      '</div>' + inner +
     '</div>';
   }).join("");
-  return '<div class="row tgbar"><h2>グループ</h2>' +
-    '<button class="btn ghost" id="tgAdd">＋ グループを作る</button></div>' + blocks;
+  return '<div class="row tgbar"><h2>掴む未来</h2>' +
+    '<button class="btn ghost" id="tgAdd">＋ 掴む未来を作る</button></div>' + blocks;
 }
-/* グループを作る・直す。名前は入力欄、タグはチップ（追加フォームと同じもの） */
+/* 掴む未来を作る・直す。名前は入力欄、タグはチップ（追加フォームと同じもの）、なぜ・いつまでに */
 async function editGroup(gid){
   const g = gid ? groupById(gid) : null;
-  const asked = openModal({ title: g ? "グループを直す" : "グループを作る", input: true,
+  const asked = openModal({ title: g ? "掴む未来を直す" : "掴む未来を作る", input: true,
     value: g ? g.name : "", placeholder: "例：英語を話せるようになる",
-    html: catChipsHTML(g ? g.cat : taskCat, "tgCat"), ok: g ? "保存" : "作る" });
+    html: catChipsHTML(g ? g.cat : taskCat, "tgCat") +
+      '<label class="tgfield"><span>なぜ</span><input id="tgWhy" autocomplete="off" maxlength="200" placeholder="書かなくてもよい" value="' +
+        esc(g ? g.why : "") + '"></label>' +
+      '<label class="tgfield"><span>いつまでに</span><input type="date" id="tgDue" value="' + esc(g ? g.due : "") + '"></label>',
+    ok: g ? "保存" : "作る" });
   bindCatChips("tgCat");                          // チップは開いた直後に動きをつける
   const v = await asked;
   if(v === null) return;
   const name = String(v).trim().slice(0, 40);
   if(!name){ toast("名前を入れてください"); return; }
   const cat = catChipsValue("tgCat");
-  if(g){ g.name = name; g.cat = cat; save(); renderAll(); toast("直しました"); return; }
-  const ng = { id: uid(), name, cat, ids: [] };
+  const why = $("tgWhy").value.trim().slice(0, 200);
+  const due = /^\d{4}-\d{2}-\d{2}$/.test($("tgDue").value) ? $("tgDue").value : "";
+  if(g){ Object.assign(g, { name, cat, why, due }); save(); renderAll(); toast("直しました"); return; }
+  const ng = { id: uid(), name, cat, why, due, ids: [] };
   S.tgroups.push(ng);
   save(); renderAll();
-  $("taskGroup").value = ng.id;                   // 次に追加するものは、作ったグループに入る
-  toast("グループを作りました。追加するときに選べます");
+  $("taskGroup").value = ng.id;                   // 次に追加するものは、作った掴む未来に入る
+  toast("掴む未来を作りました。追加するときに選べます");
+}
+/* 中身を S.tasks から消す（掴んだとき・中身ごと消すとき）。
+   keepToday … 真なら、今日の箱に入っているものは消さずにフリーへ残す（掴んだとき。本人の指示）。
+   どちらも、明日より先の箱からは抜く（掴んだものは「未来の箱」から抜けてよい）。
+   取り消し用に、消す前の S.tasks と、触った日の slots の写しを返す */
+function dropGroupTasks(g, keepToday){
+  const k0 = dayKey();
+  const today = new Set((S.days[k0] ? S.days[k0].slots : []).filter(Boolean).map(baseId));
+  const ms = groupMembers(g);
+  const kept = keepToday ? ms.filter(t => today.has(t.id)) : [];
+  const gone = ms.filter(t => !kept.includes(t));
+  const snap = { tasks: S.tasks.slice(), slots: {} };
+  const ids = new Set(ms.map(t => t.id));
+  Object.keys(S.days).forEach(dk => {
+    if(dk < k0 || (keepToday && dk === k0)) return;   // 過ぎた日は記録。掴んだときは今日の箱もそのまま
+    const sl = S.days[dk].slots || [];
+    if(!sl.some(x => x && ids.has(baseId(x)))) return;
+    snap.slots[dk] = sl.slice();
+    for(let i = 0; i < sl.length; i++) if(sl[i] && ids.has(baseId(sl[i]))) sl[i] = null;
+  });
+  const goneIds = new Set(gone.map(t => t.id));
+  S.tasks = S.tasks.filter(t => !goneIds.has(t.id));
+  return { snap, kept, gone };
+}
+function undoDropGroup(snap){
+  S.tasks = snap.tasks;
+  Object.keys(snap.slots).forEach(dk => { if(S.days[dk]) S.days[dk].slots = snap.slots[dk]; });
+}
+/* 掴む未来を並びの元の位置へ戻す（取り消し用）。待っている間にほかへ入ったものは、そちらを採る */
+function restoreGroup(g, idx){
+  S.tgroups.splice(Math.min(idx, S.tgroups.length), 0, g);
+  g.ids = g.ids.filter(id => !S.tgroups.some(x => x !== g && x.ids.includes(id)));
 }
 async function groupAct(gid, act){
   const i = S.tgroups.findIndex(g => g.id === gid); if(i < 0) return;
@@ -2750,32 +2860,66 @@ async function groupAct(gid, act){
     [S.tgroups[i], S.tgroups[j]] = [S.tgroups[j], S.tgroups[i]];
     save(); renderAll(); return;
   }
-  if(act === "del"){
+  // 掴んだ。中身ごと消して、名前と日付だけを1行残す。今日の箱に入っているものは残す
+  if(act === "win"){
     const n = groupMembers(g).length;
-    const ok = await askConfirm("グループ「" + g.name + "」を消しますか？", "削除",
-      n ? "中のやりたいこと（" + n + "件）は消えずに、ふつうの単発に戻ります。" : "");
+    const ok = await openModal({ title: "「" + g.name + "」を掴みましたか？", ok: "掴んだ",
+      desc: (n ? "中のやりたいこと（" + n + "件）は全部消えます。今日の箱に入っているものだけは、フリーに移して残します。\n" : "") +
+        "名前と今日の日付だけを「掴んだ未来」に残します。" });
     if(!ok) return;
     const idx = S.tgroups.indexOf(g); if(idx < 0) return;
     S.tgroups.splice(idx, 1);
+    const { snap, kept } = dropGroupTasks(g, true);
+    const rec = { id: uid(), name: g.name, at: dayKey() };
+    S.achieved.push(rec);
     save(); renderAll();
-    toast("グループを消しました", ()=>{
-      S.tgroups.splice(Math.min(idx, S.tgroups.length), 0, g);
-      g.ids = g.ids.filter(id => !S.tgroups.some(x => x !== g && x.ids.includes(id)));
+    toast("「" + g.name + "」を掴みました" + (kept.length ? "（今日の箱の " + kept.length + " 件はフリーに残しました）" : ""), ()=>{
+      undoDropGroup(snap);
+      restoreGroup(g, idx);
+      S.achieved = S.achieved.filter(a => a.id !== rec.id);
+      save(); renderAll(); toast("戻しました");
+    });
+    return;
+  }
+  // 消す。中身も全部消す／フリーに戻す／やめる の3つから選ぶ
+  if(act === "del"){
+    const n = groupMembers(g).length;
+    const ans = !n
+      ? await askConfirm("掴む未来「" + g.name + "」を消しますか？", "削除")
+      : await openModal({ title: "掴む未来「" + g.name + "」を消しますか？",
+          desc: "中のやりたいこと（" + n + "件）をどうしますか。", ok: "フリーに戻す",
+          alt: "中身も全部消す", cancel: "キャンセル" });
+    if(!ans) return;
+    const idx = S.tgroups.indexOf(g); if(idx < 0) return;
+    S.tgroups.splice(idx, 1);
+    if(ans === "alt"){
+      const { snap } = dropGroupTasks(g, false);
+      save(); renderAll();
+      toast("中身ごと消しました", ()=>{
+        undoDropGroup(snap); restoreGroup(g, idx);
+        save(); renderAll(); toast("戻しました");
+      });
+      return;
+    }
+    save(); renderAll();
+    toast(n ? "消しました。中のやりたいことはフリーに戻りました" : "消しました", ()=>{
+      restoreGroup(g, idx);
       save(); renderAll(); toast("戻しました");
     });
   }
 }
-/* グループの側から、入れるやりたいことを選ぶ。
-   出すのは、どのグループにも入っていない単発で、まだやり切っていないもの（「単発のやりたいこと」と「まだ先の予定」）。
-   選んだものは、一覧に並んでいる順のまま、グループの一番下に入る */
+/* 掴む未来の側から、入れるやりたいことを選ぶ。
+   出すのは、どこにも入っていないもので、まだやり切っていないもの（くり返しも、まだ先の予定も含む）。
+   選んだものは、一覧に並んでいる順のまま、その一番下に入る */
 async function pickIntoGroup(gid){
   const g = groupById(gid); if(!g) return;
-  const cand = S.tasks.filter(t => t.freq.unit === "once" && !isDone(t) && !groupOf(t));
-  if(!cand.length){ toast("入れられる単発のやりたいことがありません"); return; }
+  const cand = S.tasks.filter(t => !isDone(t) && !groupOf(t));
+  if(!cand.length){ toast("入れられるやりたいことがありません"); return; }
   const ok = await openModal({ title: "「" + g.name + "」に入れる", ok: "入れる",
     html: '<div class="tgcands">' + cand.map(t =>
       '<label class="tgcand"><input type="checkbox" value="' + esc(t.id) + '">' +
-      '<span class="t">' + esc(t.text) + '</span><span class="s">' + esc(boxTime(t.size)) +
+      '<span class="t">' + esc(t.text) + '</span><span class="s">' +
+        esc(t.freq.unit === "once" ? "単発" : freqLabel(t.freq)) + " ・ " + esc(boxTime(t.size)) +
         (t.remindAt ? " ・ " + esc(t.remindAt) + " から" : "") + '</span></label>').join("") + '</div>' });
   if(!ok) return;
   const ids = [...document.querySelectorAll('#mExtra .tgcand input:checked')].map(x => x.value);
@@ -2785,17 +2929,17 @@ async function pickIntoGroup(gid){
   save(); renderAll();
   toast(ids.length + "件を「" + g.name + "」に入れました");
 }
-/* グループの中で1つ上（下）へ。消えたもの・くり返しに変わったものは飛ばして、見えている隣と入れ替える */
+/* 掴む未来の中で1つ上（下）へ。並びがあるのは単発だけ。消えたもの・くり返しは飛ばして、見えている隣と入れ替える */
 function moveInGroup(id, dir){
   const t = taskById(id), g = groupOf(t); if(!g) return;
-  const ms = groupMembers(g), i = ms.indexOf(t), j = i + dir;
+  const ms = groupOnce(g), i = ms.indexOf(t), j = i + dir;
   if(i < 0 || j < 0 || j >= ms.length) return;
   const a = g.ids.indexOf(t.id), b = g.ids.indexOf(ms[j].id);
   [g.ids[a], g.ids[b]] = [g.ids[b], g.ids[a]];
   save(); renderAll();
 }
-/* g … グループの中に出すとき { no, next, far, first, last }。
-   番号を頭に付け、↑ はグループの中での上下（↑↓）に置きかえる */
+/* g … 掴む未来の中に出すとき { no, next, far, first, last }。
+   番号を頭に付け、↑ は掴む未来の中での上下（↑↓）に置きかえる */
 function onceRow(t, g){
   const done = isDone(t);
   const goal = goalOf(t), n = doneCount(t);
@@ -2819,8 +2963,8 @@ function onceRow(t, g){
     '</div>' +
     (g && g.next ? '<span class="tag now">次はこれ</span>' : '') +
     (g ? "" : catTag(t)) + sizeBox(t) +
-    (g ? '<button class="iconbtn" data-act="gup" title="グループの中で上へ"' + (g.first ? " disabled" : "") + '>↑</button>' +
-         '<button class="iconbtn" data-act="gdown" title="グループの中で下へ"' + (g.last ? " disabled" : "") + '>↓</button>'
+    (g ? '<button class="iconbtn" data-act="gup" title="掴む未来の中で上へ"' + (g.first ? " disabled" : "") + '>↑</button>' +
+         '<button class="iconbtn" data-act="gdown" title="掴む未来の中で下へ"' + (g.last ? " disabled" : "") + '>↓</button>'
        : (done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>')) +
     (!done && n > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
     whenBtn(t) + editBtn(t) + linkBtn(t) +
@@ -2838,7 +2982,8 @@ function farRow(t){
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
-function repeatRow(t){
+/* inGroup … 掴む未来の中に出すとき。重さは掴む未来が持つので、行の札は出さない */
+function repeatRow(t, inGroup){
   const st = statOf(t);
   // 「遅れ」は期間のあるもの（週/月/N日ごと）だけ。
   // 毎日・仕事の日・休みの日は、その日にまだやっていないだけなので出さない
@@ -2860,7 +3005,7 @@ function repeatRow(t){
       '<div class="s">' + esc(freqLabel(t.freq)) + ' ・ ' + esc(st.period.label) + ' ・ ' + boxTime(t.size) +
       (t.fixed ? ' ・ ' + esc(fixedLabel(t)) : '') + esc(actualHint(t)) + '</div>' +
     '</div>' +
-    catTag(t) + sizeBox(t) +
+    (inGroup ? "" : catTag(t)) + sizeBox(t) +
     (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
     whenBtn(t) + editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
@@ -2904,7 +3049,10 @@ function buildTaskForm(v, isNew){
   const size = Math.max(1, v.size || 1);
   // 名前より下は、まとめて畳めるように1つの枠に入れてある
   const more =
-    '<div class="edrow"><span>タグ</span>' + catChipsHTML(v.cat, "edCat") + '</div>' +
+    // 掴む未来に入っているあいだは、重さは掴む未来のもの。チップは隠して名前を出す（syncEdCat）。
+    // チップ自体は残しておくので、やりたいこと自身の重さ（t.cat）はそのまま保存される
+    '<div class="edrow"><span>タグ</span>' + catChipsHTML(v.cat, "edCat") +
+      '<span class="fnote" id="edCatBy" style="display:none"></span></div>' +
     '<div class="edrow"><span>くり返し</span><div class="chips" id="edUnit">' +
       units.map(([u,l]) => '<button class="chip' + (f.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
         l + '</button>').join("") + '</div></div>' +
@@ -2912,7 +3060,7 @@ function buildTaskForm(v, isNew){
       '<input type="number" id="edN" min="1" max="365" value="' + (f.n || 3) + '">' +
       '<span id="edMid">日に</span>' +
       '<input type="number" id="edCount" min="1" max="99" value="' + cnt + '"><span>回</span></div>' +
-    '<div class="edrow" id="edGroupRow"><span>グループ</span><select id="edGroup">' + groupOptions(v.gid || "") +
+    '<div class="edrow" id="edGroupRow"><span>掴む未来</span><select id="edGroup">' + groupOptions(v.gid || "") +
       '</select></div>' +
     '<label class="edrow"><span>必要な箱</span>' +
       '<input type="number" id="edSize" min="1" max="16" value="' + size + '">' +
@@ -2949,6 +3097,7 @@ function buildTaskForm(v, isNew){
     $("edWhen").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
   };
   bindCatChips("edCat");
+  $("edGroup").onchange = syncEdCat;
   $("edSize").oninput = ()=>{
     const n = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
     $("edSizeNote").textContent = boxTime(n);
@@ -2985,7 +3134,7 @@ function readTaskForm(){
   }
   const rm = $("edRemind").value;
   return { text, size, when, cat, freq, goal, fixed,
-           gid: u === "once" ? $("edGroup").value : "",
+           gid: $("edGroup").value,
            remindAt: /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "" };
 }
 function openTaskEditor(id){
@@ -3062,8 +3211,15 @@ function syncEdCount(){
     week:"1週間に", month:"1か月に", days:"" }[u];
   $("edN").style.display   = u === "days" ? "" : "none";
   $("edMid").style.display = u === "days" ? "" : "none";
-  // グループに入れられるのは単発だけ
-  $("edGroupRow").style.display = (u === "once" && S.tgroups.length) ? "" : "none";
+  $("edGroupRow").style.display = S.tgroups.length ? "" : "none";
+  syncEdCat();
+}
+/* 編集画面のタグの行。掴む未来に入っているあいだは押せなくして「掴む未来：英語」と出す */
+function syncEdCat(){
+  const g = groupById($("edGroup").value);
+  $("edCat").style.display = g ? "none" : "";
+  $("edCatBy").style.display = g ? "" : "none";
+  $("edCatBy").textContent = g ? "掴む未来：" + g.name : "";
 }
 function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; edNewAt = null; edStepId = ""; }
 function saveTaskEditor(){
@@ -3080,7 +3236,7 @@ function saveTaskEditor(){
   t.goal = v.goal;
   t.fixed = v.fixed;
   t.remindAt = v.remindAt;
-  setTaskGroup(t.id, v.gid);            // くり返しに直したものは gid が空なので、ここで外れる
+  setTaskGroup(t.id, v.gid);
   const fixChanged = (t.fixed ? fixedLabel(t) : "") !== wasFixed;
 
   // 箱の占有が変わったら入れ直してもらう
@@ -3210,6 +3366,25 @@ $("lkOk").onclick = ()=>{
 };
 async function taskClick(e){
   if(e.target.closest("#tgAdd")){ editGroup(""); return; }
+  // 「掴んだ未来」「達成したもの」を畳む・出す（この端末だけ）
+  const tf = e.target.closest("[data-tfold]");
+  if(tf){
+    const key = tf.dataset.tfold === "achieved" ? "foldAchieved" : "foldDoneTasks";
+    S[key] = !S[key]; save(); renderTasks(); return;
+  }
+  // 掴んだ未来の記録を消す
+  const ab = e.target.closest("[data-aact]");
+  if(ab){
+    const id = ab.closest("[data-aid]").dataset.aid;
+    const a = S.achieved.find(x => x.id === id); if(!a) return;
+    const ok = await askConfirm("「" + a.name + "」の記録を消しますか？", "削除");
+    if(!ok) return;
+    const idx = S.achieved.indexOf(a); if(idx < 0) return;
+    S.achieved.splice(idx, 1);
+    save(); renderAll();
+    toast("消しました", ()=>{ S.achieved.splice(Math.min(idx, S.achieved.length), 0, a); save(); renderAll(); toast("戻しました"); });
+    return;
+  }
   const gb = e.target.closest("[data-gact]");
   if(gb){ groupAct(gb.closest(".tgroup").dataset.gid, gb.dataset.gact); return; }
   const btn = e.target.closest("[data-act]"); if(!btn) return;
@@ -5369,9 +5544,11 @@ function localRecords(){
   // 日記のタグ（＋ の並びに出す名前）。中身は日記1件ずつが持っているので、これは名前だけ。
   // set にしてあるのは、古い版の端末が墓標を送ってきても消えないため（下の applyRecord）
   add("set", "dtags", D.tags);
-  // やりたいことのグループ。並び順ごと1つの塊で送る（後勝ち）。
+  // 掴む未来（tgroups）。並び順ごと1つの塊で送る（後勝ち）。
   // set にしてあるのは dtags と同じ理由（古い版の端末が墓標を送ってきても消えない）
   add("set", "tgroups", S.tgroups);
+  // 掴んだ未来の記録。tgroups と同じく set で1つの塊
+  add("set", "achieved", S.achieved);
   Object.keys(D.entries).forEach(k => add("diary", k, D.entries[k]));
   return out;
 }
@@ -5425,6 +5602,7 @@ function applyRecord(kind, id, body){
     if(id === "boxStart") S.boxStart = body;
     if(id === "dtags") D.tags = normTags(body);
     if(id === "tgroups") S.tgroups = normGroups(body);
+    if(id === "achieved") S.achieved = normAchieved(body);
     return;
   }
   const list = kind === "routine" ? S.routines : kind === "philo" ? S.philos : kind === "cheer" ? S.cheers : null;

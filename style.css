@@ -1280,6 +1280,23 @@ body.fd-open{overflow:hidden}
 .tgcand input{flex:none;width:auto;margin:0}
 .tgcand .t{flex:1;min-width:0;font-size:14px;word-break:break-word}
 .tgcand .s{flex:none;font-size:12px;color:var(--fg-faint)}
+/* 掴む未来（2026-10-15。上の「グループ」の呼び名を変えて、くり返し・なぜ・いつまでにを足した） */
+.tgwhy{font-size:13px;color:var(--fg-dim);margin-top:2px;word-break:break-word;white-space:pre-wrap}
+.tgdue.late{color:var(--warn);font-weight:700}
+/* 枠の中の 単発／毎日／… の見出し */
+.tgsub{font-size:11px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;margin:6px 4px 6px}
+/* どれにも入っていないもの。番号も色の帯も無い */
+.tgfree{border-left-width:1px}
+/* 作る・直すダイアログの「なぜ」「いつまでに」 */
+.tgfield{display:flex;align-items:center;gap:10px;margin-top:12px}
+.tgfield span{flex:none;width:5.5em;font-size:13px;color:var(--fg-dim)}
+.tgfield input{flex:1;margin-top:0 !important}
+/* 畳める見出し（掴んだ未来・達成したもの）。見た目は h2 のまま、押せるだけ */
+.h2fold button{
+  background:none;border:none;padding:0;font:inherit;letter-spacing:inherit;color:inherit;cursor:pointer;
+}
+.h2fold button:hover{color:var(--fg-dim)}
+.item.achieved .grip{cursor:default}
 
 /* ============================================================
    デザイン：天使（2026-10-10）
