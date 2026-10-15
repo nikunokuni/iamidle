@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-15.1";
+const APP_VERSION = "2026-10-15.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2818,27 +2818,22 @@ async function editGroup(gid){
   toast("掴む未来を作りました。追加するときに選べます");
 }
 /* 中身を S.tasks から消す（掴んだとき・中身ごと消すとき）。
-   keepToday … 真なら、今日の箱に入っているものは消さずにフリーへ残す（掴んだとき。本人の指示）。
-   どちらも、明日より先の箱からは抜く（掴んだものは「未来の箱」から抜けてよい）。
+   今日の箱・この先の箱からも抜く（本人の指示。くり返しもここで止まる）。過ぎた日の箱は記録なので触らない。
    取り消し用に、消す前の S.tasks と、触った日の slots の写しを返す */
-function dropGroupTasks(g, keepToday){
+function dropGroupTasks(g){
   const k0 = dayKey();
-  const today = new Set((S.days[k0] ? S.days[k0].slots : []).filter(Boolean).map(baseId));
   const ms = groupMembers(g);
-  const kept = keepToday ? ms.filter(t => today.has(t.id)) : [];
-  const gone = ms.filter(t => !kept.includes(t));
   const snap = { tasks: S.tasks.slice(), slots: {} };
   const ids = new Set(ms.map(t => t.id));
   Object.keys(S.days).forEach(dk => {
-    if(dk < k0 || (keepToday && dk === k0)) return;   // 過ぎた日は記録。掴んだときは今日の箱もそのまま
+    if(dk < k0) return;                              // 過ぎた日は記録なので触らない
     const sl = S.days[dk].slots || [];
     if(!sl.some(x => x && ids.has(baseId(x)))) return;
     snap.slots[dk] = sl.slice();
     for(let i = 0; i < sl.length; i++) if(sl[i] && ids.has(baseId(sl[i]))) sl[i] = null;
   });
-  const goneIds = new Set(gone.map(t => t.id));
-  S.tasks = S.tasks.filter(t => !goneIds.has(t.id));
-  return { snap, kept, gone };
+  S.tasks = S.tasks.filter(t => !ids.has(t.id));
+  return snap;
 }
 function undoDropGroup(snap){
   S.tasks = snap.tasks;
@@ -2860,20 +2855,20 @@ async function groupAct(gid, act){
     [S.tgroups[i], S.tgroups[j]] = [S.tgroups[j], S.tgroups[i]];
     save(); renderAll(); return;
   }
-  // 掴んだ。中身ごと消して、名前と日付だけを1行残す。今日の箱に入っているものは残す
+  // 掴んだ。中身ごと（今日の箱からも）消して、名前と日付だけを1行残す。くり返しもここで止まる
   if(act === "win"){
     const n = groupMembers(g).length;
     const ok = await openModal({ title: "「" + g.name + "」を掴みましたか？", ok: "掴んだ",
-      desc: (n ? "中のやりたいこと（" + n + "件）は全部消えます。今日の箱に入っているものだけは、フリーに移して残します。\n" : "") +
+      desc: (n ? "中のやりたいこと（" + n + "件）は、くり返しも含めて全部消えます。今日の箱からも外れます。\n" : "") +
         "名前と今日の日付だけを「掴んだ未来」に残します。" });
     if(!ok) return;
     const idx = S.tgroups.indexOf(g); if(idx < 0) return;
     S.tgroups.splice(idx, 1);
-    const { snap, kept } = dropGroupTasks(g, true);
+    const snap = dropGroupTasks(g);
     const rec = { id: uid(), name: g.name, at: dayKey() };
     S.achieved.push(rec);
     save(); renderAll();
-    toast("「" + g.name + "」を掴みました" + (kept.length ? "（今日の箱の " + kept.length + " 件はフリーに残しました）" : ""), ()=>{
+    toast("「" + g.name + "」を掴みました", ()=>{
       undoDropGroup(snap);
       restoreGroup(g, idx);
       S.achieved = S.achieved.filter(a => a.id !== rec.id);
@@ -2893,7 +2888,7 @@ async function groupAct(gid, act){
     const idx = S.tgroups.indexOf(g); if(idx < 0) return;
     S.tgroups.splice(idx, 1);
     if(ans === "alt"){
-      const { snap } = dropGroupTasks(g, false);
+      const snap = dropGroupTasks(g);
       save(); renderAll();
       toast("中身ごと消しました", ()=>{
         undoDropGroup(snap); restoreGroup(g, idx);
