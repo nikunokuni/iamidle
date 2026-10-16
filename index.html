@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
 <!-- ▼ バージョン。上げるときは app.js の APP_VERSION と、下の2つの ?v= も同じ値に揃える -->
-<meta name="app-version" content="2026-10-15.2">
+<meta name="app-version" content="2026-10-16.1">
 <title>自己管理</title>
 <!-- ▼ 画面のデザイン（設定タブで選ぶ。この端末だけ）。CSS より先に印を付けないと、
      開いた瞬間に一瞬だけダークが出てから切り替わる。選び方の本体は app.js の THEMES -->
 <!--   何も選んでいない端末は天使。ダークを選ぶと "dark" が入る（印は付けない） -->
 <script>try{var th=localStorage.getItem("jiko-kanri-theme");if(th===null)th="angel";if(th&&th!=="dark")document.documentElement.dataset.theme=th;}catch(e){document.documentElement.dataset.theme="angel";}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
-<link rel="stylesheet" href="style.css?v=2026-10-15.2">
+<link rel="stylesheet" href="style.css?v=2026-10-16.1">
 </head>
 <body>
 
@@ -34,7 +34,7 @@
 
   <!-- ============ 今日（2カラム）============
        枠は画面の高さに固定して、左右それぞれの中でスクロールする。
-       左：今日の指針／いま、これ／今日の箱　右：ルーレット／やりたいこと／ルーティーン
+       左：今日の指針／いま、これ／今日の箱　右：ルーレット／やりたいこと
        平日・休みの切り替えと ＋− は「今日の箱」の中（app.js の renderBoxes）にある。
        ルーレットは右カラムの一番上に貼り付く（下までスクロールしてもドラッグ先が消えない） -->
   <section id="sec-now" class="on">
@@ -54,7 +54,6 @@
         <div class="row nowmemo"><button class="btn ghost" id="memoNowOpen"><span class="mk mk-memo">📝</span> メモ帳</button></div>
         <div id="rouletteBox"></div>
         <div id="unplaced"></div>
-        <div id="routineBox"></div>
       </aside>
     </div>
   </section>
@@ -82,11 +81,6 @@
       </div>
       <!-- タグ（せきにん／ごほうび／おきらく）。中身は app.js の CATS から組み立てる -->
       <div class="chips cats mt10" id="catChips"></div>
-      <div class="chips mt10" id="whenChips">
-        <button class="chip on" data-when="any">いつでも</button>
-        <button class="chip" data-when="am"><span class="mk mk-am">☀</span> 午前</button>
-        <button class="chip" data-when="pm"><span class="mk mk-pm">🌙</span> 午後</button>
-      </div>
       <div class="chips mt10" id="freqChips">
         <button class="chip on" data-unit="once">単発</button>
         <button class="chip" data-unit="day">毎日</button>
@@ -115,18 +109,6 @@
 
     <div id="taskList"></div>
 
-    <h2>ルーティーン</h2>
-    <div class="form">
-      <input id="routineInput" placeholder="例: 机の上を片付ける" autocomplete="off">
-      <div class="chips mt10" id="routineSlotChips">
-        <button class="chip on" data-slot="am"><span class="mk mk-am">☀</span> 午前</button>
-        <button class="chip" data-slot="pm"><span class="mk mk-pm">🌙</span> 午後</button>
-      </div>
-      <div class="row mt10" style="justify-content:flex-end">
-        <button class="btn" id="routineAdd">追加</button>
-      </div>
-    </div>
-    <div id="routineList"></div>
   </section>
 
   <!-- ============ 日記 ============ -->
@@ -447,6 +429,6 @@
   </div>
 </div>
 
-<script src="app.js?v=2026-10-15.2"></script>
+<script src="app.js?v=2026-10-16.1"></script>
 </body>
 </html>

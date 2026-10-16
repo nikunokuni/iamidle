@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-15.2";
+const APP_VERSION = "2026-10-16.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -61,8 +61,6 @@ const DEFAULTS = {
   philoIdx: 0,
   // { id, text } 完了したときに1つ出る一言
   cheers: SEED_CHEERS.map((t,i) => ({ id: "cheer" + i, text: t })),
-  routines: [],       // { id, text, slot:"am"|"pm" }
-  routineDone: {},    // { "2026-08-09": [routineId, ...] }
   // { "2026-08-09": { count, holiday, slots:[名札|null], cuts:[{at,label}], roulette:[taskId] } }
   //   slots が持つのは名札（"tk1" / "tk1#1" …）。baseId() を通してIDにする
   days: {},
@@ -130,15 +128,8 @@ function migrate(d){
     delete d.habits;
     d.v = 2;
   }
-  // v2 → v3 : 朝/夜 → 午前/午後、必要箱数
-  if(!(d.v >= 3)){
-    (d.tasks || []).forEach(t => {
-      if(t.when === "morning") t.when = "am";
-      else if(t.when === "night") t.when = "pm";
-      else t.when = "any";
-    });
-    d.v = 3;
-  }
+  // v2 → v3 : 朝/夜 → 午前/午後、必要箱数（午前／午後は 2026-10-16 にやめた。下で消す）
+  if(!(d.v >= 3)) d.v = 3;
   // v3 → v4 : 休みは曜日ではなく手入力。完了したときの一言
   if(!(d.v >= 4)){
     // ここは load() の途中で動く。あとで宣言される uid / CUT には触れないこと
@@ -191,7 +182,8 @@ function migrate(d){
     if(!Array.isArray(t.actuals)) t.actuals = [];
     if(typeof t.size !== "number" || !(t.size >= 1)) t.size = 1;
     t.size = Math.min(16, Math.round(t.size));
-    if(t.when !== "am" && t.when !== "pm") t.when = "any";
+    // やりたいことの「いつ（いつでも／午前／午後）」は 2026-10-16 にやめた。残っていたら消す
+    delete t.when;
     // 単発の総回数。期限は無い。やり切ったら「達成したもの」へ移る
     if(typeof t.goal !== "number" || !(t.goal >= 1)) t.goal = 1;
     t.goal = Math.min(999, Math.round(t.goal));
@@ -212,8 +204,9 @@ function migrate(d){
   d.philos    = Array.isArray(d.philos) ? d.philos : [];
   d.cheers    = Array.isArray(d.cheers) ? d.cheers : [];
   d.images    = Array.isArray(d.images) ? d.images.filter(x => x && typeof x.data === "string") : [];
-  d.routines  = Array.isArray(d.routines) ? d.routines : [];
-  d.routineDone = (d.routineDone && typeof d.routineDone === "object") ? d.routineDone : {};
+  // ルーティーンは 2026-10-16 にやめた。残っていたら中身ごと消す（同期で墓標が送られ、ほかの端末からも消える）
+  delete d.routines;
+  delete d.routineDone;
   d.days      = (d.days && typeof d.days === "object") ? d.days : {};
   d.base      = Object.assign({ weekday: 8, holiday: 12 }, d.base || {});
   d.boxStart  = Object.assign({ weekday: "18:00", holiday: "10:00" }, d.boxStart || {});
@@ -306,11 +299,11 @@ function nowSlot(){
   const h = new Date().getHours();
   return (h >= CUT && h < PM_FROM) ? "am" : "pm";
 }
-const SLOT = { am:{label:"午前", icon:"☀"}, pm:{label:"午後", icon:"🌙"}, any:{label:"いつでも", icon:"・"} };
+const SLOT = { am:{label:"午前", icon:"☀"}, pm:{label:"午後", icon:"🌙"} };
 /* 午前・午後のマークを HTML で。<span class="mk mk-am">☀</span> の形にしておくと、
    デザインによって絵に差し替えられる（闇は太陽と月の絵。style.css の .mk）。ほかのデザインは字のまま */
 function slotMark(s){
-  return (s === "am" || s === "pm") ? '<span class="mk mk-' + s + '">' + SLOT[s].icon + '</span>' : SLOT[s].icon;
+  return '<span class="mk mk-' + s + '">' + SLOT[s].icon + '</span>';
 }
 /* esc() したあと、☀ と 🌙 だけを上のマークにする。下の行（「☀午前 ・ 1箱」など）を組み立てるとき用 */
 function escMark(str){
@@ -1161,12 +1154,6 @@ function streakOf(t){
 
 /* ================= 「今日のやりたいこと」の判定 ================= */
 const canSkip = t => !isDaily(t.freq);
-const whenOf  = t => (t.when === "am" || t.when === "pm") ? t.when : "any";
-function slotBonus(t){
-  const w = whenOf(t);
-  if(w === "any") return 0;
-  return w === nowSlot() ? 10 : -10;
-}
 /* これから来る箱に置いてある数（今日以降・その期間のうち）。
    過ぎた日の未実行の箱はここに入らないので、**サボった分は勝手にリストへ戻ってくる** */
 function plannedAhead(t, key){
@@ -1213,7 +1200,7 @@ function todayNeed(t){
 }
 function todayTasks(){
   return S.tasks
-    .map(t => { const n = todayNeed(t); return n ? { t, ...n, score: n.urgency + slotBonus(t) } : null; })
+    .map(t => { const n = todayNeed(t); return n ? { t, ...n, score: n.urgency } : null; })
     .filter(Boolean)
     .sort((a,b) => b.score - a.score);
 }
@@ -1867,13 +1854,11 @@ function renderNow(){
   const t = taskById(g.tid);
   const size = g.to - g.from + 1;
   const st = t.freq.unit === "once" ? null : statOf(t);
-  const w = whenOf(t);
   const parts = [];
   parts.push("箱 " + (g.from+1) + (size > 1 ? "–" + (g.to+1) : "") + "（" + boxTime(size) + "）");
   // 同じものを今日いくつ置いてあるか。1つだけのときは出さない
   const dup = boxGroups(d).filter(x => x.tid === t.id).length;
   if(dup > 1) parts.push((g.ord+1) + "/" + dup + "つ目");
-  if(w !== "any") parts.push(SLOT[w].icon + SLOT[w].label);
   parts.push(t.freq.unit === "once"
     ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発のやりたいこと")
     : freqLabel(t.freq) + ' ・ ' + st.period.label + ' ' + st.actual + '/' + st.count +
@@ -2003,7 +1988,6 @@ function renderBoxes(){
     const done = groupDone(g);
     const isCur = cur && cur.from === g.from;
     const sub = [boxTime(size), freqLabel(t.freq)];
-    if(whenOf(t) !== "any") sub.unshift(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
     // 同じものを今日いくつ置いてあるか。1つだけのときは何も足さない
     const dup = dupCount[g.tid] || 0;
     if(dup > 1) sub.push((g.ord+1) + "/" + dup + "つ目");
@@ -2333,7 +2317,6 @@ function renderUnplaced(){
     const t = o.t, st = o.st;
     const late = o.urgency >= 4;
     const sub = [];
-    if(whenOf(t) !== "any") sub.push(SLOT[whenOf(t)].icon + SLOT[whenOf(t)].label);
     sub.push(t.size > 1 ? t.size + "箱" : "1箱");
     sub.push(t.freq.unit === "once"
       ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
@@ -2366,43 +2349,6 @@ $("unplaced").addEventListener("click", e => {
   if(btn.dataset.act === "skip") skipToday(row.dataset.id);
 });
 $("unplaced").addEventListener("dragstart", dragStart);
-
-/* ================= 描画：ルーティーン ================= */
-function routinesNow(){
-  const s = nowSlot();
-  return S.routines.filter(r => r.slot === s);
-}
-const routineDoneIds = () => S.routineDone[dayKey()] || [];
-function toggleRoutine(id){
-  const k = dayKey();
-  const arr = S.routineDone[k] = S.routineDone[k] || [];
-  const i = arr.indexOf(id);
-  if(i >= 0) arr.splice(i, 1); else arr.push(id);
-  save(); renderRoutines();
-}
-function renderRoutines(){
-  const list = routinesNow();
-  const s = nowSlot();
-  if(!list.length){ $("routineBox").innerHTML = ""; return; }
-  const done = routineDoneIds();
-  $("routineBox").innerHTML =
-    '<div class="panel">' +
-      '<div class="ph"><span>' + slotMark(s) + ' ' + SLOT[s].label + 'のルーティーン</span>' +
-        '<span class="cnt">' + list.filter(r => done.includes(r.id)).length + '/' + list.length + '</span></div>' +
-      list.map(r => {
-        const on = done.includes(r.id);
-        return '<div class="routine' + (on ? " on" : "") + '" data-id="' + r.id + '">' +
-          '<button class="check' + (on ? " on" : "") + '" data-act="rt">✓</button>' +
-          '<div class="rt">' + esc(r.text) + '</div>' +
-        '</div>';
-      }).join("") +
-    '</div>';
-}
-$("routineBox").addEventListener("click", e => {
-  const btn = e.target.closest("[data-act]"); if(!btn) return;
-  const row = e.target.closest(".routine"); if(!row) return;
-  toggleRoutine(row.dataset.id);
-});
 
 /* ================= ルーレット =================
    決めるのが面倒なとき用。ドラッグで候補を入れて、回して1つ選ぶ
@@ -2597,12 +2543,6 @@ $("skippedList").addEventListener("click", e => {
 let taskCat = "";
 $("catChips").innerHTML = catChipsBtns(taskCat);
 bindCatChips("catChips", k => { taskCat = k; });
-let taskWhen = "any";
-$("whenChips").addEventListener("click", e => {
-  const c = e.target.closest(".chip"); if(!c) return;
-  taskWhen = c.dataset.when;
-  document.querySelectorAll("#whenChips .chip").forEach(x => x.classList.toggle("on", x === c));
-});
 let freqUnit = "once";
 $("freqChips").addEventListener("click", e => {
   const c = e.target.closest(".chip"); if(!c) return;
@@ -2649,7 +2589,7 @@ function addTask(){
   const id = uid();
   S.tasks.push({
     id, text: v, links: first ? [first] : [],
-    when: taskWhen, cat: taskCat, freq, size, goal, fixed: null, remindAt: "",
+    cat: taskCat, freq, size, goal, fixed: null, remindAt: "",
     log: [], actuals: [], createdAt: Date.now()
   });
   setTaskGroup(id, $("taskGroup").value);
@@ -2661,17 +2601,6 @@ $("taskInput").addEventListener("keydown", e => { if(e.key === "Enter") addTask(
 $("taskUrl").addEventListener("keydown", e => { if(e.key === "Enter") addTask(); });
 
 /* ================= やりたいこと一覧（「やりたいこと」タブ） ================= */
-function whenBtn(t){
-  const w = whenOf(t);
-  return '<button class="iconbtn' + (w === "any" ? " faint" : "") + '" data-act="when" title="午前／午後の切り替え">' +
-    (w === "any" ? "🕘" : slotMark(w)) + '</button>';
-}
-function cycleWhen(id){
-  const t = taskById(id); if(!t) return;
-  const order = ["any","am","pm"];
-  t.when = order[(order.indexOf(whenOf(t)) + 1) % 3];
-  save(); renderAll(); toast(SLOT[t.when].label + " に設定");
-}
 function sizeBox(t){
   return '<input class="sizein" type="number" min="1" max="16" value="' + t.size + '" data-act="size" title="必要な箱数">';
 }
@@ -2962,7 +2891,7 @@ function onceRow(t, g){
          '<button class="iconbtn" data-act="gdown" title="掴む未来の中で下へ"' + (g.last ? " disabled" : "") + '>↓</button>'
        : (done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>')) +
     (!done && n > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
-    whenBtn(t) + editBtn(t) + linkBtn(t) +
+    editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -3002,7 +2931,7 @@ function repeatRow(t, inGroup){
     '</div>' +
     (inGroup ? "" : catTag(t)) + sizeBox(t) +
     (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
-    whenBtn(t) + editBtn(t) + linkBtn(t) +
+    editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
@@ -3032,7 +2961,7 @@ let edNewAt  = null;     // 空き箱から作るとき { key, i }。ふつう�
 let edStepId = "";       // 「やりたいことを見つけよう」の③から作るとき、その行のID
 
 /* 入力欄を組み立てて、動きをつける。
-   v … 初期値 { text, cat, freq, goal, size, when, fixed, remindAt }
+   v … 初期値 { text, cat, freq, goal, size, fixed, remindAt }
    isNew … true なら名前だけ見せて、あとは「詳細」を押すまで畳んでおく */
 function buildTaskForm(v, isNew){
   const f = v.freq || { unit: "once" };
@@ -3060,10 +2989,6 @@ function buildTaskForm(v, isNew){
     '<label class="edrow"><span>必要な箱</span>' +
       '<input type="number" id="edSize" min="1" max="16" value="' + size + '">' +
       '<span class="fnote" id="edSizeNote">' + boxTime(size) + '</span></label>' +
-    '<div class="edrow"><span>いつ</span><div class="chips" id="edWhen">' +
-      [["any","いつでも"],["am",slotMark("am") + " 午前"],["pm",slotMark("pm") + " 午後"]].map(([w,l]) =>
-        '<button class="chip' + (v.when === w ? " on" : "") + '" data-when="' + w + '">' + l + '</button>'
-      ).join("") + '</div></div>' +
     '<div class="edrow"><span>決まった時間</span>' +
       '<label class="edchk"><input type="checkbox" id="edFixOn"' + (v.fixed ? " checked" : "") + '> 決める</label>' +
       '<select id="edDow">' +
@@ -3087,10 +3012,6 @@ function buildTaskForm(v, isNew){
     $("edUnit").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
     syncEdCount();
   };
-  $("edWhen").onclick = e => {
-    const c = e.target.closest(".chip"); if(!c) return;
-    $("edWhen").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
-  };
   bindCatChips("edCat");
   $("edGroup").onchange = syncEdCat;
   $("edSize").oninput = ()=>{
@@ -3113,7 +3034,6 @@ function readTaskForm(){
   const count = Math.min(99, Math.max(1, parseInt($("edCount").value, 10) || 1));
   const n     = Math.min(365, Math.max(1, parseInt($("edN").value, 10) || 1));
   const size  = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
-  const when  = ($("edWhen").querySelector(".chip.on") || {}).dataset?.when || "any";
   const cat   = catChipsValue("edCat");
   let freq, goal;
   if(u === "once"){ freq = { unit: "once" }; goal = count; }   // 単発の総回数（期限なし）
@@ -3128,7 +3048,7 @@ function readTaskForm(){
     fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
   }
   const rm = $("edRemind").value;
-  return { text, size, when, cat, freq, goal, fixed,
+  return { text, size, cat, freq, goal, fixed,
            gid: $("edGroup").value,
            remindAt: /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "" };
 }
@@ -3136,7 +3056,7 @@ function openTaskEditor(id){
   const t = taskById(id); if(!t) return;
   edTaskId = id; edNewAt = null;
   buildTaskForm({ text: t.text, cat: catOf(t), freq: t.freq, goal: goalOf(t), size: t.size,
-                  when: whenOf(t), fixed: t.fixed, remindAt: t.remindAt,
+                  fixed: t.fixed, remindAt: t.remindAt,
                   gid: (groupOf(t) || {}).id || "" }, false);
   $("edTitle").textContent = "「" + t.text + "」を直す";
   $("edOk").textContent = "保存";
@@ -3152,7 +3072,7 @@ function openNewBoxTask(key, i){
   if(key < dayKey()){ toast("過ぎた日には入れられません"); return; }
   edTaskId = ""; edNewAt = { key, i: Math.max(0, i || 0) };
   buildTaskForm({ text:"", cat:"", freq:{ unit:"once" }, goal:1, size:1,
-                  when:"any", fixed:null, remindAt:"" }, true);
+                  fixed:null, remindAt:"" }, true);
   $("edTitle").textContent =
     dayLabel(key) + "の箱 " + (edNewAt.i + 1) + "（" + boxClock(key, edNewAt.i) + "ごろ）に入れる";
   $("edOk").textContent = "入れる";
@@ -3176,7 +3096,7 @@ function saveNewBoxTask(){
     toast(v.size > 1 ? "連続した" + v.size + "箱の空きがありません" : "空き箱がありません");
     return;
   }
-  const t = { id: uid(), text: v.text, links: [], when: v.when, cat: v.cat, freq: v.freq, size: v.size,
+  const t = { id: uid(), text: v.text, links: [], cat: v.cat, freq: v.freq, size: v.size,
               goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
               log: [], actuals: [], createdAt: Date.now() };
   S.tasks.push(t);
@@ -3225,7 +3145,6 @@ function saveTaskEditor(){
 
   t.text = v.text;
   t.size = v.size;
-  t.when = v.when;
   t.cat  = v.cat;
   t.freq = v.freq;
   t.goal = v.goal;
@@ -3395,7 +3314,6 @@ async function taskClick(e){
   if(act === "undo") { undoDo(id); return; }
   if(act === "link") { openLinkEditor(id); return; }
   if(act === "edit") { openTaskEditor(id); return; }
-  if(act === "when") { cycleWhen(id); return; }
   if(act === "up" && i > 0){ const [x] = S.tasks.splice(i,1); S.tasks.unshift(x); save(); renderAll(); return; }
   if(act === "gup")  { moveInGroup(id, -1); return; }
   if(act === "gdown"){ moveInGroup(id, +1); return; }
@@ -3424,56 +3342,6 @@ $("taskList").addEventListener("change", e => {
   if(t.size !== before && getDay().slots.some(x => x && baseId(x) === id)) unplaceSilent(id);   // 箱の占有が変わるので入れ直し
   save(); renderAll();
   toast(t.text + " は " + t.size + "箱（" + boxTime(t.size) + "）");
-});
-
-/* ================= ルーティーン管理（「やりたいこと」タブ） ================= */
-let routineSlot = "am";
-$("routineSlotChips").addEventListener("click", e => {
-  const c = e.target.closest(".chip"); if(!c) return;
-  routineSlot = c.dataset.slot;
-  document.querySelectorAll("#routineSlotChips .chip").forEach(x => x.classList.toggle("on", x === c));
-});
-function addRoutine(){
-  const v = $("routineInput").value.trim();
-  if(!v) return;
-  S.routines.push({ id: uid(), text: v, slot: routineSlot });
-  $("routineInput").value = "";
-  save(); renderAll(); toast(SLOT[routineSlot].label + "のルーティーンに追加");
-}
-$("routineAdd").onclick = addRoutine;
-$("routineInput").addEventListener("keydown", e => { if(e.key === "Enter") addRoutine(); });
-
-function renderRoutineList(){
-  const el = $("routineList");
-  if(!S.routines.length){ el.innerHTML = '<div class="empty-note">ルーティーンはまだありません。</div>'; return; }
-  el.innerHTML = ["am","pm"].map(s => {
-    const list = S.routines.filter(r => r.slot === s);
-    if(!list.length) return "";
-    return '<h2>' + slotMark(s) + ' ' + SLOT[s].label + '</h2>' + list.map(r =>
-      '<div class="item" data-id="' + r.id + '">' +
-        '<div class="grow"><div class="t">' + esc(r.text) + '</div></div>' +
-        '<button class="iconbtn" data-act="rslot" title="午前／午後を入れ替え">⇅</button>' +
-        '<button class="iconbtn del" data-act="rdel" title="削除">✕</button>' +
-      '</div>').join("");
-  }).join("");
-}
-$("routineList").addEventListener("click", async e => {
-  const btn = e.target.closest("[data-act]"); if(!btn) return;
-  const id = e.target.closest(".item").dataset.id;
-  const i = S.routines.findIndex(r => r.id === id); if(i < 0) return;
-  if(btn.dataset.act === "rslot"){
-    S.routines[i].slot = S.routines[i].slot === "am" ? "pm" : "am";
-    save(); renderAll(); toast(SLOT[S.routines[i].slot].label + " に移した");
-    return;
-  }
-  if(btn.dataset.act === "rdel"){
-    const ok = await askConfirm("このルーティーンを削除しますか？", "削除", S.routines[i].text);
-    if(!ok) return;
-    const idx = S.routines.findIndex(r => r.id === id); if(idx < 0) return;
-    const removed = S.routines.splice(idx, 1)[0];
-    save(); renderAll();
-    toast("削除しました", ()=>{ S.routines.splice(idx, 0, removed); save(); renderAll(); toast("戻しました"); });
-  }
 });
 
 /* ================= 哲学 ================= */
@@ -4497,7 +4365,6 @@ function renderStats(){
     '<div class="kv"><span>今日の箱</span><span>全 ' + d.count + ' 箱 ・ 残り <b>' + remainBoxes(d) + '</b> 箱</span></div>' +
     '<div class="kv"><span>単発のやりたいこと</span><span>' + once.length + '件（完了 ' + once.filter(isDone).length + '）</span></div>' +
     '<div class="kv"><span>くり返しのやりたいこと</span><span>' + rep.length + '件（遅れ ' + late + '）</span></div>' +
-    '<div class="kv"><span>ルーティーン</span><span>' + S.routines.length + '件</span></div>' +
     '<div class="kv"><span>リンク付きのやりたいこと</span><span>' + S.tasks.filter(t => linksOf(t).length).length + '件' +
       (S.tasks.some(t => needsBat(t)) ? '（起動ファイルが要るもの ' + S.tasks.filter(needsBat).length + '）' : '') +
       '</span></div>' +
@@ -4539,7 +4406,7 @@ $("fileInput").onchange = e => {
     // 「やりたいことを見つけよう」も同じく、入っていなければ今のものを残す
     const inFinder = (d.finder && typeof d.finder === "object") ? normFinder(d.finder) : null;
     const ok = await askConfirm("読み込むデータで置き換えますか？", "置き換える",
-      "いまのやりたいこと・ルーティーン・箱・哲学はすべて消えます。" +
+      "いまのやりたいこと・箱・哲学はすべて消えます。" +
       (inDiary ? "日記も、読み込むほうに置き換わります（" + Object.keys(inDiary.entries).length + "件）"
                : "このファイルに日記は入っていないので、いまの日記はそのまま残します"));
     if(!ok) return;
@@ -5185,7 +5052,7 @@ function openStepTask(id){
   const s = fdStep(id); if(!s) return;
   edTaskId = ""; edNewAt = null; edStepId = id;
   buildTaskForm({ text: s.text, cat:"", freq:{ unit:"once" }, goal:1, size:1,
-                  when:"any", fixed:null, remindAt:"" }, false);
+                  fixed:null, remindAt:"" }, false);
   $("edTitle").textContent = "やりたいことにする";
   $("edOk").textContent = "登録";
   $("editModal").classList.add("on");
@@ -5194,7 +5061,7 @@ function openStepTask(id){
 function saveStepTask(){
   const s = fdStep(edStepId); if(!s){ closeTaskEditor(); return; }
   const v = readTaskForm(); if(!v) return;
-  const t = { id: uid(), text: v.text, links: [], when: v.when, cat: v.cat, freq: v.freq, size: v.size,
+  const t = { id: uid(), text: v.text, links: [], cat: v.cat, freq: v.freq, size: v.size,
               goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
               log: [], actuals: [], createdAt: Date.now() };
   S.tasks.push(t);
@@ -5389,11 +5256,9 @@ function renderAll(){
   renderBoxes();
   renderUnplaced();
   renderRoulette();
-  renderRoutines();
   renderSkipped();
   renderDoneToday();
   renderTasks();
-  renderRoutineList();
   // リンク欄の候補は、いま使っているやりたいことのリンクから作る
   $("taskUrlList").innerHTML = [...new Set(
       S.tasks.flatMap(t => linksOf(t).filter(l => l.kind === "url").map(l => l.url))
@@ -5529,8 +5394,6 @@ function localRecords(){
     delete c.img;                       // 画像は端末ごと。向こうに無いIDを送らない
     add("day", k, c);
   });
-  S.routines.forEach(r => add("routine", r.id, r));
-  Object.keys(S.routineDone).forEach(k => add("rdone", k, S.routineDone[k]));
   S.philos.forEach(p => add("philo", p.id, p));
   S.cheers.forEach(c => add("cheer", c.id, c));
   Object.keys(S.weekOverrides).forEach(w => add("wkov", w, S.weekOverrides[w]));
@@ -5567,6 +5430,7 @@ function applyRecord(kind, id, body){
   if(kind === "task"){
     const i = S.tasks.findIndex(t => t.id === id);
     if(gone){ if(i >= 0) S.tasks.splice(i, 1); return; }
+    delete body.when;                         // 午前／午後はやめた（古い版の端末から届いたぶん）
     if(i >= 0){
       const mine = S.tasks[i];
       S.tasks[i] = Object.assign({}, body, logUnion(mine, body));
@@ -5583,10 +5447,8 @@ function applyRecord(kind, id, body){
     if(gone) delete D.entries[id]; else D.entries[id] = body;
     return;
   }
-  if(kind === "rdone"){
-    if(gone) delete S.routineDone[id]; else S.routineDone[id] = body;
-    return;
-  }
+  // ルーティーンは 2026-10-16 にやめた。古い版の端末から届いても入れない
+  if(kind === "routine" || kind === "rdone") return;
   if(kind === "wkov"){
     if(gone) delete S.weekOverrides[id]; else S.weekOverrides[id] = body;
     return;
@@ -5600,7 +5462,7 @@ function applyRecord(kind, id, body){
     if(id === "achieved") S.achieved = normAchieved(body);
     return;
   }
-  const list = kind === "routine" ? S.routines : kind === "philo" ? S.philos : kind === "cheer" ? S.cheers : null;
+  const list = kind === "philo" ? S.philos : kind === "cheer" ? S.cheers : null;
   if(!list) return;
   const i = list.findIndex(x => x.id === id);
   if(gone){ if(i >= 0) list.splice(i, 1); return; }
@@ -5937,8 +5799,6 @@ function prune(){
   Object.keys(S.days).forEach(k => { if(!DAYKEY_RE.test(k)) delete S.days[k]; });
   const keys = Object.keys(S.days).sort();
   if(keys.length > keep) keys.slice(0, keys.length - keep).forEach(k => delete S.days[k]);
-  const rk = Object.keys(S.routineDone).sort();
-  if(rk.length > 60) rk.slice(0, rk.length - 60).forEach(k => delete S.routineDone[k]);
   // 今週だけの上書きは、その週が過ぎたら捨てる（週が変われば元の回数に戻る）
   const thisW = weekId();
   Object.keys(S.weekOverrides).forEach(w => { if(w < thisW) delete S.weekOverrides[w]; });
