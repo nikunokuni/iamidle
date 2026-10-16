@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-16.1";
+const APP_VERSION = "2026-10-16.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1563,8 +1563,6 @@ function renderHeader(){
   const late = now.getHours() < CUT ? "（深夜）" : "";
   $("date").textContent = `${ds.getFullYear()}年${ds.getMonth()+1}月${ds.getDate()}日（${wd}）${late}`;
   $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
-  const s = nowSlot();
-  $("greet").innerHTML = slotMark(s) + " " + SLOT[s].label + (isHoliday(key) ? " ・休み" : " ・平日");
 }
 /* ================= 描画：哲学バー ================= */
 function renderPhiloBar(){
@@ -1580,7 +1578,7 @@ $("philoBar").addEventListener("click", ()=>{
   S.philoIdx = (S.philoIdx + 1) % S.philos.length;
   save(); renderPhiloBar();
 });
-// PC（601px 以上）では、今日の指針をヘッダーの「午後・平日」と時刻のあいだに置く。
+// PC（601px 以上）では、今日の指針をヘッダーの日付と時刻のあいだに置く。
 // ヘッダーは今日タブでもスクロールしないので、ずっと見えている。スマホは今日タブの列の先頭のまま
 const philoInHeader = matchMedia("(min-width:601px)");
 function placePhiloBar(){

@@ -72,8 +72,21 @@ body{
 
 /* ---------- header ---------- */
 header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-.date{color:var(--fg-faint);font-size:13px;letter-spacing:.08em}
-.greet{font-size:21px;font-weight:700;margin-top:2px}
+/* ▼ 日付は大きく（2026-10-16 本人。「午前・平日」の行はやめた）。縮めない。幅が足りなければ今日の指針のほうが細くなる。
+     後ろの左寄りに太陽と月（.hdeco）。字より奥に置く */
+.hleft{position:relative;flex:none;align-self:center;padding-left:18px}
+.date{
+  position:relative;z-index:1;white-space:nowrap;
+  font-size:clamp(17px,4.4vw,30px);font-weight:700;letter-spacing:.04em;color:var(--fg);
+}
+.hdeco{
+  position:absolute;left:0;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;pointer-events:none;
+}
+.hdeco .mk{font-size:34px;line-height:1;opacity:.35}
+.hdeco .mk-pm{margin-left:-8px}
+/* スマホの細い画面では、大きくした日付に押されて時刻が右にはみ出す。時刻のほうを少し小さく */
+@media (max-width:400px){ header .clock, html[data-theme] header .clock{font-size:30px} }
 .clock{font-size:30px;font-weight:300;color:var(--fg-dim);font-variant-numeric:tabular-nums;flex:none}
 
 /* ---------- philosophy banner ---------- */
@@ -1460,8 +1473,10 @@ html[data-theme="angel"] .bhead h2::before{
 
 /* ---------- header ---------- */
 html[data-theme="angel"] header{color:var(--hdr-fg)}
-html[data-theme="angel"] .date{color:var(--hdr-fg);opacity:.8}
-html[data-theme="angel"] .greet{color:var(--hdr-fg);text-shadow:0 1px 8px rgba(255,255,255,.8)}
+html[data-theme="angel"] .date{color:var(--hdr-fg);text-shadow:0 1px 8px rgba(255,255,255,.9), 0 0 2px rgba(255,255,255,.9)}
+/* 日付の後ろの太陽と月。ほかの .mk の 1.6 倍（transform）はここでは使わず、大きさを直に決める */
+html[data-theme="angel"] .hdeco .mk{width:64px;height:64px;font-size:16px;opacity:1;transform:none}
+html[data-theme="angel"] .hdeco .mk-pm{margin-left:-14px}
 html[data-theme="angel"] .clock{
   color:var(--hdr-fg);font-size:40px;font-weight:200;letter-spacing:.02em;
   text-shadow:0 2px 12px rgba(255,255,255,.9), 0 0 2px rgba(255,255,255,.9);
@@ -1962,8 +1977,9 @@ html[data-theme="yami"] .bhead h2::before{
 
 /* ---------- header ---------- */
 html[data-theme="yami"] header{color:var(--hdr-fg)}
-html[data-theme="yami"] .date{color:var(--hdr-fg);opacity:.75}
-html[data-theme="yami"] .greet{color:var(--hdr-fg);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+html[data-theme="yami"] .date{color:var(--hdr-fg)}
+html[data-theme="yami"] .hdeco .mk{width:64px;height:64px;font-size:16px;opacity:1;transform:none}
+html[data-theme="yami"] .hdeco .mk-pm{margin-left:-14px}
 html[data-theme="yami"] .clock{
   color:var(--hdr-fg);font-size:40px;font-weight:200;letter-spacing:.02em;
   text-shadow:0 0 14px rgba(var(--accent-rgb),.8), 0 0 3px rgba(0,0,0,.9);
