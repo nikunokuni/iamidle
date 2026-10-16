@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-16.2";
+const APP_VERSION = "2026-10-16.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1561,7 +1561,12 @@ function renderHeader(){
   const ds  = dayStart(key);
   const wd  = ["日","月","火","水","木","金","土"][ds.getDay()];
   const late = now.getHours() < CUT ? "（深夜）" : "";
-  $("date").textContent = `${ds.getFullYear()}年${ds.getMonth()+1}月${ds.getDate()}日（${wd}）${late}`;
+  // 年は出さない。数字は大きく、「月」「日」（曜日・深夜も）は小さく（2026-10-16 本人）
+  const sm = x => '<small>' + x + '</small>';
+  $("date").innerHTML = (ds.getMonth()+1) + sm("月") + ds.getDate() + sm("日（" + wd + "）" + late);
+  // 後ろの絵は、いまの時間帯のほうだけ（午前は太陽、午後は月）。15秒ごとに呼ばれるので切り替わりにも付いていく
+  const s = nowSlot();
+  if($("hdeco").dataset.slot !== s){ $("hdeco").dataset.slot = s; $("hdeco").innerHTML = slotMark(s); }
   $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
 }
 /* ================= 描画：哲学バー ================= */
