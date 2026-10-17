@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-16.3";
+const APP_VERSION = "2026-10-17.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -4557,7 +4557,8 @@ let fdFailed = "";
 const INK_COLORS = ["#26332a", "#d6453d", "#2f6fd0"];   // メモ帳のペンの色（黒・赤・青）
 // メモ帳のふせんの色（黄・ピンク・水色・緑・白）。中身は style.css の .stk.memo.c-○
 const MEMO_COLORS = [["y", "黄"], ["p", "ピンク"], ["b", "水色"], ["g", "緑"], ["w", "白"]];
-const MEMO_SZ_MIN = 0.5, MEMO_SZ_MAX = 3;   // メモ帳のふせんの大きさ（倍。字も同じだけ大きくなる）
+const MEMO_SZ_MIN = 0.5, MEMO_SZ_MAX = 3;   // メモ帳のふせんの字の大きさ（倍）
+const MEMO_WH_MIN = 2;                      // メモ帳のふせんの幅・高さの下限（ページの幅に対する %）
 const FD_AREA_MAX = 12;   // 区切りの名前の字数の上限（長いと隣の区切りにはみ出す）
 // メモ帳は2冊。やりたいことタブのもの（memo / ink）と、今日タブのルーレットの上のもの（memoNow / inkNow）。
 // 画面も仕組みも同じで、中身だけが別
@@ -4587,7 +4588,10 @@ function normMemo(a){
       id: String(n.id), kind: "memo", text: String(n.text || ""), x: num(n.x), y: num(n.y),
       // c は色（MEMO_COLORS の頭の字）、s は大きさ（倍）。古いデータは黄色・1倍
       c: MEMO_COLORS.some(([k]) => k === n.c) ? n.c : "y",
-      s: (typeof n.s === "number" && isFinite(n.s)) ? Math.min(MEMO_SZ_MAX, Math.max(MEMO_SZ_MIN, n.s)) : 1 }));
+      s: (typeof n.s === "number" && isFinite(n.s)) ? Math.min(MEMO_SZ_MAX, Math.max(MEMO_SZ_MIN, n.s)) : 1,
+      // w・h はふせんの幅・高さ（ページの幅に対する %）。0 は中身なり（古いデータ・まだつまみを触っていないもの）
+      w: (typeof n.w === "number" && isFinite(n.w) && n.w > 0) ? Math.min(100, Math.max(MEMO_WH_MIN, n.w)) : 0,
+      h: (typeof n.h === "number" && isFinite(n.h) && n.h > 0) ? Math.min(200, Math.max(MEMO_WH_MIN, n.h)) : 0 }));
 }
 // メモ帳の手書きの線。p は [x, y, x, y, …]（ページの幅・高さに対する割合）
 function normInk(a){
@@ -4742,8 +4746,9 @@ function fdPickArea(i){
 const fdColsBelow = n => n.y < 0.08 ? " cb" : "";
 function fdStickyHTML(n){
   const memo = n.kind === "memo";
-  return '<div class="stk ' + n.kind + (memo ? " c-" + n.c + fdColsBelow(n) : "") + '" data-id="' + esc(n.id) + '" style="left:' + (n.x * 100).toFixed(2) +
-    '%;top:' + (n.y * 100).toFixed(2) + '%' + (memo ? ';--s:' + n.s : '') + '"><div class="stx">' + esc(n.text) + '</div>' +
+  const wh = memo && n.w && n.h;
+  return '<div class="stk ' + n.kind + (memo ? " c-" + n.c + fdColsBelow(n) + (wh ? " wh" : "") : "") + '" data-id="' + esc(n.id) + '" style="left:' + (n.x * 100).toFixed(2) +
+    '%;top:' + (n.y * 100).toFixed(2) + '%' + (memo ? ';--s:' + n.s : '') + (wh ? ';--w:' + n.w + ';--h:' + n.h : '') + '"><div class="stx">' + esc(n.text) + '</div>' +
     '<button class="stdel" data-act="stdel" title="はがす">✕</button>' +
     // メモ帳だけ：色の丸（上）と、大きさを変えるつまみ（右下）
     (memo ? '<div class="stcols">' + MEMO_COLORS.map(([k, l]) =>
@@ -4791,7 +4796,7 @@ function addNote(kind){
   const text = inp.value.trim();
   if(!text){ inp.focus(); return; }
   const at = fdSpot(kind);
-  fdNotes().push(kind === "memo" ? { id: uid(), kind, text, x: at.x, y: at.y, c: memoColor, s: 1 }
+  fdNotes().push(kind === "memo" ? { id: uid(), kind, text, x: at.x, y: at.y, c: memoColor, s: 1, w: 0, h: 0 }
                                  : { id: uid(), kind, text, x: at.x, y: at.y });
   saveFinder();
   inp.value = "";
@@ -4892,7 +4897,8 @@ function editNote(st){
 
 /* ---------- メモ帳のふせんの色・大きさ ----------
    色は左の列で選んでから貼る（memoColor）。貼ったあとは、ふせんの上に出る丸で変える。
-   大きさは右下のつまみをドラッグ。字・余白・幅の上限が全部同じ倍率で大きくなる（CSS の --s） */
+   大きさは右下のつまみをドラッグして、縦と横を別々に自由に変える（CSS の --w / --h。2026-10-17）。
+   右下（斜め）へ引けば字も一緒に大きく、左上へ戻せば小さく（--s）。横だけ・縦だけ引いたときは字はそのまま */
 let memoColor = "y";     // 次に貼るふせんの色。メモリだけ
 let szDrag = null;       // 大きさを変えている最中のもの
 function memoPick(k){
@@ -4911,15 +4917,30 @@ function szDown(e, st){
   e.preventDefault(); e.stopPropagation();
   st.setPointerCapture(e.pointerId);
   st.classList.add("sizing");
-  szDrag = { n, st, sx: e.clientX, sy: e.clientY, s0: n.s, w0: st.offsetWidth, h0: st.offsetHeight,
-             rect: $("fdBoard").getBoundingClientRect() };
+  const rect = $("fdBoard").getBoundingClientRect();
+  szDrag = { n, st, sx: e.clientX, sy: e.clientY, s0: n.s, w0: st.offsetWidth, h0: st.offsetHeight, rect };
+  // 中身なりのふせんは、いまの見た目の大きさを幅・高さとして持たせてから引く
+  st.classList.add("wh");
+  szSet(st, n, st.offsetWidth, st.offsetHeight, rect);
+}
+// 幅・高さ（px）を、ページの幅に対する % にして付ける
+function szSet(st, n, wpx, hpx, rect){
+  const pct = v => Math.round(v / rect.width * 1000) / 10;
+  n.w = Math.min(100, Math.max(MEMO_WH_MIN, pct(wpx)));
+  n.h = Math.min(Math.max(MEMO_WH_MIN, pct(rect.height)), Math.max(MEMO_WH_MIN, pct(hpx)));
+  st.style.setProperty("--w", n.w);
+  st.style.setProperty("--h", n.h);
 }
 function szMove(e){
   const g = szDrag;
-  // 右下へ引けば大きく、左上へ戻せば小さく。縦横の動きを足して、元の大きさに対する割合で倍率にする
-  const r = (g.w0 + g.h0 + (e.clientX - g.sx) + (e.clientY - g.sy)) / (g.w0 + g.h0);
+  const w = g.w0 + (e.clientX - g.sx), h = g.h0 + (e.clientY - g.sy);
+  // 縦も横も大きくしたら字も大きく（小さいほうの割合）、どちらも小さくしたら字も小さく（大きいほうの割合）。
+  // 片方だけなら字はそのまま
+  const rw = w / g.w0, rh = h / g.h0;
+  const r = rw > 1 && rh > 1 ? Math.min(rw, rh) : rw < 1 && rh < 1 ? Math.max(rw, rh) : 1;
   g.n.s = Math.round(Math.min(MEMO_SZ_MAX, Math.max(MEMO_SZ_MIN, g.s0 * r)) * 100) / 100;
   g.st.style.setProperty("--s", g.n.s);
+  szSet(g.st, g.n, w, h, g.rect);
 }
 function szUp(){
   const g = szDrag; szDrag = null;

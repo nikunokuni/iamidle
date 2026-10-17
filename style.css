@@ -1208,6 +1208,9 @@ body.fd-open{overflow:hidden}
 .stk.memo.c-b{background:var(--stk-memo-b);color:#132a3e}
 .stk.memo.c-g{background:var(--stk-memo-g)}
 .stk.memo.c-w{background:var(--stk-memo-w);color:#26332a}
+/* メモ帳：つまみで縦横を決めたふせん（--w / --h はページの幅に対する %）。
+   高さは下限なので、字が入りきらないときは下へ伸びる（字は切れない） */
+.stk.memo.wh{width:calc(var(--w) * 1cqw);max-width:none;min-width:0;min-height:calc(var(--h) * 1cqw)}
 .stk.moving{cursor:grabbing;box-shadow:0 .8cqw 2cqw rgba(0,0,0,.5);transform:scale(1.03)}
 .stk .stx{white-space:pre-wrap;word-break:break-word;outline:none;min-height:1.4em}
 .stk.editing{cursor:text;user-select:text;outline:2px solid var(--accent)}
