@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-17.1";
+const APP_VERSION = "2026-10-18.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -4562,7 +4562,11 @@ const MEMO_WH_MIN = 2;                      // メモ帳のふせんの幅・高
 const FD_AREA_MAX = 12;   // 区切りの名前の字数の上限（長いと隣の区切りにはみ出す）
 // メモ帳は2冊。やりたいことタブのもの（memo / ink）と、今日タブのルーレットの上のもの（memoNow / inkNow）。
 // 画面も仕組みも同じで、中身だけが別
-const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[], memo:[], ink:[], memoNow:[], inkNow:[] });
+// どちらも何枚でもページを足せる。1枚目は memo / ink（memoNow / inkNow）のまま、2枚目からは
+// memoMore（memoNowMore）に [{ id, memo, ink }] で並べる（前からあるデータをそのまま1枚目として読めるように）
+const MEMO_PAGE_MAX = 20;   // 1冊のページの上限
+const emptyFinder = () => ({ v:1, areas: FD_AREAS.map(a => a.name), notes:[], steps:[], memo:[], ink:[], memoNow:[], inkNow:[],
+                             memoMore:[], memoNowMore:[] });
 function normFinder(d){
   if(!d || typeof d !== "object") return null;
   const num = x => (typeof x === "number" && isFinite(x)) ? Math.min(1, Math.max(0, x)) : 0;
@@ -4576,6 +4580,7 @@ function normFinder(d){
       id: String(n.id), kind: n.kind === "vision" ? "vision" : "ideal",
       text: String(n.text || ""), x: num(n.x), y: num(n.y) })),
     memo: normMemo(d.memo), ink: normInk(d.ink), memoNow: normMemo(d.memoNow), inkNow: normInk(d.inkNow),
+    memoMore: normMemoPages(d.memoMore), memoNowMore: normMemoPages(d.memoNowMore),
     steps: (Array.isArray(d.steps) ? d.steps : []).filter(s => s && s.id).map(s => ({
       id: String(s.id), text: String(s.text || ""),
       due: DAYKEY_RE.test(s.due || "") ? s.due : "", taskId: String(s.taskId || "") }))
@@ -4592,6 +4597,11 @@ function normMemo(a){
       // w・h はふせんの幅・高さ（ページの幅に対する %）。0 は中身なり（古いデータ・まだつまみを触っていないもの）
       w: (typeof n.w === "number" && isFinite(n.w) && n.w > 0) ? Math.min(100, Math.max(MEMO_WH_MIN, n.w)) : 0,
       h: (typeof n.h === "number" && isFinite(n.h) && n.h > 0) ? Math.min(200, Math.max(MEMO_WH_MIN, n.h)) : 0 }));
+}
+// メモ帳の2枚目から先のページ
+function normMemoPages(a){
+  return (Array.isArray(a) ? a : []).filter(pg => pg && pg.id).slice(0, MEMO_PAGE_MAX - 1)
+    .map(pg => ({ id: String(pg.id), memo: normMemo(pg.memo), ink: normInk(pg.ink) }));
 }
 // メモ帳の手書きの線。p は [x, y, x, y, …]（ページの幅・高さに対する割合）
 function normInk(a){
@@ -4625,10 +4635,20 @@ function saveFinder(){
 function finderKB(){
   try{ return Math.round(JSON.stringify(F).length / 1024); }catch(e){ return 0; }
 }
-// いま開いているページのふせん（メモ帳なら F.memo か F.memoNow、それ以外は F.notes）と、手書きの線
-const fdKey = () => fdMemo ? (fdMemo === "now" ? "memoNow" : "memo") : "notes";
-const inkKey = () => fdMemo === "now" ? "inkNow" : "ink";
-const fdNotes = () => F[fdKey()];
+// いま開いているページのふせん（メモ帳ならそのページの、それ以外は F.notes）と、手書きの線
+// memoBox() は開いているメモ帳のページの [入れ物, ふせんの名前, 線の名前]。1枚目は F そのもの
+let memoPage = { tasks: 0, now: 0 };   // メモ帳ごとに、いま開いているページ（0 が1枚目）。メモリだけ（読み込み直すと1枚目）
+const memoMoreKey = () => fdMemo === "now" ? "memoNowMore" : "memoMore";
+const memoPageCount = () => 1 + F[memoMoreKey()].length;
+function memoBox(){
+  const now = fdMemo === "now", more = F[memoMoreKey()];
+  const p = Math.min(memoPage[fdMemo] || 0, more.length);
+  memoPage[fdMemo] = p;
+  return p ? [more[p - 1], "memo", "ink"] : [F, now ? "memoNow" : "memo", now ? "inkNow" : "ink"];
+}
+const fdNotes = () => { if(!fdMemo) return F.notes; const [o, n] = memoBox(); return o[n]; };
+const inkList = () => { const [o, , k] = memoBox(); return o[k]; };
+const inkPut = a => { const [o, , k] = memoBox(); o[k] = a; };
 const fdNote = id => fdNotes().find(n => n.id === id) || null;
 const fdStep = id => F.steps.find(s => s.id === id) || null;
 
@@ -4757,7 +4777,7 @@ function fdStickyHTML(n){
 }
 const fdBoardHTML = () => fdMemo
   ? '<div class="fdboard memo' + (inkTool === "erase" ? " erase" : "") + '" id="fdBoard">' +
-    '<svg class="fdink" id="fdInk" viewBox="0 0 1000 1000" preserveAspectRatio="none">' + F[inkKey()].map(inkPathHTML).join("") + '</svg>' +
+    '<svg class="fdink" id="fdInk" viewBox="0 0 1000 1000" preserveAspectRatio="none">' + inkList().map(inkPathHTML).join("") + '</svg>' +
     fdNotes().map(fdStickyHTML).join("") + '</div>'
   : '<div class="fdboard" id="fdBoard">' + fdBoardSVG() + F.notes.map(fdStickyHTML).join("") + '</div>';
 
@@ -4804,10 +4824,10 @@ function addNote(kind){
   $("fdNoteIn").focus();
 }
 function removeNote(id){
-  const key = fdKey(), i = F[key].findIndex(n => n.id === id); if(i < 0) return;
-  const gone = F[key].splice(i, 1)[0];
+  const list = fdNotes(), i = list.findIndex(n => n.id === id); if(i < 0) return;
+  const gone = list.splice(i, 1)[0];
   saveFinder(); renderFinder();
-  toast("はがしました", ()=>{ F[key].splice(Math.min(i, F[key].length), 0, gone); saveFinder(); renderFinder(); });
+  toast("はがしました", ()=>{ list.splice(Math.min(i, list.length), 0, gone); saveFinder(); renderFinder(); });
 }
 
 /* 区切りの名前を書きかえる（名前をダブルクリック）。空にすれば名前なし（「＋ 名前」とだけ出る） */
@@ -4960,7 +4980,7 @@ function szUp(){
 let inkTool = "pen";     // "pen" ／ "erase"。メモリだけ
 let inkColor = INK_COLORS[0];
 let inkDrag = null;      // なぞっている最中のもの
-let inkUndo = [];        // 「戻す」用。線を足す・消す前の F.ink（F.inkNow）を積む（メモリだけ。メモ帳を替えると空になる）
+let inkUndo = [];        // 「戻す」用。線を足す・消す前の線を積む（メモリだけ。メモ帳・ページを替えると空になる）
 const INK_W = 3;         // 線の太さ（px）
 const inkD = p => { let d = ""; for(let i = 0; i < p.length; i += 2) d += (i ? "L" : "M") + (p[i]*1000).toFixed(1) + " " + (p[i+1]*1000).toFixed(1);
   return p.length === 2 ? d + "l0.01 0" : d; };   // 点1つでも、丸い点として見えるように
@@ -4974,7 +4994,7 @@ function inkDown(e){
   e.preventDefault();
   const board = $("fdBoard");
   board.setPointerCapture(e.pointerId);
-  inkDrag = { rect: board.getBoundingClientRect(), before: F[inkKey()].slice(), changed: false };
+  inkDrag = { rect: board.getBoundingClientRect(), before: inkList().slice(), changed: false };
   if(inkTool === "erase"){ inkErase(e); return; }
   const [x, y] = inkAt(e);
   inkDrag.k = { id: uid(), c: inkColor, p: [x, y] };
@@ -4993,10 +5013,10 @@ function inkMove(e){
 function inkErase(e){
   const g = inkDrag, r = g.rect, R = 10;   // 押したところから R px 以内に点がある線を消す
   const px = e.clientX - r.left, py = e.clientY - r.top;
-  const hit = F[inkKey()].filter(k => { for(let i = 0; i < k.p.length; i += 2)
+  const hit = inkList().filter(k => { for(let i = 0; i < k.p.length; i += 2)
     if(Math.hypot(k.p[i]*r.width - px, k.p[i+1]*r.height - py) <= R) return true; return false; });
   if(!hit.length) return;
-  F[inkKey()] = F[inkKey()].filter(k => !hit.includes(k));
+  inkPut(inkList().filter(k => !hit.includes(k)));
   hit.forEach(k => { const el = $("fdInk").querySelector('[data-ink="' + CSS.escape(k.id) + '"]'); if(el) el.remove(); });
   g.changed = true;
 }
@@ -5004,7 +5024,7 @@ function inkUp(){
   const g = inkDrag; inkDrag = null;
   if(g.k){
     for(let i = 0; i < g.k.p.length; i++) g.k.p[i] = Math.round(g.k.p[i] * 10000) / 10000;
-    F[inkKey()].push(g.k); g.changed = true;
+    inkList().push(g.k); g.changed = true;
   }
   if(!g.changed) return;
   inkUndo.push(g.before); if(inkUndo.length > 50) inkUndo.shift();
@@ -5012,15 +5032,15 @@ function inkUp(){
 }
 function inkBack(){
   if(!inkUndo.length){ toast("戻せるものはありません"); return; }
-  F[inkKey()] = inkUndo.pop();
+  inkPut(inkUndo.pop());
   saveFinder(); renderFinder();
 }
 async function inkClear(){
-  if(!F[inkKey()].length){ toast("線はまだありません"); return; }
+  if(!inkList().length){ toast("線はまだありません"); return; }
   const ok = await openModal({ title: "線を全部消しますか？", ok: "全部消す", danger: true,
     desc: "手書きの線だけが消えます。ふせんは残ります。" });
   if(!ok) return;
-  inkUndo.push(F[inkKey()]); F[inkKey()] = [];
+  inkUndo.push(inkList()); inkPut([]);
   saveFinder(); renderFinder();
   toast("線を全部消しました", inkBack);
 }
@@ -5115,6 +5135,13 @@ function fdNav(i){
 }
 function renderFinder(){
   if(!finderOpen()) return;
+  // 上の帯：見つけようはステップのチップ、メモ帳はページのチップ（＋ 新しいページ）
+  if(fdMemo){
+    const cur = (memoBox(), memoPage[fdMemo]), n = memoPageCount();
+    $("fdSteps").innerHTML = Array.from({ length: n }, (_, i) =>
+      '<button class="chip' + (cur === i ? " on" : "") + '" data-page="' + i + '">' + (i + 1) + '枚目</button>').join("") +
+      (n < MEMO_PAGE_MAX ? '<button class="chip" data-act="pageadd" title="新しいページを足す">＋ 新しいページ</button>' : '');
+  }else
   $("fdSteps").innerHTML = ["概要"].concat(FD_STEPS.map(s => s.n + " " + s.name)).map((l, i) =>
     '<button class="chip' + (fdView === i ? " on" : "") + '" data-go="' + i + '">' + esc(l) + '</button>').join("");
   const nIdeal = F.notes.filter(n => n.kind === "ideal").length;
@@ -5185,11 +5212,60 @@ async function resetFinder(){
     desc: "ふせん・ビジョンノート・やりたいことリストが全部消えます。\nやりたいことに登録したものは、そのまま残ります。" });
   if(!ok) return;
   const before = F;
-  F = Object.assign(emptyFinder(), { memo: before.memo, ink: before.ink,   // メモ帳（2冊とも）は別物なので残す
-                                     memoNow: before.memoNow, inkNow: before.inkNow });
+  F = Object.assign(emptyFinder(), { memo: before.memo, ink: before.ink,   // メモ帳（2冊とも、全ページ）は別物なので残す
+                                     memoNow: before.memoNow, inkNow: before.inkNow,
+                                     memoMore: before.memoMore, memoNowMore: before.memoNowMore });
   fdView = 0; fdArea = -1;
   saveFinder(); renderFinder();
   toast("まっさらに戻しました", ()=>{ F = before; saveFinder(); renderFinder(); toast("戻しました"); });
+}
+
+/* ---------- メモ帳のページ ---------- */
+function memoGoPage(i){
+  if(i === memoPage[fdMemo]) return;
+  memoPage[fdMemo] = i;
+  inkUndo = [];   // 「戻す」は開いているページのぶんだけ
+  renderFinder();
+}
+function memoAddPage(){
+  if(memoPageCount() >= MEMO_PAGE_MAX){ toast("ページは " + MEMO_PAGE_MAX + "枚までです"); return; }
+  F[memoMoreKey()].push({ id: uid(), memo: [], ink: [] });
+  saveFinder();
+  memoGoPage(memoPageCount() - 1);
+  toast(memoPageCount() + "枚目を作りました");
+}
+/* 開いているページを全部消す（ふせんも線も）。2枚以上あるときは、ページごと捨てることもできる */
+async function memoClear(){
+  const [o, n, k] = memoBox(), p = memoPage[fdMemo], many = memoPageCount() > 1;
+  const empty = !o[n].length && !o[k].length;
+  if(empty && !many){ toast("まだ何も書いていません"); return; }
+  const ans = await openModal({ title: (p + 1) + "枚目を全部消しますか？", ok: "全部消す", danger: true,
+    alt: many ? "ページごと捨てる" : "",
+    desc: "このページのふせんと手書きの線が全部消えます。ほかのページはそのまま残ります。" +
+      (many ? "\n「ページごと捨てる」を押すと、このページそのものが無くなり、後ろのページが1枚ずつ前に詰まります。" : "") });
+  if(!ans) return;
+  const book = fdMemo, more = F[memoMoreKey()];
+  if(ans === "alt"){
+    // ページごと捨てる。1枚目を捨てたときは2枚目が1枚目になる
+    const before = { memo: o[n], ink: o[k], more: more.slice() };
+    if(p === 0){ const nx = more.shift(); o[n] = nx.memo; o[k] = nx.ink; }
+    else more.splice(p - 1, 1);
+    memoPage[book] = Math.max(0, p - 1); inkUndo = [];
+    saveFinder(); renderFinder();
+    toast((p + 1) + "枚目を捨てました", ()=>{
+      const [ow, nw, kw] = book === "now" ? [F, "memoNow", "inkNow"] : [F, "memo", "ink"];
+      if(p === 0){ ow[nw] = before.memo; ow[kw] = before.ink; }
+      F[book === "now" ? "memoNowMore" : "memoMore"] = before.more;
+      memoPage[book] = p; inkUndo = [];
+      saveFinder(); renderFinder(); toast("戻しました");
+    });
+    return;
+  }
+  if(empty){ toast("このページはもう空です"); return; }
+  const memo = o[n], ink = o[k];
+  o[n] = []; o[k] = []; inkUndo = [];
+  saveFinder(); renderFinder();
+  toast((p + 1) + "枚目を全部消しました", ()=>{ o[n] = memo; o[k] = ink; saveFinder(); renderFinder(); toast("戻しました"); });
 }
 
 $("finderOpen").onclick = ()=> openFinder(false);
@@ -5197,6 +5273,7 @@ $("memoOpen").onclick = ()=> openFinder("tasks");
 $("memoNowOpen").onclick = ()=> openFinder("now");
 $("fdClose").onclick = closeFinder;
 $("fdReset").onclick = resetFinder;
+$("fdMemoClear").onclick = memoClear;
 $("finder").addEventListener("click", e => {
   const sc = e.target.closest(".stk [data-stc]");
   if(sc){ setNoteColor(sc.closest(".stk"), sc.dataset.stc); return; }
@@ -5204,6 +5281,9 @@ $("finder").addEventListener("click", e => {
   if(mc){ memoPick(mc.dataset.memoc); return; }
   const ip = e.target.closest("[data-tool],[data-color]");
   if(ip){ inkPick(ip); return; }
+  const pg = e.target.closest("[data-page]");
+  if(pg){ memoGoPage(Number(pg.dataset.page) || 0); return; }
+  if(e.target.closest('[data-act="pageadd"]')){ memoAddPage(); return; }
   const ia = (e.target.closest('[data-act="inkback"],[data-act="inkclear"]') || {}).dataset?.act;
   if(ia){ ia === "inkback" ? inkBack() : inkClear(); return; }
   const go = e.target.closest("[data-go]");

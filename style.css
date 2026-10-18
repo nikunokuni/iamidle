@@ -1162,8 +1162,9 @@ body.fd-open{overflow:hidden}
   overflow:hidden;user-select:none;
 }
 /* メモ帳：下絵なしのまっさらなページ。右の空きいっぱいに広げる */
-.finder.memo .fdsteps{visibility:hidden}
+/* メモ帳では上の帯のチップがページ（1枚目・2枚目…）になる。「まっさらに戻す」の代わりに「全部消す」 */
 .finder.memo #fdReset{display:none}
+.finder:not(.memo) #fdMemoClear{display:none}
 .fdboard.memo{aspect-ratio:auto;width:100%;height:100%;background:var(--memo-bg);border-color:#b9d6ab;
   touch-action:none;cursor:crosshair}
 .fdboard.memo.erase{cursor:cell}
