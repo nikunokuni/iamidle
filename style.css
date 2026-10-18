@@ -629,6 +629,9 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   border-radius:9px;padding:7px 14px;font-size:13px;font-family:inherit;cursor:pointer;
 }
 .dclear:hover{border-color:var(--accent);color:var(--accent)}
+/* タグのしぼりこみ（書いたものがあるタグだけ並ぶ） */
+.dtagfilter:not(:empty){margin:0 0 10px}
+.dtagfilter .chip{padding:5px 12px;font-size:13px}
 
 .dcard{
   background:var(--card);border:1px solid var(--line);

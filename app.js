@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-18.1";
+const APP_VERSION = "2026-10-18.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -3573,7 +3573,16 @@ let diaryEditKey = "";     // 過去のものを書き直しているとき、�
 let diaryShow = 20;        // 「これまでの日記」を何件出すか
 let diarySavedAt = 0;      // この画面で最後に保存した時刻。見出しの右に出すだけ
 let diaryMonth = "";       // 年月のしぼりこみ。"" なら全部、"2026-08" ならその月だけ
+let diaryTag = "";         // タグのしぼりこみ。"" なら全部、"筋トレ" ならその欄に書いたものだけ（年月と両方かかる）。メモリだけ
 
+/* しぼりこみに出すタグ。書いたものがあるタグだけ（消したタグも、書いたものが残っていれば出す）。
+   並びはいまの ＋ の並び（D.tags）が先、消したタグはその後ろに名前順 */
+function diaryTagsUsed(){
+  const used = new Set();
+  Object.values(D.entries).forEach(e => Object.keys(e).forEach(k => { if(isTagKey(k)) used.add(tagLabel(k)); }));
+  const live = D.tags.filter(n => used.has(n));
+  return live.concat([...used].filter(n => live.indexOf(n) < 0).sort());
+}
 /* 「2026年8月」 */
 const monthLabel = m => Number(m.slice(0,4)) + "年" + Number(m.slice(5,7)) + "月";
 /* 書いたものがある、いちばん古い月といちばん新しい月。カレンダーの選べる幅にする */
@@ -3611,8 +3620,8 @@ function saveNewDiary(){
   DIARY_LIVE.forEach(f => { $(f.id).value = ""; });
   tagAreas().forEach(t => { t.value = ""; });
   diaryOpened = {};
-  // 古い月でしぼりこんだままだと、いま保存したものが下に出ない。しぼりこみは解く
-  diaryMonth = ""; diaryShow = 20;
+  // 古い月や別のタグでしぼりこんだままだと、いま保存したものが下に出ない。しぼりこみは解く
+  diaryMonth = ""; diaryTag = ""; diaryShow = 20;
   renderDiaryHead();      // 見出しの日付を今日に直し、開いていた欄を畳む
   renderDiaryPast();      // すぐ下の「これまでの日記」の先頭に出る
   renderDiaryState();
@@ -3881,12 +3890,22 @@ function renderDiaryPast(){
 
   // まだ1件も無いときは、見出しも年月の入力も出さない（しぼりこむものが無い）
   const head = $("diaryPastHead");
+  const tagBox = $("diaryTagFilter");
   if(!all.length){
     head.style.display = "none";
+    tagBox.innerHTML = "";
     el.innerHTML = "";
     return;
   }
   head.style.display = "";
+
+  // タグのしぼりこみ。書いたものがあるタグが1つも無ければ、並びごと出さない
+  const used = diaryTagsUsed();
+  if(diaryTag && used.indexOf(diaryTag) < 0) diaryTag = "";   // そのタグの日記を全部消したときなど
+  tagBox.innerHTML = used.length
+    ? '<button class="chip' + (diaryTag ? "" : " on") + '" data-dtag="">すべて</button>' +
+      used.map(n => '<button class="chip' + (diaryTag === n ? " on" : "") + '" data-dtag="' + esc(n) + '">#' + esc(n) + '</button>').join("")
+    : "";
 
   const span = diaryMonthSpan();
   const pick = $("diaryMonthPick");
@@ -3895,14 +3914,16 @@ function renderDiaryPast(){
   if(span){ pick.min = span.min; pick.max = span.max; }
   $("diaryMonthAll").style.display = diaryMonth ? "" : "none";
 
-  const list = diaryMonth ? rest.filter(k => diaryDateOf(k).slice(0,7) === diaryMonth) : rest;
+  const tk = diaryTag ? tagKey(diaryTag) : "";
+  const list = rest.filter(k => (!diaryMonth || diaryDateOf(k).slice(0,7) === diaryMonth) &&
+                                (!tk || D.entries[k][tk] != null));
   $("diaryCountLabel").textContent =
-    (diaryMonth ? monthLabel(diaryMonth) + " ・ " : "") + list.length + "件";
+    (diaryMonth ? monthLabel(diaryMonth) + " ・ " : "") + (diaryTag ? "#" + diaryTag + " ・ " : "") + list.length + "件";
 
   if(!list.length){
+    const what = (diaryMonth ? monthLabel(diaryMonth) + "に" : "") + (diaryTag ? "「#" + diaryTag + "」の欄に" : "");
     el.innerHTML = '<div class="empty-note">' +
-      (diaryMonth ? monthLabel(diaryMonth) + "に書いたものはありません。「すべて」で戻せます。"
-                  : "まだありません。") + '</div>';
+      (what ? what + "書いたものはありません。「すべて」で戻せます。" : "まだありません。") + '</div>';
     return;
   }
   el.innerHTML = list.slice(0, diaryShow).map(k => diaryCard(k, 0)).join("") +
@@ -3916,6 +3937,13 @@ function renderDiaryPast(){
 $("diaryMonthPick").onchange = ()=>{
   diaryMonth = $("diaryMonthPick").value || "";
   diaryShow = 20;                     // 月を変えたら「もっと見る」も最初から
+  renderDiaryPast();
+};
+/* タグのしぼりこみ。チップは renderDiaryPast() が作り直すので、入れ物で受ける */
+$("diaryTagFilter").onclick = e => {
+  const b = e.target.closest("[data-dtag]"); if(!b) return;
+  diaryTag = b.dataset.dtag === diaryTag ? "" : b.dataset.dtag;   // 選んでいるものをもう一度押すと解ける
+  diaryShow = 20;
   renderDiaryPast();
 };
 $("diaryMonthAll").onclick = ()=>{
