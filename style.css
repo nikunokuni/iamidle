@@ -1773,7 +1773,7 @@ html[data-theme="angel"] .clock{position:relative;isolation:isolate}
 html[data-theme="angel"] .clock::before{
   content:"";position:absolute;z-index:-1;pointer-events:none;
   left:50%;top:50%;width:120px;aspect-ratio:1;transform:translate(-50%,-50%);
-  background:center/contain no-repeat;opacity:.6;
+  background:center/contain no-repeat;opacity:.8;   /* 20%透ける（2026-10-23 本人） */
 }
 html[data-theme="angel"] .clock[data-sky="sun"]::before{background-image:url("img/angel/am.webp")}
 html[data-theme="angel"] .clock[data-sky="moon"]::before{background-image:url("img/angel/pm.webp")}
@@ -2253,7 +2253,7 @@ html[data-theme="yami"] .clock{position:relative;isolation:isolate}
 html[data-theme="yami"] .clock::before{
   content:"";position:absolute;z-index:-1;pointer-events:none;
   left:50%;top:50%;width:120px;aspect-ratio:1;transform:translate(-50%,-50%);
-  background:center/contain no-repeat;opacity:.6;
+  background:center/contain no-repeat;opacity:.8;   /* 20%透ける（2026-10-23 本人） */
 }
 html[data-theme="yami"] .clock[data-sky="sun"]::before{background-image:url("img/yami/am.webp")}
 html[data-theme="yami"] .clock[data-sky="moon"]::before{background-image:url("img/yami/pm.webp")}
