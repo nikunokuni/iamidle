@@ -40,7 +40,7 @@ html,body{margin:0;padding:0}
      スクロールバーのぶん狭くなり、下のタブ帯まで一緒に動く */
 html{scrollbar-gutter:stable}
 /* ▼ 横にはみ出したぶんでスクロールバーを出さない。
-     天使・闇の時計の後ろの飾り（#clock::before）は、わざと大きく描いて右へはみ出させている。
+     天使・闇の時計の後ろの飾り（#clock::before）は、もとは大きく描いて右へはみ出させていた（いまは太陽と月で小さいが、念のため残す）。
      はみ出した先は画面の外で、もともと見えない。それなのにPCでは、ページの下に横のスクロールバーが出ていた
      （1週間・やりたいこと・哲学・設定。2026-10-14 本人）。
      ▼ body には付けないこと。付けると body が自分でスクロールする箱になり、縦のスクロールまで変わる */
@@ -1771,14 +1771,17 @@ html[data-theme="angel"] body[data-tab="set"]::after{
 /* 絵の上に乗る見出し（「やりたいことを追加」など）が埋もれないように、白く光らせる */
 html[data-theme="angel"] h2{text-shadow:0 0 6px #fff, 0 0 12px #fff, 0 0 2px #fff}
 
-/* 羽：時計の後ろに広げる */
+/* 時計の後ろ：6:00〜18:00 は太陽、18:00〜6:00 は月（2026-10-23 本人）。印 data-sky は renderHeader() が付ける。
+   前の羽（wings.webp）は、いまはどこにも使っていない */
 html[data-theme="angel"] .clock{position:relative;isolation:isolate}
 html[data-theme="angel"] .clock::before{
   content:"";position:absolute;z-index:-1;pointer-events:none;
-  left:50%;top:50%;width:345px;aspect-ratio:560/373;transform:translate(-50%,-50%);
-  background:url("img/angel/wings.webp") center/contain no-repeat;opacity:.6;
+  left:50%;top:50%;width:120px;aspect-ratio:1;transform:translate(-50%,-50%);
+  background:center/contain no-repeat;opacity:.6;
 }
-@media (max-width:600px){ html[data-theme="angel"] .clock::before{width:255px} }
+html[data-theme="angel"] .clock[data-sky="sun"]::before{background-image:url("img/angel/am.webp")}
+html[data-theme="angel"] .clock[data-sky="moon"]::before{background-image:url("img/angel/pm.webp")}
+@media (max-width:600px){ html[data-theme="angel"] .clock::before{width:96px} }
 
 /* マスコット：「いま、これ」の右上からのぞく（2026-10-11 本人の指定で右下から移した）。ごほうびの画像が出ているときは引っこめる。
    .now だけだと、やりたいことタブの「次はこれ」の札（.tag.now）にも出てしまうので #nowCard に絞る */
@@ -2249,14 +2252,17 @@ html[data-theme="yami"] body[data-tab="set"]::after{
 /* 絵の上に乗る見出しが埋もれないように、暗く縁どる */
 html[data-theme="yami"] h2{text-shadow:0 0 6px #000, 0 0 12px #000, 0 0 2px #000}
 
-/* 時計の後ろ：ネオンのハート（仮。天使の羽の場所） */
+/* 時計の後ろ：天使と同じく 6:00〜18:00 は太陽、18:00〜6:00 は月（2026-10-23 本人）。
+   前のネオンのハート（heart.webp）は、いまはどこにも使っていない */
 html[data-theme="yami"] .clock{position:relative;isolation:isolate}
 html[data-theme="yami"] .clock::before{
   content:"";position:absolute;z-index:-1;pointer-events:none;
-  left:50%;top:50%;width:210px;aspect-ratio:560/495;transform:translate(-50%,-50%);
-  background:url("img/yami/heart.webp") center/contain no-repeat;opacity:.55;
+  left:50%;top:50%;width:120px;aspect-ratio:1;transform:translate(-50%,-50%);
+  background:center/contain no-repeat;opacity:.6;
 }
-@media (max-width:600px){ html[data-theme="yami"] .clock::before{width:160px} }
+html[data-theme="yami"] .clock[data-sky="sun"]::before{background-image:url("img/yami/am.webp")}
+html[data-theme="yami"] .clock[data-sky="moon"]::before{background-image:url("img/yami/pm.webp")}
+@media (max-width:600px){ html[data-theme="yami"] .clock::before{width:96px} }
 
 /* マスコット：猫。「いま、これ」の右上（天使のうさぎと同じ所）。ごほうびの画像が出ているときは引っこめる */
 html[data-theme="yami"] #nowCard{position:relative}

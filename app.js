@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-18.2";
+const APP_VERSION = "2026-10-23.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1568,6 +1568,9 @@ function renderHeader(){
   const s = nowSlot();
   if($("hdeco").dataset.slot !== s){ $("hdeco").dataset.slot = s; $("hdeco").innerHTML = slotMark(s); }
   $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+  // 時計の後ろの絵（天使・闇）。6:00〜18:00 は太陽、18:00〜6:00 は月。上の時間帯（午前・午後）とは別の区切り
+  const h = now.getHours();
+  $("clock").dataset.sky = (h >= 6 && h < 18) ? "sun" : "moon";
 }
 /* ================= 描画：哲学バー ================= */
 function renderPhiloBar(){
