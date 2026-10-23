@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-23.1";
+const APP_VERSION = "2026-10-23.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -64,9 +64,14 @@ const DEFAULTS = {
   // { "2026-08-09": { count, holiday, slots:[名札|null], cuts:[{at,label}], roulette:[taskId] } }
   //   slots が持つのは名札（"tk1" / "tk1#1" …）。baseId() を通してIDにする
   days: {},
+  // ▼ base / boxStart は 2026-10-23 までの決め方（平日・休みで箱数と始まりが別）。いまは使っていない。
+  //   その日に start を持っていない古い日の時刻を出すため、と古い版の端末との同期のために残してある
   base: { weekday: 8, holiday: 12 },
-  // 1箱目の開始時刻。箱は時刻を持たないが、何番目が何時かの見当をつけるために使う
   boxStart: { weekday: "18:00", holiday: "10:00" },
+  // 起きる時刻から寝る時刻までを30分ずつ箱にする。平日も休みの日も同じ数（2026-10-23 本人）
+  dayTime: { wake: "07:00", sleep: "23:00" },
+  // 仕事の日は、この時間の箱に「仕事」が入る。仕事はふつうのやりたいことと同じく動かせて、長さも変えられる
+  work: { from: "09:00", to: "18:00" },
   // 今週だけの回数の上書き { "2026-W33": { taskId: 3 } }。週が変われば prune で消える
   weekOverrides: {},
   // 起動ファイル用。自動で見つからないブラウザだけ、設定タブで場所を教えてもらう
@@ -210,6 +215,8 @@ function migrate(d){
   d.days      = (d.days && typeof d.days === "object") ? d.days : {};
   d.base      = Object.assign({ weekday: 8, holiday: 12 }, d.base || {});
   d.boxStart  = Object.assign({ weekday: "18:00", holiday: "10:00" }, d.boxStart || {});
+  d.dayTime   = Object.assign({ wake: "07:00", sleep: "23:00" }, d.dayTime || {});
+  d.work      = Object.assign({ from: "09:00", to: "18:00" }, d.work || {});
   d.weekOverrides = (d.weekOverrides && typeof d.weekOverrides === "object") ? d.weekOverrides : {};
   d.browserPaths = (d.browserPaths && typeof d.browserPaths === "object") ? d.browserPaths : {};
   // タイマーの音。中身が無ければ既定（ピッピッピッ）に戻す
@@ -356,7 +363,7 @@ const catHead = (c, n) => '<div class="cathead ' + catClass(c.key) + '">' +
      ここで中身ごと出し分けると、`aria-expanded` と見た目がずれる
    ▼ 色だけは ▼ に残してある。全部畳んだときに、どれがどれか分からなくなるため
    ▼ 畳んだ状態は `S.catFold`（`{ resp:true, … }`）。foldDone / foldSkip と同じ扱いで、
-     この端末だけのもの。同期には載せていない（送るのは tasks／days／base／boxStart／日記だけ） */
+     この端末だけのもの。同期には載せていない（送るのは tasks／days／base／boxStart／dayTime／work／日記だけ） */
 const catFoldKey = k => k || "none";
 const catShut = k => !!(S.catFold && S.catFold[catFoldKey(k)]);
 const catFoldHead = (c, n, shut) =>
@@ -583,18 +590,29 @@ $("mInput").addEventListener("keydown", e => { if(e.key === "Enter") $("mOk").cl
 const askConfirm = (title, ok, desc) => openModal({ title, desc, ok: ok || "OK", danger: ok === "削除" });
 const askInput   = (title, value, placeholder) => openModal({ title, value, placeholder, input: true, ok: "決定" });
 
-/* ================= 箱（1日の器） ================= */
-/* 休みかどうかは曜日で決めない。どの日も平日（仕事）から始まり、手で切り替える */
-function baseFor(holiday){
-  const n = holiday ? S.base.holiday : S.base.weekday;
-  return Math.max(0, Math.min(48, Math.round(n) || 0));
+/* ================= 箱（1日の器） =================
+   2026-10-23 から：**起きる時刻〜寝る時刻を30分ずつ箱にする。平日も休みの日も同じ数**（本人）。
+   その日の1箱目の時刻は、日が作られたときに d.start（0時からの分）として持たせる。
+   箱数や始まりをあとで設定で変えたら、今日から先の日は relayDay() で作り直す。
+   休みかどうかは曜日で決めない。どの日も仕事の日から始まり、手で切り替える。
+   仕事の日は、仕事の時間の箱に「仕事」（WORK_ID）が入る */
+const hhmmMin = (s, dflt) => {
+  const m = HHMM.exec(s || "");
+  return m ? Math.min(23, Math.max(0, +m[1]))*60 + Math.min(59, Math.max(0, +m[2])) : dflt;
+};
+const wakeMin = () => hhmmMin(S.dayTime.wake, 7*60);
+/* 起きてから寝るまでの箱の数。寝る時刻が日付をまたいでもよい */
+function dayBoxes(){
+  let len = hhmmMin(S.dayTime.sleep, 23*60) - wakeMin();
+  if(len <= 0) len += 24*60;
+  return Math.max(0, Math.min(48, Math.floor(len / 30)));
 }
 const isHoliday = key => !!getDay(key).holiday;
-/* その日の箱。無ければ平日の基本値から作る */
+/* その日の箱。無ければ、いまの起きる・寝る時刻で作る */
 function getDay(key){
   key = okKey(key);
   let d = S.days[key];
-  if(!d) d = S.days[key] = { count: baseFor(false), holiday: false, slots: [], cuts: [], roulette: [] };
+  if(!d) d = S.days[key] = { count: dayBoxes(), start: wakeMin(), holiday: false, slots: [], cuts: [], roulette: [] };
   if(typeof d.holiday !== "boolean") d.holiday = false;
   if(!Array.isArray(d.slots))    d.slots    = [];
   if(!Array.isArray(d.cuts))     d.cuts     = [];
@@ -611,39 +629,129 @@ function getDay(key){
   d.roulette = d.roulette.filter(id => taskById(id));
   return d;
 }
-/* 平日 ⇄ 休み。箱数をその区分の基本値に合わせ直す */
+/* 仕事の日 ⇄ 休み。箱の数は変えない（2026-10-23 から、どちらも同じ数）。
+   休みにすると仕事を箱から出し、仕事の日にすると仕事の時間の箱へ入れる */
 function setDayType(holiday, key){
   const d = getDay(key);
   d.holiday = !!holiday;
-  const target = baseFor(d.holiday);
-  while(d.count < target){ d.count++; d.slots.push(null); }
-  let stuck = false;
-  while(d.count > target){
-    let i = d.slots.length - 1;
-    while(i >= 0 && d.slots[i] !== null) i--;
-    if(i < 0){ stuck = true; break; }        // 埋まっていて減らせない
-    d.slots.splice(i, 1); d.count--;
+  let note = "";
+  if(d.holiday){
+    if(d.slots.includes(WORK_ID)) note = "（仕事を箱から出した）";
+    for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === WORK_ID) d.slots[i] = null;
+  } else {
+    const r = placeWork(d, key);
+    note = r === "ok" ? "（仕事を入れた）" : r === "blocked" ? "／仕事の時間の箱がふさがっているので、仕事は入れていない" : "";
   }
   save(); renderAll();
-  toast(dayLabel(key) + "を" + (d.holiday ? "休み" : "平日") + "にした（" + d.count + "箱 ＝ " + boxTime(d.count) + "）" +
-    (stuck ? "／埋まっている箱があるのでここまで" : ""));
+  toast(dayLabel(key) + "を" + (d.holiday ? "休み" : "仕事の日") + "にした" + note);
 }
-const taskById = id => S.tasks.find(t => t.id === id) || null;
+
+/* ================= 仕事 =================
+   仕事の日に、仕事の時間の箱へ入る。ふつうのやりたいことと同じく、
+   ドラッグで動かせて、番号を押せば長さを変えられて、✕ で箱から出せる。
+   ▼ やりたいこと（S.tasks）には入れない。入れるとやりたいことタブ・ルーレット・集計に出てしまう。
+     taskById() だけが WORK_TASK を返すので、箱の中では名札 "__work" のふつうの1件として通る
+   ▼ ✓（やった）と複製は無い。「終わったか」は記録ではなく時刻で決める（workPassed）。
+     「いま、これ」にも出さない（pendingGroups）
+   ▼ 古い版の端末は、知らないIDとして getDay() の掃除で消してしまう。両方の端末を新しい版にすること */
+const WORK_ID = "__work";
+const WORK_TASK = { id: WORK_ID, text: "仕事", freq: { unit: "once", n: 1, count: 1 }, size: 1, log: [], links: [] };
+const isWork = tag => baseId(tag) === WORK_ID;
+const taskById = id => id === WORK_ID ? WORK_TASK : (S.tasks.find(t => t.id === id) || null);
+/* 設定の仕事の時間が、その日の何番目から何箱か */
+function workSpan(key){
+  let len = hhmmMin(S.work.to, 18*60) - hhmmMin(S.work.from, 9*60);
+  if(len <= 0) len += 24*60;
+  return { at: boxIndexForTime(key, S.work.from), size: Math.max(1, Math.round(len / 30)) };
+}
+/* 仕事を入れる。"had"＝もう入っている／"ok"＝入れた／"blocked"＝ふさがっている（ずらさない）。
+   一日の最後の箱より先にはみ出すぶんは切る */
+function placeWork(d, key){
+  if(d.slots.includes(WORK_ID)) return "had";
+  const w = workSpan(key);
+  const n = Math.min(w.size, d.slots.length - w.at);
+  if(n <= 0) return "blocked";
+  for(let k = 0; k < n; k++) if(d.slots[w.at+k] !== null) return "blocked";
+  for(let k = 0; k < n; k++) d.slots[w.at+k] = WORK_ID;
+  return "ok";
+}
+/* 箱の時刻を、その時点の時刻（ミリ秒）に。i 番目の箱が始まるとき */
+function boxStartTs(key, i){
+  const k = okKey(key), [y,m,dd] = k.split("-").map(Number);
+  const s = startMin(k);
+  let ts = new Date(y, m-1, dd, 0, 0, 0, 0).getTime() + (s + i*30) * 60000;
+  if(s < CUT*60) ts += DAY;                   // 午前2時より前に始まる日は、次の暦の日
+  return ts;
+}
+/* 仕事が終わったか。過ぎた日は終わり、先の日はまだ、今日は最後の箱の終わりを過ぎたら */
+function workPassed(g, key){
+  const k = okKey(key), today = dayKey();
+  if(k !== today) return k < today;
+  return Date.now() >= boxStartTs(k, g.to + 1);
+}
+
+/* その日の箱を、いまの起きる・寝る時刻と仕事の時間で作り直す（設定を変えたとき・古い日の作り替え）。
+   ▼ 入っているものは、同じ時刻の箱へ移す（oldStart はその日のいままでの1箱目の時刻）。
+     はみ出したものは空いている所へ。どこにも無ければ一番下に箱を足して入れる。**消さない**
+   ▼ 仕事は一度出して、いまの仕事の時間に入れ直す。入らなければ false を返す */
+function relayDay(key, oldStart){
+  const d = S.days[key]; if(!d || !Array.isArray(d.slots)) return true;
+  const ns = wakeMin(), n = dayBoxes();
+  let off = Math.round((oldStart - ns) / 30);
+  if(off > 24) off -= 48;                       // 日付をまたぐ差は、近いほうへ
+  if(off < -24) off += 48;
+  const groups = boxGroups(d).filter(g => g.id && !isWork(g.id));
+  d.slots = new Array(n).fill(null);
+  d.count = n;
+  d.start = ns;
+  const fits = (at, size) => {
+    if(at < 0 || at + size > d.slots.length) return false;
+    for(let k = 0; k < size; k++) if(d.slots[at+k] !== null) return false;
+    return true;
+  };
+  const left = [];
+  groups.forEach(g => {
+    const size = g.to - g.from + 1, at = g.from + off;
+    if(fits(at, size)) for(let k = 0; k < size; k++) d.slots[at+k] = g.id;
+    else left.push(g);
+  });
+  left.forEach(g => {
+    const size = g.to - g.from + 1;
+    let at = findFit(d, size, Math.max(0, g.from + off));
+    if(at < 0){ at = d.slots.length; for(let k = 0; k < size; k++) d.slots.push(null); d.count = d.slots.length; }
+    for(let k = 0; k < size; k++) d.slots[at+k] = g.id;
+  });
+  return d.holiday || placeWork(d, key) !== "blocked";
+}
+/* 2026-10-23 より前に作られた日（start を持っていない）のうち、今日から先のものを新しい作り方にする。
+   過ぎた日は記録なので触らない（時刻は前の決め方 boxStart のまま出る）。
+   起動したときと、同期で古い版の端末から日が届いたときに呼ぶ */
+function upgradeDays(){
+  const k0 = dayKey();
+  let n = 0;
+  Object.keys(S.days).forEach(k => {
+    const d = S.days[k];
+    if(!d || k < k0 || typeof d.start === "number") return;
+    relayDay(k, legacyStart(d));
+    n++;
+  });
+  return n;
+}
 
 /* ================= 箱と時刻 =================
-   箱はこれまでどおり順番だけを持つ。時刻は持たない。
-   ここで出すのは「何番目がだいたい何時か」の見当だけ。
-   休憩を挟めば実時間はずれていく。あくまで目安
+   2026-10-23 から、i 番目の箱は「起きる時刻 ＋ 30分 × i」。
+   1箱目の時刻はその日が持っている（d.start）。＋− で箱を足し引きすると、その下の時刻はずれる
 ============================================ */
 const HHMM = /^(\d{1,2}):(\d{2})$/;
-/* 1箱目の開始時刻を「その日の始まりからの分」に。読めなければ 18:00 とみなす */
+/* 2026-10-23 より前の日の1箱目。平日・休みで別だった（S.boxStart）。読めなければ 18:00 */
+function legacyStart(d){
+  return hhmmMin(S.boxStart[d && d.holiday ? "holiday" : "weekday"], 18*60);
+}
+/* 1箱目の開始時刻を「0時からの分」に。まだ作られていない日は、いまの起きる時刻 */
 function startMin(key){
-  const holiday = key === "__h" ? true : key === "__w" ? false : isHoliday(key);
-  const s = S.boxStart[holiday ? "holiday" : "weekday"] || "18:00";
-  const m = HHMM.exec(s);
-  const h = m ? Math.min(23, Math.max(0, +m[1])) : 18;
-  const mi = m ? Math.min(59, Math.max(0, +m[2])) : 0;
-  return h*60 + mi;
+  const d = S.days[okKey(key)];
+  if(!d) return wakeMin();
+  return typeof d.start === "number" ? d.start : legacyStart(d);
 }
 /* i 番目（0はじまり）の箱が始まるおおよその時刻 */
 function boxClock(key, i){
@@ -727,6 +835,7 @@ function boxGroups(d){
      こうすると保存するものが増えず、同期の突き合わせ（log の足し算）も増えない。
      代償は「下の箱を先にやっても、✓ は上の箱に付く」こと。合計は正しい */
 function groupDone(g, key){
+  if(g.tid === WORK_ID) return workPassed(g, key || dayKey());
   const t = g.tid && taskById(g.tid);
   return !!t && g.ord < doneCountOn(t, key);
 }
@@ -776,7 +885,9 @@ function placeTask(id){
 function placeTaskAt(tag, at, key){
   const t = taskById(baseId(tag)); if(!t) return false;
   const d = getDay(key);
-  const size = Math.max(1, t.size || 1);
+  // 仕事の長さは、その日にいま占めている箱ぶん（無ければ設定の仕事の時間ぶん）
+  const size = isWork(tag) ? (d.slots.filter(x => x === WORK_ID).length || workSpan(key).size)
+                           : Math.max(1, t.size || 1);
   const prev = d.slots.slice();
   for(let i = 0; i < d.slots.length; i++) if(d.slots[i] === tag) d.slots[i] = null;  // 動かす前にどける
   at = Math.max(0, Math.min(at, d.slots.length - 1));
@@ -800,7 +911,7 @@ function placeTaskAt(tag, at, key){
 function duplicatePlaced(tag, key){
   const d = getDay(key);
   const g = boxGroups(d).find(x => x.id === tag);
-  if(!g || !g.tid) return;
+  if(!g || !g.tid || g.tid === WORK_ID) return;   // 仕事は複製しない
   const t = taskById(g.tid); if(!t) return;
   const size = g.to - g.from + 1;                 // いま占めている箱ぶん（t.size ではない）
   const at = findFit(d, size, g.to + 1);
@@ -924,6 +1035,9 @@ function fixedFor(key){
 function autoPlace(key){
   const d = S.days[key]; if(!d) return;
   const bad = [];
+  // 仕事の日なら、まず仕事（新しい日は空なので、ふさがるのは一日の箱からはみ出すときだけ）
+  if(!d.holiday && placeWork(d, key) === "blocked")
+    bad.push({ id: WORK_ID, text: "仕事", time: S.work.from, why: "箱が足りません" });
   fixedFor(key).forEach(t => {
     if(d.slots.some(x => x && baseId(x) === t.id)) return;
     const size = Math.max(1, t.size || 1);
@@ -1308,7 +1422,7 @@ function skippedToday(){
 let cursor = 0;
 /* 箱に入っていて、まだ終わっていないもの */
 function pendingGroups(){
-  return boxGroups(getDay()).filter(g => g.tid && taskById(g.tid) && !groupDone(g));
+  return boxGroups(getDay()).filter(g => g.tid && g.tid !== WORK_ID && taskById(g.tid) && !groupDone(g));
 }
 function currentGroup(){
   const gs = pendingGroups();
@@ -1564,9 +1678,6 @@ function renderHeader(){
   // 年は出さない。数字は大きく、「月」「日」（曜日・深夜も）は小さく（2026-10-16 本人）
   const sm = x => '<small>' + x + '</small>';
   $("date").innerHTML = (ds.getMonth()+1) + sm("月") + ds.getDate() + sm("日（" + wd + "）" + late);
-  // 後ろの絵は、いまの時間帯のほうだけ（午前は太陽、午後は月）。15秒ごとに呼ばれるので切り替わりにも付いていく
-  const s = nowSlot();
-  if($("hdeco").dataset.slot !== s){ $("hdeco").dataset.slot = s; $("hdeco").innerHTML = slotMark(s); }
   $("clock").textContent = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
   // 時計の後ろの絵（天使・闇）。6:00〜18:00 は太陽、18:00〜6:00 は月。上の時間帯（午前・午後）とは別の区切り
   const h = now.getHours();
@@ -1950,7 +2061,7 @@ function renderBoxes(){
       '<div class="sp"></div>' +
       (dayFinished(d) ? '<span class="bend">今日は終了</span>' : '') +
       '<button class="daytype' + (d.holiday ? " off" : "") + '" id="dayType" ' +
-        'title="平日／休みを切り替える">' + (d.holiday ? "休み" : "平日") + '</button>' +
+        'title="仕事の日／休みを切り替える">' + (d.holiday ? "休み" : "仕事") + '</button>' +
     '</div>';
   // 箱が0でも ＋ は出す。出さないと、減らし切ったあと増やせなくなる
   const foot =
@@ -2001,13 +2112,25 @@ function renderBoxes(){
     //   操作できるのは一番上の行だけ。続きの行（.cont）は薄く出すだけで、押しても何も起きない
     //   （data-id も data-act も持たせない。CSS で pointer-events も切ってある）
     let conts = "";
+    const work = g.tid === WORK_ID;
+    if(work) sub.splice(1, 1, boxClock(key, g.from) + "–" + boxClock(key, g.to + 1));
     for(let i = g.from + 1; i <= g.to; i++){
-      conts += '<div class="boxrow cont' + (done ? " done" : "") + (isCur ? " current" : "") + '">' +
+      conts += '<div class="boxrow cont' + (work ? " work" : "") + (done ? " done" : "") + (isCur ? " current" : "") + '">' +
         (isClockMark(key, i) ? '<span class="bclock">' + boxClock(key, i) + '</span>' : '') +
         '<span class="bi">' + (i+1) + '</span>' +
         '<div class="bt">' + esc(t.text) + '</div>' +
       '</div>';
     }
+    // ▼ 仕事は ✓ と複製を出さない（終わりは時刻で決まる）。動かす・長さを変える・✕ はふつうと同じ
+    if(work) return '<div class="boxrow work' + (done ? " done" : "") +
+        (size > 1 ? " span2" : "") + '" data-id="' + esc(g.id) + '" data-i="' + g.from + '"' +
+        (done ? "" : ' draggable="true"') + '>' + clock +
+      '<span class="bi' + (done ? '' : ' pick') + '"' +
+        (done ? '' : ' data-act="boxsize" title="箱の数を変える"') + '>' + no + '</span>' +
+      '<span class="wmark" aria-hidden="true">💼</span>' +
+      '<div class="bt">' + esc(t.text) + '<div class="bs">' + escMark(sub.join(" ・ ")) + '</div></div>' +
+      (done ? '' : '<button class="iconbtn" data-act="boxout" title="箱から出す">✕</button>') +
+    '</div>' + conts + sizePickHTML(g.id, size, d);
     return '<div class="boxrow' + (done ? " done" : "") + (isCur ? " current" : "") +
         (size > 1 ? " span2" : "") + '" data-id="' + esc(g.id) + '" data-i="' + g.from + '"' +
         (done ? "" : ' draggable="true"') + '>' + clock +
@@ -2056,6 +2179,7 @@ $("boxList").addEventListener("click", e => {
     renderBoxes();
     return;
   }
+  if(id === WORK_ID && btn.dataset.act !== "boxout") return;   // 仕事は ✕ だけ
   if(btn.dataset.act === "boxdup")  duplicatePlaced(tag);
   if(btn.dataset.act === "boxdo")   doTask(id);
   if(btn.dataset.act === "boxout")  unplace(tag);
@@ -2152,22 +2276,23 @@ function renderWeek(){
       }
       const t = taskById(g.tid);
       const done = groupDone(g, k);
+      const work = g.tid === WORK_ID;          // 仕事は複製を出さない
       // ▼ 今日タブと同じく、2箱以上のものも箱1つにつき1行。操作できるのは一番上だけで、
       //   続きの行（.cont）は薄く出すだけ。data-id を持たせないので、押しても落としても何も起きない
       let conts = "";
       for(let i = g.from + 1; i <= g.to; i++){
-        conts += '<div class="wkbox cont' + (done ? " done" : "") + '">' +
+        conts += '<div class="wkbox cont' + (work ? " work" : "") + (done ? " done" : "") + '">' +
           (isClockMark(k, i) ? '<span class="wkclock">' + boxClock(k, i) + '</span>' : '') +
           '<span class="wkno">' + (i+1) + '</span>' +
           '<span class="wktxt">' + esc(t.text) + '</span>' +
         '</div>';
       }
-      return '<div class="wkbox' + (done ? " done" : "") + '" data-i="' + g.from + '" data-day="' + k +
+      return '<div class="wkbox' + (work ? " work" : "") + (done ? " done" : "") + '" data-i="' + g.from + '" data-day="' + k +
           '" data-id="' + esc(g.id) + '"' + (past || done ? "" : ' draggable="true"') + '>' +
         mark + '<span class="wkno">' + no + '</span>' +
         '<span class="wktxt">' + esc(t.text) + '</span>' +
         // 過ぎた日は記録なので触らない。それ以外は終わった箱からも複製できる
-        (past ? '' : '<button class="wkx dup" data-act="wkdup" title="同じものを、もう1つ空き箱に入れる">⧉</button>') +
+        (past || work ? '' : '<button class="wkx dup" data-act="wkdup" title="同じものを、もう1つ空き箱に入れる">⧉</button>') +
         (past || done ? '' : '<button class="wkx" data-act="wkout" title="箱から出す">✕</button>') +
       '</div>' + conts;
     }).join("");
@@ -2364,7 +2489,7 @@ let winner = null;      // 選ばれたやりたいことのid（保存しない
 
 function addToRoulette(id){
   const d = getDay();
-  if(!taskById(id)) return;
+  if(!taskById(id) || id === WORK_ID) return;     // 仕事はルーレットに入れない
   if(d.roulette.includes(id)){ toast("すでに入っています"); return; }
   d.roulette.push(id);
   save(); renderRoulette(); toast("ルーレットに追加");
@@ -4026,16 +4151,14 @@ $("sec-diary").addEventListener("click", async e => {
 
 /* ================= 設定 ================= */
 function renderSettings(){
-  const w = $("baseWeekday"), h = $("baseHoliday");
-  if(document.activeElement !== w) w.value = S.base.weekday;
-  if(document.activeElement !== h) h.value = S.base.holiday;
-  const sw = $("startWeekday"), sh = $("startHoliday");
-  if(document.activeElement !== sw) sw.value = S.boxStart.weekday;
-  if(document.activeElement !== sh) sh.value = S.boxStart.holiday;
-  $("startNote").textContent =
-    "平日は " + boxClock(dayKeyOfType(false), 0) + " から " + S.base.weekday + "箱で " +
-    endClock(false) + " まで。休みは " + boxClock(dayKeyOfType(true), 0) + " から " +
-    S.base.holiday + "箱で " + endClock(true) + " まで。";
+  [["wakeTime", S.dayTime.wake], ["sleepTime", S.dayTime.sleep], ["workFrom", S.work.from], ["workTo", S.work.to]]
+    .forEach(([id, v]) => { if(document.activeElement !== $(id)) $(id).value = v; });
+  const n = dayBoxes();
+  $("dayTimeNote").textContent = S.dayTime.wake + " から " + S.dayTime.sleep + " まで、" + n + "箱（" + boxTime(n) + "）。" +
+    "平日も休みの日も同じ数です。";
+  const w = workSpan(dayKey());
+  $("workNote").textContent = "仕事の日は、この時間の箱に「仕事」が入ります（" + w.size + "箱 ＝ " + boxTime(w.size) + "）。" +
+    "仕事の日か休みかは、今日の箱の「仕事／休み」で切り替えます。";
   renderSound();
   renderSync();
   renderBrowserPaths();
@@ -4105,18 +4228,6 @@ $("themeChips").addEventListener("click", e => {
   const b = e.target.closest("[data-theme]"); if(b) setTheme(b.dataset.theme);
 });
 applyThemeBar();
-/* 目安の計算に使う、その区分の代表日。いまの日で区分だけ差し替える */
-function dayKeyOfType(holiday){
-  const k = dayKey();
-  return (!!getDay(k).holiday === !!holiday) ? k : (holiday ? "__h" : "__w");
-}
-/* その区分で、箱を使い切ったときのおおよその終わり時刻 */
-function endClock(holiday){
-  const st = HHMM.exec(S.boxStart[holiday ? "holiday" : "weekday"] || "18:00");
-  const base = st ? (+st[1])*60 + (+st[2]) : 18*60;
-  const t = base + baseFor(holiday)*30;
-  return String(Math.floor(t/60) % 24).padStart(2,"0") + ":" + String(t%60).padStart(2,"0");
-}
 /* 起動ファイル用のブラウザの場所。空なら自動で探す */
 function renderBrowserPaths(){
   const el = $("browserPaths");
@@ -4141,23 +4252,25 @@ $("browserPaths").addEventListener("change", e => {
   toast(v ? browserOf(key).label + " の場所を覚えました。起動ファイルを書き出し直してください"
           : browserOf(key).label + " は自動で探します");
 });
-function onBaseChange(){
-  S.base.weekday = Math.min(48, Math.max(0, parseInt($("baseWeekday").value, 10) || 0));
-  S.base.holiday = Math.min(48, Math.max(0, parseInt($("baseHoliday").value, 10) || 0));
-  save(); renderAll();
-  toast("基本値を変えました（明日から反映。今日は ＋− で調整）");
-}
-$("baseWeekday").addEventListener("change", onBaseChange);
-$("baseHoliday").addEventListener("change", onBaseChange);
-function onStartChange(){
+/* 起きる・寝る時刻や仕事の時間を変えたら、今日から先の日の箱を作り直す。
+   入っているものは同じ時刻のところへ移る（relayDay）。過ぎた日は記録なので触らない */
+function onDayTimeChange(){
   const ok = v => HHMM.test(v) ? v : "";
-  S.boxStart.weekday = ok($("startWeekday").value) || S.boxStart.weekday;
-  S.boxStart.holiday = ok($("startHoliday").value) || S.boxStart.holiday;
+  S.dayTime.wake  = ok($("wakeTime").value)  || S.dayTime.wake;
+  S.dayTime.sleep = ok($("sleepTime").value) || S.dayTime.sleep;
+  S.work.from     = ok($("workFrom").value)  || S.work.from;
+  S.work.to       = ok($("workTo").value)    || S.work.to;
+  const k0 = dayKey();
+  const stuck = [];
+  Object.keys(S.days).sort().forEach(k => {
+    if(k < k0) return;
+    if(!relayDay(k, startMin(k))) stuck.push(dayLabel(k));
+  });
   save(); renderAll();
-  toast("箱の始まりを変えました（目安の時刻だけが変わります）");
+  toast("今日から先の箱を作り直した（" + dayBoxes() + "箱）" +
+    (stuck.length ? "／" + stuck.join("・") + " は仕事の時間の箱がふさがっているので、仕事を入れていない" : ""));
 }
-$("startWeekday").addEventListener("change", onStartChange);
-$("startHoliday").addEventListener("change", onStartChange);
+["wakeTime", "sleepTime", "workFrom", "workTo"].forEach(id => $(id).addEventListener("change", onDayTimeChange));
 
 /* ================= 哲学タブ：お気に入りの画像 ================= */
 $("btnAddImg").onclick = ()=> $("imgInput").click();
@@ -5534,6 +5647,8 @@ function localRecords(){
   Object.keys(S.weekOverrides).forEach(w => add("wkov", w, S.weekOverrides[w]));
   add("set", "base", S.base);
   add("set", "boxStart", S.boxStart);
+  add("set", "dayTime", S.dayTime);
+  add("set", "work", S.work);
   // 日記のタグ（＋ の並びに出す名前）。中身は日記1件ずつが持っているので、これは名前だけ。
   // set にしてあるのは、古い版の端末が墓標を送ってきても消えないため（下の applyRecord）
   add("set", "dtags", D.tags);
@@ -5592,6 +5707,8 @@ function applyRecord(kind, id, body){
     if(gone) return;                          // 設定は消さない
     if(id === "base") S.base = body;
     if(id === "boxStart") S.boxStart = body;
+    if(id === "dayTime") S.dayTime = Object.assign({ wake: "07:00", sleep: "23:00" }, body);
+    if(id === "work") S.work = Object.assign({ from: "09:00", to: "18:00" }, body);
     if(id === "dtags") D.tags = normTags(body);
     if(id === "tgroups") S.tgroups = normGroups(body);
     if(id === "achieved") S.achieved = normAchieved(body);
@@ -5700,7 +5817,8 @@ async function syncNow(quiet){
       SY.marks[key] = { h: o.body === null ? "" : markOf(o.body), at: o.at, hid: o.hid };
       taken++;
     }
-    if(taken){ save(); saveDiary(); }
+    // 古い版の端末から届いた日（start が無い）は、ここで新しい箱の作り方にする
+    if(taken){ upgradeDays(); save(); saveDiary(); }
     SY.cursor = got.cursor || SY.cursor;
 
     /* ---- 4. こちらで変わったものを送る ---- */
@@ -5958,6 +6076,7 @@ if(location.protocol !== "file:" && /[?&]r=/.test(location.search)){
 }
 
 prune();
+upgradeDays();   // 2026-10-23 より前に作った、今日から先の日を新しい箱の作り方に
 rollDay();
 syncFreqLine();
 $("taskSize").dispatchEvent(new Event("input"));
@@ -5983,14 +6102,17 @@ if(diaryFailed){
 
 /* タブを開きっぱなしでも、午前2時／午後の切り替わりで表示が変わること */
 let lastKey = dayKey(), lastSlot = nowSlot();
+/* 仕事は時刻で終わる（workPassed）。終わった瞬間に箱の見た目も変わるよう、その印も見ておく */
+const workDoneNow = () => boxGroups(getDay()).some(g => g.tid === WORK_ID && groupDone(g));
+let lastWork = workDoneNow();
 setInterval(()=>{
   renderHeader();
-  const k = dayKey(), s = nowSlot();
+  const k = dayKey(), s = nowSlot(), w = workDoneNow();
   if(k !== lastKey || s !== lastSlot){
-    lastKey = k; lastSlot = s;
+    lastKey = k; lastSlot = s; lastWork = workDoneNow();
     rollDay();
     renderAll();
-  }
+  } else if(w !== lastWork){ lastWork = w; renderAll(); }
 }, 15000);
 document.addEventListener("visibilitychange", ()=>{
   if(document.hidden) return;

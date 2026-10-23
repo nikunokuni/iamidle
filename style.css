@@ -74,18 +74,13 @@ body{
 header{padding:20px 0 4px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 /* ▼ 日付は大きく（2026-10-16 本人。「午前・平日」の行と、年はやめた）。数字だけ大きく、月・日・曜日は <small> で小さく。
      縮めない。幅が足りなければ今日の指針のほうが細くなる。
-     後ろの左寄りに、いまの時間帯の太陽か月（.hdeco）。字より奥に置く */
-.hleft{position:relative;flex:none;align-self:center;padding-left:18px}
+     後ろの太陽と月（.hdeco）は 2026-10-23 にやめた（本人）。太陽と月は時計の後ろだけ */
+.hleft{position:relative;flex:none;align-self:center}
 .date{
   position:relative;z-index:1;white-space:nowrap;
   font-size:clamp(24px,7vw,34px);font-weight:700;letter-spacing:.02em;line-height:1.1;color:var(--fg);
 }
 .date small{font-size:.5em;font-weight:600;letter-spacing:.04em;margin:0 .12em}
-.hdeco{
-  position:absolute;left:0;top:50%;transform:translateY(-50%);
-  display:flex;align-items:center;pointer-events:none;
-}
-.hdeco .mk{font-size:34px;line-height:1;opacity:.35}
 /* スマホの細い画面では、大きくした日付に押されて時刻が右にはみ出す。時刻のほうを少し小さく */
 @media (max-width:400px){ header .clock, html[data-theme] header .clock{font-size:30px} }
 .clock{font-size:30px;font-weight:300;color:var(--fg-dim);font-variant-numeric:tabular-nums;flex:none}
@@ -316,6 +311,9 @@ body.now-fixed .side #rouletteBox{
 }
 .boxrow .bt{flex:1;min-width:0;font-size:15px;word-break:break-word}
 .boxrow .bs{font-size:11px;color:var(--fg-faint);margin-top:2px}
+/* 仕事（2026-10-23）。✓ の代わりに印を置いて、字の位置をほかの行とそろえる */
+.boxrow .wmark{width:26px;flex:none;text-align:center;font-size:16px;line-height:1}
+.boxrow.work .bt, .wkbox.work .wktxt{font-weight:600}
 /* 箱の数の直し。行に部品を足さず、もともとある左の番号を押させる。
    ＋− を行に並べると、すぐ下の「その日の箱の ＋−」と取り違えるので置かない */
 /* 押せると気づけるように、点線を薄く敷いておく（番号は目立たせすぎない） */
@@ -1482,8 +1480,6 @@ html[data-theme="angel"] .bhead h2::before{
 /* ---------- header ---------- */
 html[data-theme="angel"] header{color:var(--hdr-fg)}
 html[data-theme="angel"] .date{color:var(--hdr-fg);text-shadow:0 1px 8px rgba(255,255,255,.9), 0 0 2px rgba(255,255,255,.9)}
-/* 日付の後ろの太陽と月。ほかの .mk の 1.6 倍（transform）はここでは使わず、大きさを直に決める */
-html[data-theme="angel"] .hdeco .mk{width:64px;height:64px;font-size:16px;opacity:1;transform:none}
 html[data-theme="angel"] .clock{
   color:var(--hdr-fg);font-size:40px;font-weight:200;letter-spacing:.02em;
   text-shadow:0 2px 12px rgba(255,255,255,.9), 0 0 2px rgba(255,255,255,.9);
@@ -1988,7 +1984,6 @@ html[data-theme="yami"] .bhead h2::before{
 /* ---------- header ---------- */
 html[data-theme="yami"] header{color:var(--hdr-fg)}
 html[data-theme="yami"] .date{color:var(--hdr-fg)}
-html[data-theme="yami"] .hdeco .mk{width:64px;height:64px;font-size:16px;opacity:1;transform:none}
 html[data-theme="yami"] .clock{
   color:var(--hdr-fg);font-size:40px;font-weight:200;letter-spacing:.02em;
   text-shadow:0 0 14px rgba(var(--accent-rgb),.8), 0 0 3px rgba(0,0,0,.9);
