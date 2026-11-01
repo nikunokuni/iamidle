@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-11-01.3";
+const APP_VERSION = "2026-11-01.4";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -3830,8 +3830,9 @@ function diaryParts(e){
   });
   return out;
 }
-function diaryBody(e){
-  return diaryParts(e).map(p =>
+/* only … 欄の鍵。渡すとその欄だけを出す（タグでしぼりこんでいるとき。2026-11-01 本人） */
+function diaryBody(e, only){
+  return diaryParts(e).filter(p => !only || p.key === only).map(p =>
     '<div class="dsec"><div class="dlab">' + esc(p.label) + '</div>' +
     '<div class="dtxt">' + esc(p.val) + '</div></div>'
   ).join("");
@@ -3848,8 +3849,9 @@ function diaryEditFields(e){
   return out;
 }
 /* 保存した1件。書き直し中はその場が入力欄に変わる。
-   同じ日に何件も並ぶので、日付のとなりに保存した時刻を出して見分けられるようにしてある */
-function diaryCard(key, agoYears){
+   同じ日に何件も並ぶので、日付のとなりに保存した時刻を出して見分けられるようにしてある
+   only … タグでしぼりこんでいるときの欄の鍵。そのタグの欄だけを出す（書き直すときは全部の欄を出す） */
+function diaryCard(key, agoYears, only){
   const e = D.entries[key]; if(!e) return "";
   const head = '<div class="dchead">' +
     '<div class="dcdate">' + diaryDateLabel(key) + '</div>' +
@@ -3881,7 +3883,7 @@ function diaryCard(key, agoYears){
     head +
     '<button class="iconbtn" data-act="dedit" title="書き直す">✎</button>' +
     '<button class="iconbtn del" data-act="ddel" title="削除">✕</button>' +
-    '</div>' + diaryBody(e) +
+    '</div>' + diaryBody(e, only) +
   '</article>';
 }
 
@@ -3934,7 +3936,7 @@ function renderDiaryPast(){
 
   const tk = diaryTag ? tagKey(diaryTag) : "";
   const list = rest.filter(k => (!diaryMonth || diaryDateOf(k).slice(0,7) === diaryMonth) &&
-                                (!tk || D.entries[k][tk] != null));
+                                (!tk || String(D.entries[k][tk] || "").trim()));
   $("diaryCountLabel").textContent =
     (diaryMonth ? monthLabel(diaryMonth) + " ・ " : "") + (diaryTag ? "#" + diaryTag + " ・ " : "") + list.length + "件";
 
@@ -3944,7 +3946,8 @@ function renderDiaryPast(){
       (what ? what + "書いたものはありません。「すべて」で戻せます。" : "まだありません。") + '</div>';
     return;
   }
-  el.innerHTML = list.slice(0, diaryShow).map(k => diaryCard(k, 0)).join("") +
+  // ▼ タグでしぼりこんでいるときは、そのタグの欄だけを出す（同じ日のほかの欄は出さない。2026-11-01 本人）
+  el.innerHTML = list.slice(0, diaryShow).map(k => diaryCard(k, 0, tk)).join("") +
     (list.length > diaryShow
       ? '<button class="fold" id="diaryMoreBtn">もっと見る（残り ' + (list.length - diaryShow) + '件）</button>'
       : '');
