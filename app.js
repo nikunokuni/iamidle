@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-10-23.3";
+const APP_VERSION = "2026-11-01.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -81,10 +81,8 @@ const DEFAULTS = {
   lastOpen: "",
   foldDone: false,
   foldSkip: false,
-  // 今日タブのリストで、畳んでいるカテゴリー { resp:true, reward:false, easy:false, none:false }
-  catFold: {},
   // 掴む未来（2026-10-02 に「グループ」として作り、2026-10-15 に呼び名を変えた）。
-  //   [{ id, name, cat, why, due:""|"2026-10-31", ids:[taskId…] }]
+  //   [{ id, name, why, due:""|"2026-10-31", ids:[taskId…] }]
   //   並び順 ＝ 優先順。ids の並び ＝ 中の優先順（単発だけ、上ができたら下をやる）。くり返しも入る
   tgroups: [],
   // 掴んだ未来（達成した掴む未来の記録）。[{ id, name, at:"2026-10-15" }]。中身は残さない
@@ -227,8 +225,8 @@ function migrate(d){
   return d;
 }
 /* 掴む未来（tgroups）の形をそろえる。load() の途中（migrate）と同期の受け取りから呼ぶ。
-   ▼ load() の途中で動くので、あとで宣言される const（CATS など）には触れないこと。
-     cat は文字のまま持ち、読むときに catOf() を通す
+   ▼ load() の途中で動くので、あとで宣言される const には触れないこと
+   ▼ カテゴリー（cat）は 2026-11-01 にやめた。古いデータに残っていても、ここで落とす
    ▼ 1つのやりたいことが2つの掴む未来に入っていたら、先のほうを採る
    ▼ why / due は 2026-10-15 に足した。持っていない古いデータは空で読む（データ版は v7 のまま） */
 function normGroups(list){
@@ -236,7 +234,6 @@ function normGroups(list){
   return (Array.isArray(list) ? list : []).filter(g => g && g.id).map(g => ({
     id: String(g.id),
     name: String(g.name || "").slice(0, 40),
-    cat: typeof g.cat === "string" ? g.cat : "",
     why: String(g.why || "").slice(0, 200),
     due: /^\d{4}-\d{2}-\d{2}$/.test(g.due || "") ? g.due : "",
     ids: (Array.isArray(g.ids) ? g.ids : []).map(String).filter(x => !seen.has(x) && seen.add(x))
@@ -318,94 +315,11 @@ function escMark(str){
 }
 const WD = ["日","月","火","水","木","金","土"];
 
-/* ================= カテゴリー（タグ） =================
-   やりたいことを「せきにん／ごほうび／おきらく」の3つに分ける。
-   今日タブの右のリストと、1週間タブの「この週に置くもの」を、
-   このまとまりごとに見出しで分けて出す（今日タブのほうは、見出しで畳める）。
-
-   ▼ 選ばなくてよい。付けていないものは「タグなし」のまとまりに、いちばん下へ出る。
-     だから古いデータもそのまま読める（データ版は v7 のまま。migrate は要らない）
-   ▼ ここが色と名前の元。画面のチップも見出しも、全部 CATS から作る。
-     追加フォームの `#catChips` も JS が組み立てるので、index.html に名前を書き写さないこと
-====================================================== */
-const CATS = [
-  { key:"resp",   label:"せきにん" },
-  { key:"reward", label:"ごほうび" },
-  { key:"easy",   label:"おきらく" }
-];
-const CAT_NONE = { key:"", label:"タグなし" };
-const CAT_KEYS = CATS.map(c => c.key);
-/* 保存されている値を読む。知らない値・未設定は "" （タグなし）にそろえる */
-const catOf = t => (t && CAT_KEYS.includes(t.cat)) ? t.cat : "";
-const catInfo = k => CATS.find(c => c.key === k) || CAT_NONE;
-/* CSS の色を引くための組名。タグなしは cat-none */
-const catClass = k => "cat-" + (k || "none");
-/* カテゴリーごとに分ける。空のまとまりは返さない（見出しだけが残ると壊れて見える）。
-   of … 要素からカテゴリーを取り出す関数。リストが { t, ... } のときに使う */
-function byCat(list, of){
-  const pick = of || (x => catOf(x));
-  return [...CATS, CAT_NONE]
-    .map(c => ({ cat: c, list: list.filter(x => pick(x) === c.key) }))
-    .filter(g => g.list.length);
-}
-/* まとまりの見出しの中身。丸・名前・件数の3つ。畳める見出しでも同じものを使う */
-const catHeadInner = (c, n) => '<span class="catdot"></span>' +
-  '<span class="ct">' + esc(c.label) + '</span><span class="cn">' + n + '</span>';
-/* まとまりの見出し。件数を添える */
-const catHead = (c, n) => '<div class="cathead ' + catClass(c.key) + '">' +
-  catHeadInner(c, n) + '</div>';
-
-/* ---------- 畳めるまとまり（今日タブのリストだけ・2026-09-11） ----------
-   せきにん／ごほうび／おきらく を、それぞれ見出しで畳めるようにした。
-
-   ▼ 畳んだときは、名前も件数も丸も消して ▼ だけを残す（本人の指示）。
-     消すのは CSS（`.cathead.shut`）の仕事で、HTML はどちらの状態でも同じものを出す。
-     ここで中身ごと出し分けると、`aria-expanded` と見た目がずれる
-   ▼ 色だけは ▼ に残してある。全部畳んだときに、どれがどれか分からなくなるため
-   ▼ 畳んだ状態は `S.catFold`（`{ resp:true, … }`）。foldDone / foldSkip と同じ扱いで、
-     この端末だけのもの。同期には載せていない（送るのは tasks／days／base／boxStart／dayTime／work／日記だけ） */
-const catFoldKey = k => k || "none";
-const catShut = k => !!(S.catFold && S.catFold[catFoldKey(k)]);
-const catFoldHead = (c, n, shut) =>
-  '<button type="button" class="cathead catfold ' + catClass(c.key) + (shut ? " shut" : "") + '"' +
-    ' data-fold="' + catFoldKey(c.key) + '" aria-expanded="' + (shut ? "false" : "true") + '"' +
-    ' title="' + esc(c.label + " " + n + "件") + '（押すと' + (shut ? "出す" : "隠す") + '）">' +
-    '<span class="caret">' + (shut ? "▼" : "▲") + '</span>' + catHeadInner(c, n) +
-  '</button>';
-function toggleCatFold(k){
-  const kk = catFoldKey(k);
-  S.catFold = S.catFold || {};
-  S.catFold[kk] = !S.catFold[kk];
-  save(); renderUnplaced();
-}
-/* まとまりごとに見出しを立てて並べる。row … 1件ぶんのHTMLを作る関数
-   fold … 真にすると見出しが畳めるようになる（今日タブのリストだけ）
-   ▼ ぜんぶタグなしのときは、見出しを出さない。
-     何も分かれていないのに「タグなし」の見出しだけが立つのは、ただの飾りになる。
-     見出しが無ければ畳む手も無いので、そのときは畳まない（中身が出たままになる） */
-function catSections(list, of, row, fold){
-  const gs = byCat(list, of);
-  const bare = gs.length === 1 && gs[0].cat.key === "";
-  if(bare) return gs[0].list.map(row).join("");
-  return gs.map(g => {
-    const n = g.list.length;
-    if(!fold) return catHead(g.cat, n) + g.list.map(row).join("");
-    const shut = catShut(g.cat.key);
-    return catFoldHead(g.cat, n, shut) + (shut ? "" : g.list.map(row).join(""));
-  }).join("");
-}
-/* 一覧の行に付ける小さな札。付けていないものには何も出さない */
-function catTag(t){
-  const k = catOf(t);
-  return k ? '<span class="cattag ' + catClass(k) + '">' + esc(catInfo(k).label) + '</span>' : '';
-}
 /* ---------- 掴む未来（2026-10-02 に「グループ」として追加、2026-10-15 に呼び名を変えた） ----------
    やりたいことを、向かう先（掴む未来）ごとにまとめる。掴む未来の並びも、中の単発の並びも優先順。
    **今日タブ・1週間タブには、単発はまだやり切っていない一番上の1件だけを出す。**
    それをやり切ると（「達成したもの」になると）、次の1件が出てくる。
    ▼ くり返しも入る（2026-10-15）。くり返しには順番が無く、いつも出す
-   ▼ カテゴリー（重さ）は掴む未来が持つ。中のものは、リストでは掴む未来のカテゴリーに出る。
-     やりたいこと自身の t.cat は消さずに持っておき、外れたらそちらに戻る
    ▼ コードの名前（tgroups / groupOf …）と保存の形は「グループ」のまま */
 const groupById = id => S.tgroups.find(g => g.id === id) || null;
 function groupOf(t){
@@ -423,11 +337,6 @@ function groupWaiting(t){
   const g = groupOf(t); if(!g) return false;
   const h = groupHead(g);
   return !!h && h.id !== t.id;
-}
-/* リスト（今日タブ・1週間タブ）で使うカテゴリー。掴む未来に入っていれば、掴む未来のもの */
-function listCatOf(t){
-  const g = groupOf(t);
-  return g ? catOf({ cat: g.cat }) : catOf(t);
 }
 /* 「英語 2/5」（掴む未来の名前と、その中の単発の何番目か）。くり返しは順番が無いので「英語」だけ */
 function groupPos(t){
@@ -450,28 +359,6 @@ function groupOptions(cur){
   return '<option value="">フリー（どれにも入れない）</option>' + S.tgroups.map(g =>
     '<option value="' + esc(g.id) + '"' + (g.id === cur ? " selected" : "") + '>' + esc(g.name) + '</option>').join("");
 }
-
-/* 選ぶチップ。追加フォーム（index.html の #catChips）と編集画面で、同じものを使う */
-function catChipsBtns(cur){
-  const now = catOf({ cat: cur });
-  return '<button class="chip ' + catClass("") + (now === "" ? " on" : "") + '" data-cat="">なし</button>' +
-    CATS.map(c => '<button class="chip ' + catClass(c.key) + (now === c.key ? " on" : "") +
-      '" data-cat="' + c.key + '">' + esc(c.label) + '</button>').join("");
-}
-const catChipsHTML = (cur, id) => '<div class="chips cats" id="' + id + '">' + catChipsBtns(cur) + '</div>';
-/* チップの並びを押したときの受け取り。選ばれている値を返す */
-function bindCatChips(id, onPick){
-  const box = $(id); if(!box) return;
-  box.onclick = e => {
-    const c = e.target.closest(".chip"); if(!c) return;
-    box.querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
-    if(onPick) onPick(c.dataset.cat || "");
-  };
-}
-const catChipsValue = id => {
-  const on = $(id) && $(id).querySelector(".chip.on");
-  return on ? (on.dataset.cat || "") : "";
-};
 
 /* ================= 週（日曜はじまり） =================
    アプリ全体で週は日曜はじまりにそろえる。1週間ページも「週に何回」の集計も同じ。
@@ -2346,7 +2233,7 @@ function renderWeekSide(){
     // ▼ 名前と下の行は1行で打ち切る（CSS の .nm / .s）。ここが折り返すと丈が揃わず、
     //   2段に収めた枠から溢れる。全部読みたいときのために title で出しておく
     const full = t.text + "（あと" + o.left + "回 ・ " + sub.join(" ・ ") + "）";
-    return '<div class="item ' + catClass(listCatOf(t)) + '" data-id="' + t.id + '" draggable="true" title="' + esc(full) + '">' +
+    return '<div class="item" data-id="' + t.id + '" draggable="true" title="' + esc(full) + '">' +
       '<span class="grip" title="ドラッグして箱へ">⠿</span>' +
       '<div class="grow">' +
         '<div class="nm">' + esc(t.text) + '</div>' +
@@ -2361,11 +2248,9 @@ function renderWeekSide(){
         : '') +
     '</div>';
   };
-  // ▼ カテゴリーの見出しは、この折り返す並びの中に**幅いっぱいの1件**として入れてある
-  //   （CSS の .wksidelist .cathead）。別の枠に分けると、帯が縦に伸びて画面を食う
   const body = !list.length
     ? '<div class="empty-note" style="padding:4px 2px">この週に置くものは、もうありません。</div>'
-    : '<div class="wksidelist">' + catSections(list, o => listCatOf(o.t), row) + '</div>';
+    : '<div class="wksidelist">' + list.map(row).join("") + '</div>';
 
   // ▼ 2026-09-11：見出しの「この週に置くもの ◯件」は消した（本人の指示）。
   //   帯は上に貼り付いたまま7日ぶんを押し下げるので、名前と件数のぶんだけ浅くしてある。
@@ -2442,8 +2327,7 @@ function renderUnplaced(){
       '<div class="empty-note">まだやりたいことがありません。「やりたいこと」タブから追加してください。</div></div>';
     return;
   }
-  // ▼ カテゴリー（せきにん／ごほうび／おきらく）ごとに見出しを立てて分ける。
-  //   並びは todayTasks() の順（急ぎの順）のまま。まとまりの中でだけ並ぶ
+  // 並びは todayTasks() の順（急ぎの順）のまま
   const row = o => {
     const t = o.t, st = o.st;
     const late = o.urgency >= 4;
@@ -2453,7 +2337,7 @@ function renderUnplaced(){
       ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
       : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
     if(groupOf(t)) sub.push(groupPos(t));
-    return '<div class="item ' + catClass(listCatOf(t)) + '" data-id="' + t.id + '" draggable="true">' +
+    return '<div class="item" data-id="' + t.id + '" draggable="true">' +
       '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
       '<div class="grow">' + taskTitle(t) + '<div class="s">' + escMark(sub.join(" ・ ")) + '</div></div>' +
       (late ? '<span class="tag late">遅れ</span>' : '') +
@@ -2462,7 +2346,7 @@ function renderUnplaced(){
   };
   const body = !list.length
     ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
-    : catSections(list, o => listCatOf(o.t), row, true);
+    : list.map(row).join("");
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
@@ -2472,9 +2356,6 @@ function renderUnplaced(){
     '</div>';
 }
 $("unplaced").addEventListener("click", e => {
-  // 見出し（畳む／出す）は行の外にあるので、行を探すより先に受けること
-  const fold = e.target.closest("[data-fold]");
-  if(fold){ toggleCatFold(fold.dataset.fold); return; }
   const btn = e.target.closest("[data-act]"); if(!btn) return;
   const row = e.target.closest(".item"); if(!row) return;
   if(btn.dataset.act === "skip") skipToday(row.dataset.id);
@@ -2669,11 +2550,6 @@ $("skippedList").addEventListener("click", e => {
 });
 
 /* ================= やりたいこと追加フォーム ================= */
-/* タグ（せきにん／ごほうび／おきらく）。中身は CATS から組み立てる。
-   一度選んだら、そのまま次の追加にも残る（同じ種類を続けて足すことが多いので） */
-let taskCat = "";
-$("catChips").innerHTML = catChipsBtns(taskCat);
-bindCatChips("catChips", k => { taskCat = k; });
 let freqUnit = "once";
 $("freqChips").addEventListener("click", e => {
   const c = e.target.closest(".chip"); if(!c) return;
@@ -2720,7 +2596,7 @@ function addTask(){
   const id = uid();
   S.tasks.push({
     id, text: v, links: first ? [first] : [],
-    cat: taskCat, freq, size, goal, fixed: null, remindAt: "",
+    freq, size, goal, fixed: null, remindAt: "",
     log: [], actuals: [], createdAt: Date.now()
   });
   setTaskGroup(id, $("taskGroup").value);
@@ -2814,7 +2690,6 @@ function groupsHTML(){
     const ms = groupMembers(g), once = groupOnce(g);
     const head = groupHead(g);
     const nDone = once.filter(isDone).length, nRep = ms.length - once.length;
-    const c = catOf({ cat: g.cat });
     const top = gi === 0, bottom = gi === S.tgroups.length - 1;
     const late = !!g.due && g.due < k;
     const sub = [];
@@ -2829,9 +2704,9 @@ function groupsHTML(){
           first: i === 0, last: i === once.length - 1 })).join("");
       }
       const list = ms.filter(t => t.freq.unit === fg.key);
-      return list.length ? freqHead(fg.title, list.length) + list.map(t => repeatRow(t, true)).join("") : "";
+      return list.length ? freqHead(fg.title, list.length) + list.map(t => repeatRow(t)).join("") : "";
     }).join("");
-    return '<div class="tgroup ' + catClass(c) + '" data-gid="' + esc(g.id) + '">' +
+    return '<div class="tgroup" data-gid="' + esc(g.id) + '">' +
       '<div class="tghead">' +
         '<span class="tgno">' + (gi + 1) + '</span>' +
         '<div class="grow"><div class="t">' + esc(g.name) + '</div>' +
@@ -2839,7 +2714,6 @@ function groupsHTML(){
           '<div class="s">' + (ms.length ? esc(sub.join(" ・ ")) : "まだ空です") +
             (g.due ? ' ・ <span class="tgdue' + (late ? " late" : "") + '">' + esc(g.due.replace(/-/g, "/")) + ' までに</span>' : '') +
           '</div></div>' +
-        (c ? '<span class="cattag ' + catClass(c) + '">' + esc(catInfo(c).label) + '</span>' : '') +
         '<button class="btn ghost tgpick" data-gact="pick" title="この掴む未来に入れるやりたいことを選ぶ">＋ 入れる</button>' +
         '<button class="iconbtn" data-gact="up" title="上へ"' + (top ? " disabled" : "") + '>↑</button>' +
         '<button class="iconbtn" data-gact="down" title="下へ"' + (bottom ? " disabled" : "") + '>↓</button>' +
@@ -2852,26 +2726,23 @@ function groupsHTML(){
   return '<div class="row tgbar"><h2>掴む未来</h2>' +
     '<button class="btn ghost" id="tgAdd">＋ 掴む未来を作る</button></div>' + blocks;
 }
-/* 掴む未来を作る・直す。名前は入力欄、タグはチップ（追加フォームと同じもの）、なぜ・いつまでに */
+/* 掴む未来を作る・直す。名前は入力欄、なぜ・いつまでに */
 async function editGroup(gid){
   const g = gid ? groupById(gid) : null;
   const asked = openModal({ title: g ? "掴む未来を直す" : "掴む未来を作る", input: true,
     value: g ? g.name : "", placeholder: "例：英語を話せるようになる",
-    html: catChipsHTML(g ? g.cat : taskCat, "tgCat") +
-      '<label class="tgfield"><span>なぜ</span><input id="tgWhy" autocomplete="off" maxlength="200" placeholder="書かなくてもよい" value="' +
+    html: '<label class="tgfield"><span>なぜ</span><input id="tgWhy" autocomplete="off" maxlength="200" placeholder="書かなくてもよい" value="' +
         esc(g ? g.why : "") + '"></label>' +
       '<label class="tgfield"><span>いつまでに</span><input type="date" id="tgDue" value="' + esc(g ? g.due : "") + '"></label>',
     ok: g ? "保存" : "作る" });
-  bindCatChips("tgCat");                          // チップは開いた直後に動きをつける
   const v = await asked;
   if(v === null) return;
   const name = String(v).trim().slice(0, 40);
   if(!name){ toast("名前を入れてください"); return; }
-  const cat = catChipsValue("tgCat");
   const why = $("tgWhy").value.trim().slice(0, 200);
   const due = /^\d{4}-\d{2}-\d{2}$/.test($("tgDue").value) ? $("tgDue").value : "";
-  if(g){ Object.assign(g, { name, cat, why, due }); save(); renderAll(); toast("直しました"); return; }
-  const ng = { id: uid(), name, cat, why, due, ids: [] };
+  if(g){ Object.assign(g, { name, why, due }); save(); renderAll(); toast("直しました"); return; }
+  const ng = { id: uid(), name, why, due, ids: [] };
   S.tgroups.push(ng);
   save(); renderAll();
   $("taskGroup").value = ng.id;                   // 次に追加するものは、作った掴む未来に入る
@@ -3017,7 +2888,7 @@ function onceRow(t, g){
         (linksOf(t).length ? ' ・ ' + esc(linkSummary(t)) : '') + '</div>' +
     '</div>' +
     (g && g.next ? '<span class="tag now">次はこれ</span>' : '') +
-    (g ? "" : catTag(t)) + sizeBox(t) +
+    sizeBox(t) +
     (g ? '<button class="iconbtn" data-act="gup" title="掴む未来の中で上へ"' + (g.first ? " disabled" : "") + '>↑</button>' +
          '<button class="iconbtn" data-act="gdown" title="掴む未来の中で下へ"' + (g.last ? " disabled" : "") + '>↓</button>'
        : (done ? "" : '<button class="iconbtn" data-act="up" title="上へ">↑</button>')) +
@@ -3033,12 +2904,11 @@ function farRow(t){
     '<div class="grow">' + taskTitle(t) +
       '<div class="s">' + esc(t.remindAt) + ' から出てきます ・ ' + boxTime(t.size) + '</div>' +
     '</div>' +
-    catTag(t) + editBtn(t) + linkBtn(t) +
+    editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
   '</div>';
 }
-/* inGroup … 掴む未来の中に出すとき。重さは掴む未来が持つので、行の札は出さない */
-function repeatRow(t, inGroup){
+function repeatRow(t){
   const st = statOf(t);
   // 「遅れ」は期間のあるもの（週/月/N日ごと）だけ。
   // 毎日・仕事の日・休みの日は、その日にまだやっていないだけなので出さない
@@ -3060,7 +2930,7 @@ function repeatRow(t, inGroup){
       '<div class="s">' + esc(freqLabel(t.freq)) + ' ・ ' + esc(st.period.label) + ' ・ ' + boxTime(t.size) +
       (t.fixed ? ' ・ ' + esc(fixedLabel(t)) : '') + esc(actualHint(t)) + '</div>' +
     '</div>' +
-    (inGroup ? "" : catTag(t)) + sizeBox(t) +
+    sizeBox(t) +
     (st.actual > 0 ? '<button class="iconbtn" data-act="undo" title="1回減らす">−</button>' : '') +
     editBtn(t) + linkBtn(t) +
     '<button class="iconbtn del" data-act="del" title="削除">✕</button>' +
@@ -3092,7 +2962,7 @@ let edNewAt  = null;     // 空き箱から作るとき { key, i }。ふつう�
 let edStepId = "";       // 「やりたいことを見つけよう」の③から作るとき、その行のID
 
 /* 入力欄を組み立てて、動きをつける。
-   v … 初期値 { text, cat, freq, goal, size, fixed, remindAt }
+   v … 初期値 { text, freq, goal, size, fixed, remindAt }
    isNew … true なら名前だけ見せて、あとは「詳細」を押すまで畳んでおく */
 function buildTaskForm(v, isNew){
   const f = v.freq || { unit: "once" };
@@ -3104,10 +2974,6 @@ function buildTaskForm(v, isNew){
   const size = Math.max(1, v.size || 1);
   // 名前より下は、まとめて畳めるように1つの枠に入れてある
   const more =
-    // 掴む未来に入っているあいだは、重さは掴む未来のもの。チップは隠して名前を出す（syncEdCat）。
-    // チップ自体は残しておくので、やりたいこと自身の重さ（t.cat）はそのまま保存される
-    '<div class="edrow"><span>タグ</span>' + catChipsHTML(v.cat, "edCat") +
-      '<span class="fnote" id="edCatBy" style="display:none"></span></div>' +
     '<div class="edrow"><span>くり返し</span><div class="chips" id="edUnit">' +
       units.map(([u,l]) => '<button class="chip' + (f.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
         l + '</button>').join("") + '</div></div>' +
@@ -3143,8 +3009,6 @@ function buildTaskForm(v, isNew){
     $("edUnit").querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c));
     syncEdCount();
   };
-  bindCatChips("edCat");
-  $("edGroup").onchange = syncEdCat;
   $("edSize").oninput = ()=>{
     const n = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
     $("edSizeNote").textContent = boxTime(n);
@@ -3165,7 +3029,6 @@ function readTaskForm(){
   const count = Math.min(99, Math.max(1, parseInt($("edCount").value, 10) || 1));
   const n     = Math.min(365, Math.max(1, parseInt($("edN").value, 10) || 1));
   const size  = Math.min(16, Math.max(1, parseInt($("edSize").value, 10) || 1));
-  const cat   = catChipsValue("edCat");
   let freq, goal;
   if(u === "once"){ freq = { unit: "once" }; goal = count; }   // 単発の総回数（期限なし）
   else{
@@ -3179,14 +3042,14 @@ function readTaskForm(){
     fixed = { dow: dow === "" ? null : parseInt(dow, 10), time: $("edTime").value || "18:00" };
   }
   const rm = $("edRemind").value;
-  return { text, size, cat, freq, goal, fixed,
+  return { text, size, freq, goal, fixed,
            gid: $("edGroup").value,
            remindAt: /^\d{4}-\d{2}-\d{2}$/.test(rm) ? rm : "" };
 }
 function openTaskEditor(id){
   const t = taskById(id); if(!t) return;
   edTaskId = id; edNewAt = null;
-  buildTaskForm({ text: t.text, cat: catOf(t), freq: t.freq, goal: goalOf(t), size: t.size,
+  buildTaskForm({ text: t.text, freq: t.freq, goal: goalOf(t), size: t.size,
                   fixed: t.fixed, remindAt: t.remindAt,
                   gid: (groupOf(t) || {}).id || "" }, false);
   $("edTitle").textContent = "「" + t.text + "」を直す";
@@ -3202,7 +3065,7 @@ function openNewBoxTask(key, i){
   key = okKey(key);
   if(key < dayKey()){ toast("過ぎた日には入れられません"); return; }
   edTaskId = ""; edNewAt = { key, i: Math.max(0, i || 0) };
-  buildTaskForm({ text:"", cat:"", freq:{ unit:"once" }, goal:1, size:1,
+  buildTaskForm({ text:"", freq:{ unit:"once" }, goal:1, size:1,
                   fixed:null, remindAt:"" }, true);
   $("edTitle").textContent =
     dayLabel(key) + "の箱 " + (edNewAt.i + 1) + "（" + boxClock(key, edNewAt.i) + "ごろ）に入れる";
@@ -3227,7 +3090,7 @@ function saveNewBoxTask(){
     toast(v.size > 1 ? "連続した" + v.size + "箱の空きがありません" : "空き箱がありません");
     return;
   }
-  const t = { id: uid(), text: v.text, links: [], cat: v.cat, freq: v.freq, size: v.size,
+  const t = { id: uid(), text: v.text, links: [], freq: v.freq, size: v.size,
               goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
               log: [], actuals: [], createdAt: Date.now() };
   S.tasks.push(t);
@@ -3258,14 +3121,6 @@ function syncEdCount(){
   $("edN").style.display   = u === "days" ? "" : "none";
   $("edMid").style.display = u === "days" ? "" : "none";
   $("edGroupRow").style.display = S.tgroups.length ? "" : "none";
-  syncEdCat();
-}
-/* 編集画面のタグの行。掴む未来に入っているあいだは押せなくして「掴む未来：英語」と出す */
-function syncEdCat(){
-  const g = groupById($("edGroup").value);
-  $("edCat").style.display = g ? "none" : "";
-  $("edCatBy").style.display = g ? "" : "none";
-  $("edCatBy").textContent = g ? "掴む未来：" + g.name : "";
 }
 function closeTaskEditor(){ $("editModal").classList.remove("on"); edTaskId = ""; edNewAt = null; edStepId = ""; }
 function saveTaskEditor(){
@@ -3276,7 +3131,7 @@ function saveTaskEditor(){
 
   t.text = v.text;
   t.size = v.size;
-  t.cat  = v.cat;
+  delete t.cat;                                   // カテゴリーは 2026-11-01 にやめた
   t.freq = v.freq;
   t.goal = v.goal;
   t.fixed = v.fixed;
@@ -5239,7 +5094,7 @@ function removeStep(id){
 function openStepTask(id){
   const s = fdStep(id); if(!s) return;
   edTaskId = ""; edNewAt = null; edStepId = id;
-  buildTaskForm({ text: s.text, cat:"", freq:{ unit:"once" }, goal:1, size:1,
+  buildTaskForm({ text: s.text, freq:{ unit:"once" }, goal:1, size:1,
                   fixed:null, remindAt:"" }, false);
   $("edTitle").textContent = "やりたいことにする";
   $("edOk").textContent = "登録";
@@ -5249,7 +5104,7 @@ function openStepTask(id){
 function saveStepTask(){
   const s = fdStep(edStepId); if(!s){ closeTaskEditor(); return; }
   const v = readTaskForm(); if(!v) return;
-  const t = { id: uid(), text: v.text, links: [], cat: v.cat, freq: v.freq, size: v.size,
+  const t = { id: uid(), text: v.text, links: [], freq: v.freq, size: v.size,
               goal: v.goal, fixed: v.fixed, remindAt: v.remindAt,
               log: [], actuals: [], createdAt: Date.now() };
   S.tasks.push(t);

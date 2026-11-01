@@ -17,11 +17,6 @@
   --ok:#4ecb8f;
   --warn:#ffa552;
   --danger:#ff6b6b;
-  /* カテゴリー（せきにん／ごほうび／おきらく）。app.js の CATS と1対1 */
-  --cat-resp:#6ea8fe;
-  --cat-reward:#ffd166;
-  --cat-easy:#4ecb8f;
-  --cat-none:#6b7688;
   /* ▼ デザインの切り替え（設定タブ）で差し替える値。下の「デザイン：◯◯」の節が上書きする。
        色を足すときは、ここに名前を作ってから使うこと。じかに書くと、ほかのデザインで浮く */
   --accent-rgb:91,156,255;      /* --accent を薄く敷くとき用。rgba(var(--accent-rgb),.1) */
@@ -408,67 +403,15 @@ body.now-fixed .side #rouletteBox{
 .tag.now{background:rgba(var(--accent-rgb),.18);color:var(--accent)}
 .tag.box{background:rgba(var(--accent2-rgb),.14);color:var(--accent2)}
 
-/* ---------- カテゴリー（せきにん／ごほうび／おきらく） ----------
-   組ごとに --cat を差し替えるだけ。見出しも札もチップも、同じ1色から作る */
-.cat-resp  {--cat:var(--cat-resp)}
-.cat-reward{--cat:var(--cat-reward)}
-.cat-easy  {--cat:var(--cat-easy)}
-.cat-none  {--cat:var(--cat-none)}
-/* まとまりの見出し（今日タブ・1週間タブのリスト） */
-.cathead{
-  display:flex;align-items:center;gap:6px;
-  font-size:11px;letter-spacing:.08em;color:var(--fg-dim);
-  margin:12px 0 6px;
-}
-.cathead:first-child{margin-top:0}
-.cathead .catdot{width:8px;height:8px;border-radius:50%;background:var(--cat,var(--cat-none));flex:none}
-.cathead .cn{color:var(--fg-faint);font-size:10px;font-variant-numeric:tabular-nums}
-/* 畳める見出し（今日タブのリスト）。押すと、そのまとまりの中身が隠れる。
-   ▼ 畳んだときは名前も件数も丸も消して、▼ だけを残す（本人の指示）。
-     色は ▼ に残す。全部畳んだときに、どれがどれか分からなくなるため */
-.cathead.catfold{
-  width:100%;background:none;border:none;
-  font-family:inherit;font-size:11px;letter-spacing:.08em;
-  text-align:left;cursor:pointer;padding:5px 0;
-}
-.cathead.catfold:hover{color:var(--fg)}
-.cathead .caret{color:var(--cat,var(--cat-none));font-size:9px;line-height:1;flex:none}
-/* 畳んだぶんは詰めて出す。ただしスマホで押せる高さは残す */
-.cathead.shut{margin:2px 0}
-.cathead.shut .catdot,.cathead.shut .ct,.cathead.shut .cn{display:none}
-/* 一覧の行に付く札（「やりたいこと」タブ）。付けていないものには出さない */
-.cattag{
-  font-size:11px;font-weight:600;flex:none;
-  padding:1px 8px;border-radius:99px;
-  color:var(--cat,var(--cat-none));
-  border:1px solid var(--cat,var(--line));
-  background:var(--card2);
-}
-/* リストの行。見出しから離れても、左の色帯で組が分かる */
-#unplaced .item,.wksidelist .item{border-left:3px solid var(--cat,transparent)}
-/* 選ぶチップ。選んでいない間も、頭の丸で色が分かる */
-.chips.cats .chip::before{
-  content:"";display:inline-block;vertical-align:middle;
-  width:8px;height:8px;border-radius:50%;margin-right:7px;
-  background:var(--cat,var(--cat-none));
-}
-.chips.cats .chip:hover{border-color:var(--cat,var(--accent))}
-.chips.cats .chip.on{
-  background:var(--cat,var(--accent));border-color:var(--cat,var(--accent));
-  color:var(--on-accent);font-weight:700;
-}
-.chips.cats .chip.on::before{background:var(--on-accent);opacity:.45}
-
 /* ▼ 狭い画面では「やりたいこと」タブの行が横に収まらない
-     （✓・札・箱数・ボタン5つで、名前の幅を 0 にしてもまだ足りない）。
+     （✓・箱数・ボタン5つで、名前の幅を 0 にしてもまだ足りない）。
      名前を1行目、操作を2行目に折り返して、横スクロールバーを出さない。
      この折り返しは**この一覧だけ**。今日タブや1週間の帯の行は、これまでどおり1行 */
 @media (max-width:600px){
   #taskList .item{flex-wrap:wrap;gap:6px}
   #taskList .item .grow{flex:1 0 100%;order:-1}
-  /* 2行目（✓・札・箱数・ボタン）が、さらに3行目へこぼれないように詰める。
+  /* 2行目（✓・箱数・ボタン）が、さらに3行目へこぼれないように詰める。
      「−」が出る行（1回でも記録したもの）でも収まる幅にしてある */
-  #taskList .cattag{padding:1px 6px;font-size:10px}
   #taskList .sizein{width:44px !important}
   #taskList .iconbtn{padding:5px 4px}
 }
@@ -978,26 +921,14 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
 }
 .wksidelist{
   display:flex;flex-wrap:wrap;gap:5px;
-  /* もとは2段ぶん（94px）→ カテゴリーの見出しが段のあいだに入るので 230px（3組ぶん）。
-     2026-09-11 に、見出し「この週に置くもの ◯件」を消したうえで**1割ほど浅くした**（本人の指示）。
-     浅くしたぶんは、すきま・見出しの上の空き・1件の上下の余白から1〜2pxずつ削って作ってある。
-     **入る組の数は3つのまま。** 縮めるために組を減らすと、せきにんの下が見えなくなる。
-
-     「見出し17.6 ＋ すきま5 ＋ 1段41」＝ 63.6px のあと、2組目からは
-     「見出しの上の空き2 ＋ 見出し17.6 ＋ すきま5 ＋ 1段41 ＋ すきま5」＝ 70.6px ずつ。
-     3組で 204.8px、上下の padding 2px と余り 2px を足して 209px（もとは 230px）。
-     ちょうど区切りで終わるので、下の段が半端に切れない。
-     入りきらないぶんは、これまでどおり縦に転がる。
-     ▼ 1件の丈・見出しの丈・すきまを変えたら、ここも数え直すこと
-       （数えるより、画面で下の段が切れていないかを見るほうが速い） */
+  /* もとは2段ぶん（94px）→ カテゴリーの見出しを入れるために 230px → 2026-09-11 に 209px。
+     2026-11-01 にカテゴリーをやめて見出しは無くなったが、高さは 209px のまま残してある
+     （1段 41px ＋ すきま 5px なので、4段と少し見える）。
+     入りきらないぶんは、これまでどおり縦に転がる */
   max-height:209px;
   overflow-y:auto;overflow-x:hidden;
   padding:1px 4px 1px 1px;scrollbar-width:thin;
 }
-/* カテゴリーの見出しは、この並びの中で幅いっぱいを取って改行させる。
-   別の枠に分けると帯が縦に伸びるので、1つの並びのまま区切っている */
-.wksidelist .cathead{flex:0 0 100%;margin:2px 0 0}
-.wksidelist .cathead:first-child{margin-top:0}
 .wksidelist .item{
   margin-bottom:0;flex:0 0 auto;width:206px;
   gap:6px;padding:4px 8px;border-radius:9px;
@@ -1263,12 +1194,12 @@ body.fd-open{overflow:hidden}
 .fdreg{font-size:12px;color:var(--ok);padding:0 4px}
 
 /* ---------- やりたいことのグループ（「やりたいこと」タブ。2026-10-02） ----------
-   グループの並び ＝ 優先順。番号の丸と左の帯はグループのカテゴリーの色 */
+   グループの並び ＝ 優先順 */
 .tgbar{justify-content:space-between;align-items:center;margin:22px 0 9px}
 .tgbar h2{margin:0}
 .tgbar .btn{padding:6px 12px;font-size:13px}
 .tgroup{
-  border:1px solid var(--line);border-left:3px solid var(--cat,var(--line));
+  border:1px solid var(--line);border-left:3px solid var(--line);
   border-radius:var(--radius);padding:8px 8px 1px;margin-bottom:12px;background:var(--bg2);
 }
 .tghead{display:flex;align-items:center;gap:8px;padding:2px 4px 8px}
@@ -1277,9 +1208,8 @@ body.fd-open{overflow:hidden}
 .tgno{
   flex:none;min-width:24px;height:24px;border-radius:12px;padding:0 6px;
   display:inline-flex;align-items:center;justify-content:center;
-  background:var(--cat,var(--card2));color:#15171c;font-size:13px;font-weight:700;
+  background:var(--card2);color:var(--fg);font-size:13px;font-weight:700;
 }
-.cat-none .tgno{color:var(--fg)}
 .tgino{flex:none;width:16px;text-align:right;font-size:12px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
 .item.ingroup.next{border-color:var(--accent)}
 .iconbtn:disabled{opacity:.25;cursor:default}
@@ -1343,10 +1273,6 @@ html[data-theme="angel"]{
   --warn:#df8526;
   --warn-rgb:223,133,38;
   --danger:#e3536a;
-  --cat-resp:#4f8ff0;
-  --cat-reward:#e0a238;
-  --cat-easy:#36b07f;
-  --cat-none:#9aaacb;
   --on-accent:#fff;
   --on-accent2:#fff;
 
@@ -1449,7 +1375,7 @@ html[data-theme="angel"] #sec-set > .empty-note{padding-top:10px !important}
 html[data-theme="angel"] .wkcol.today{background-color:rgba(255,255,255,.78);border-color:var(--accent)}
 html[data-theme="angel"] .dcard.same{border-left:3px solid var(--accent2)}
 html[data-theme="angel"] .dcard.editing{border-color:var(--accent)}
-html[data-theme="angel"] .tgroup{border-left:3px solid var(--cat,var(--glass-edge))}
+html[data-theme="angel"] .tgroup{border-left:3px solid var(--glass-edge)}
 
 /* ---------- 見出しの飾り ----------
    羽や十字の画像が届いたら、ここの ✦ を差し替える */
@@ -1632,7 +1558,7 @@ html[data-theme="angel"] .item{
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
 }
 html[data-theme="angel"] #unplaced .item,
-html[data-theme="angel"] .wksidelist .item{border-left:3px solid var(--cat,var(--glass-edge))}
+html[data-theme="angel"] .wksidelist .item{border-left:3px solid var(--glass-edge)}
 html[data-theme="angel"] .item.ingroup.next{border-color:var(--accent)}
 
 /* ---------- ボタン・入力欄 ---------- */
@@ -1644,7 +1570,6 @@ html[data-theme="angel"] textarea,
 html[data-theme="angel"] select{background:rgba(255,255,255,.8)}
 html[data-theme="angel"] .chip{background:rgba(255,255,255,.75)}
 html[data-theme="angel"] .chip.on{background:var(--accent)}
-html[data-theme="angel"] .chips.cats .chip.on{background:var(--cat,var(--accent))}
 html[data-theme="angel"] .iconbtn:hover{background:rgba(var(--accent-rgb),.1)}
 html[data-theme="angel"] .dpasthead input[type=month]{color-scheme:light}
 
@@ -1868,10 +1793,6 @@ html[data-theme="yami"]{
   --warn:#ffa552;
   --warn-rgb:255,165,82;
   --danger:#ff5c7f;
-  --cat-resp:#6e9bff;
-  --cat-reward:#ffc96b;
-  --cat-easy:#55e0c6;
-  --cat-none:#6d75a8;
   --on-accent:#fff;
   --on-accent2:#fff;
 
@@ -1960,7 +1881,7 @@ html[data-theme="yami"] #sec-set > .empty-note{padding-top:10px !important}
 html[data-theme="yami"] .wkcol.today{background-color:rgba(24,26,70,.8);border-color:var(--accent)}
 html[data-theme="yami"] .dcard.same{border-left:3px solid var(--accent2)}
 html[data-theme="yami"] .dcard.editing{border-color:var(--accent)}
-html[data-theme="yami"] .tgroup{border-left:3px solid var(--cat,var(--glass-edge))}
+html[data-theme="yami"] .tgroup{border-left:3px solid var(--glass-edge)}
 
 /* ---------- 見出しの飾り（仮の置き場所。天使と同じ所） ---------- */
 html[data-theme="yami"] h2{color:var(--fg-dim)}
@@ -2126,7 +2047,7 @@ html[data-theme="yami"] .item{
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
 }
 html[data-theme="yami"] #unplaced .item,
-html[data-theme="yami"] .wksidelist .item{border-left:3px solid var(--cat,var(--glass-edge))}
+html[data-theme="yami"] .wksidelist .item{border-left:3px solid var(--glass-edge)}
 html[data-theme="yami"] .item.ingroup.next{border-color:var(--accent)}
 
 /* ---------- ボタン・入力欄 ---------- */
@@ -2138,7 +2059,6 @@ html[data-theme="yami"] textarea,
 html[data-theme="yami"] select{background:rgba(8,10,28,.8)}
 html[data-theme="yami"] .chip{background:rgba(14,16,42,.75)}
 html[data-theme="yami"] .chip.on{background:var(--accent);color:#fff}
-html[data-theme="yami"] .chips.cats .chip.on{background:var(--cat,var(--accent))}
 html[data-theme="yami"] .iconbtn:hover{background:rgba(var(--accent-rgb),.15)}
 html[data-theme="yami"] .dpasthead input[type=month]{color-scheme:dark}
 
