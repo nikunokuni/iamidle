@@ -920,15 +920,28 @@ input[type=number]{width:70px;flex:none;text-align:center;padding:9px 4px}
   background:rgba(22,26,33,.94);backdrop-filter:blur(10px);
 }
 .wksidelist{
-  display:flex;flex-wrap:wrap;gap:5px;
   /* もとは2段ぶん（94px）→ カテゴリーの見出しを入れるために 230px → 2026-09-11 に 209px。
-     2026-11-01 にカテゴリーをやめて見出しは無くなったが、高さは 209px のまま残してある
-     （1段 41px ＋ すきま 5px なので、4段と少し見える）。
+     2026-11-01 から中身は 掴む未来ごとの枠 → フリー（今日タブと同じ）。高さは 209px のまま。
      入りきらないぶんは、これまでどおり縦に転がる */
   max-height:209px;
   overflow-y:auto;overflow-x:hidden;
   padding:1px 4px 1px 1px;scrollbar-width:thin;
 }
+/* 枠の中の並び。折り返して横に詰める。小見出し（単発／毎日／…）も改行させずに、
+   行と同じ並びの中へ小さな札として置く（帯は横に広く縦に浅いので、改行すると7日ぶんを押し出す） */
+.wkrow{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.wkrow .tgsub{flex:none;margin:0 0 0 6px;font-size:10px;letter-spacing:.08em}
+.wkrow .tgsub:first-child{margin-left:2px}
+/* 枠は今日タブよりさらに詰める。帯が深くなると7日ぶんを押し出すため */
+.wksidelist .tgroup{padding:4px 6px 6px;margin-bottom:6px}
+.wksidelist .tgroup:last-child{margin-bottom:0}
+.wksidelist .tghead{padding:1px 2px 4px;gap:6px}
+.wksidelist .tghead .t{font-size:13px}
+/* 名前と「いつまでに」を1行に */
+.wksidelist .tghead .grow{display:flex;align-items:baseline;gap:8px;min-width:0}
+.wksidelist .tghead .s{font-size:11px;margin-top:0;flex:none}
+.wksidelist .tgno{min-width:18px;height:18px;font-size:11px;padding:0 5px}
+.wksidelist .tgino{width:auto;font-size:11px}
 .wksidelist .item{
   margin-bottom:0;flex:0 0 auto;width:206px;
   gap:6px;padding:4px 8px;border-radius:9px;

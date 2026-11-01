@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-11-01.2";
+const APP_VERSION = "2026-11-01.3";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -337,13 +337,6 @@ function groupWaiting(t){
   const g = groupOf(t); if(!g) return false;
   const h = groupHead(g);
   return !!h && h.id !== t.id;
-}
-/* 「英語 2/5」（掴む未来の名前と、その中の単発の何番目か）。くり返しは順番が無いので「英語」だけ */
-function groupPos(t){
-  const g = groupOf(t); if(!g) return "";
-  if(t.freq.unit !== "once") return g.name;
-  const ms = groupOnce(g);
-  return g.name + " " + (ms.indexOf(t) + 1) + "/" + ms.length;
 }
 /* 掴む未来に入れる（gid が空なら外す）。入れるときは、その一番下 */
 function setTaskGroup(id, gid){
@@ -2227,13 +2220,13 @@ function renderWeekSide(){
     const t = o.t;
     const sub = [t.size > 1 ? t.size + "箱" : "1箱"];
     sub.push(t.freq.unit === "once" ? "単発" : freqLabel(t.freq));
-    if(groupOf(t)) sub.push(groupPos(t));
-    if(t.fixed) sub.push(fixedLabel(t));
+    if(t.fixed) sub.push(fixedLabel(t));      // 掴む未来の名前は枠の見出しに出すので、行には書かない
     const ovr = t.freq.unit === "week" && hasOverride(t, key);
     // ▼ 名前と下の行は1行で打ち切る（CSS の .nm / .s）。ここが折り返すと丈が揃わず、
     //   2段に収めた枠から溢れる。全部読みたいときのために title で出しておく
     const full = t.text + "（あと" + o.left + "回 ・ " + sub.join(" ・ ") + "）";
     return '<div class="item" data-id="' + t.id + '" draggable="true" title="' + esc(full) + '">' +
+      groupNoHTML(t) +
       '<span class="grip" title="ドラッグして箱へ">⠿</span>' +
       '<div class="grow">' +
         '<div class="nm">' + esc(t.text) + '</div>' +
@@ -2250,7 +2243,10 @@ function renderWeekSide(){
   };
   const body = !list.length
     ? '<div class="empty-note" style="padding:4px 2px">この週に置くものは、もうありません。</div>'
-    : '<div class="wksidelist">' + list.map(row).join("") + '</div>';
+    // ▼ 2026-11-01：今日タブ・やりたいことタブと同じく、掴む未来ごとの枠 → フリー に分ける（本人の指示）。
+    //   枠の中は折り返す並び（.wkrow）で、小見出しはその中に幅いっぱいの1件として入れてある
+    : '<div class="wksidelist">' +
+        groupFrames(list, items => '<div class="wkrow">' + freqSubs(items, row) + '</div>') + '</div>';
 
   // ▼ 2026-09-11：見出しの「この週に置くもの ◯件」は消した（本人の指示）。
   //   帯は上に貼り付いたまま7日ぶんを押し下げるので、名前と件数のぶんだけ浅くしてある。
@@ -2339,10 +2335,8 @@ function renderUnplaced(){
       ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
       : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
     // 掴む未来の名前は枠の見出しに出すので、行には書かない。単発は、枠の中の何番目かを左に出す
-    const g = groupOf(t);
-    const no = g && t.freq.unit === "once" ? groupOnce(g).indexOf(t) + 1 : 0;
     return '<div class="item" data-id="' + t.id + '" draggable="true">' +
-      (no ? '<span class="tgino">' + no + '</span>' : '') +
+      groupNoHTML(t) +
       '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
       '<div class="grow">' + taskTitle(t) + '<div class="s">' + escMark(sub.join(" ・ ")) + '</div></div>' +
       (late ? '<span class="tag late">遅れ</span>' : '') +
@@ -2351,7 +2345,7 @@ function renderUnplaced(){
   };
   const body = !list.length
     ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
-    : unplacedBody(list, row);
+    : groupFrames(list, items => freqSubs(items, row));
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
@@ -2360,16 +2354,13 @@ function renderUnplaced(){
       body +
     '</div>';
 }
-/* 今日タブのリストの中身。やりたいことタブ（renderTasks）と同じくくりにする：
-   掴む未来ごとの枠（優先順・番号つき）→ フリー。枠の中は 単発／毎日／… の小見出し。
+/* 今日タブ・1週間タブのリストの中身。やりたいことタブ（renderTasks）と同じくくりにする：
+   掴む未来ごとの枠（優先順・番号つき）→ フリー。枠の中は 単発／毎日／… の小見出し（freqSubs）。
+   inner … 枠1つぶんの中身を作る関数（今日タブと1週間タブで並べ方が違うため）
    ▼ 今日出すものが無い掴む未来は、枠ごと出さない
    ▼ 掴む未来が1つも無いときは枠を出さず、小見出しだけで分ける（やりたいことタブと同じ） */
-function unplacedBody(list, row){
-  const byFreq = items => GROUPS.map(fg => {
-    const l = items.filter(o => o.t.freq.unit === fg.key);
-    return l.length ? '<div class="tgsub">' + esc(fg.key === "once" ? "単発" : fg.title) + '</div>' + l.map(row).join("") : "";
-  }).join("");
-  if(!S.tgroups.length) return byFreq(list);
+function groupFrames(list, inner){
+  if(!S.tgroups.length) return inner(list);
   const k = dayKey();
   const frames = S.tgroups.map((g, gi) => {
     const items = list.filter(o => groupOf(o.t) === g);
@@ -2380,13 +2371,24 @@ function unplacedBody(list, row){
         '<div class="grow"><div class="t">' + esc(g.name) + '</div>' +
           (g.due ? '<div class="s"><span class="tgdue' + (late ? " late" : "") + '">' + esc(g.due.replace(/-/g, "/")) + ' までに</span></div>' : '') +
         '</div></div>' +
-      byFreq(items) +
+      inner(items) +
     '</div>';
   }).join("");
   const free = list.filter(o => !groupOf(o.t));
   return frames + (free.length
-    ? '<div class="tgroup tgfree"><div class="tghead"><div class="grow"><div class="t">フリー</div></div></div>' + byFreq(free) + '</div>'
+    ? '<div class="tgroup tgfree"><div class="tghead"><div class="grow"><div class="t">フリー</div></div></div>' + inner(free) + '</div>'
     : "");
+}
+/* 単発／毎日／… の小見出しを立てて並べる。並びは渡された順（急ぎの順）のまま */
+const freqSubs = (list, row) => GROUPS.map(fg => {
+  const l = list.filter(o => o.t.freq.unit === fg.key);
+  return l.length ? '<div class="tgsub">' + esc(fg.key === "once" ? "単発" : fg.title) + '</div>' + l.map(row).join("") : "";
+}).join("");
+/* 掴む未来に入っている単発の、枠の中の番号（行の左に出す）。それ以外は "" */
+function groupNoHTML(t){
+  const g = groupOf(t);
+  const no = g && t.freq.unit === "once" ? groupOnce(g).indexOf(t) + 1 : 0;
+  return no ? '<span class="tgino">' + no + '</span>' : '';
 }
 $("unplaced").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
