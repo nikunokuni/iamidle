@@ -1229,6 +1229,12 @@ body.fd-open{overflow:hidden}
 .tgsub{font-size:11px;letter-spacing:.12em;color:var(--fg-faint);font-weight:600;margin:6px 4px 6px}
 /* どれにも入っていないもの。番号も色の帯も無い */
 .tgfree{border-left-width:1px}
+/* 今日タブのリストの中の枠（2026-11-01）。右の細い列に入るので、やりたいことタブより詰める */
+#unplaced .tgroup{padding:6px 6px 1px;margin-bottom:8px}
+#unplaced .tghead{padding:2px 2px 4px;gap:6px}
+#unplaced .tghead .t{font-size:14px}
+#unplaced .tgno{min-width:20px;height:20px;font-size:12px}
+#unplaced .tgsub{margin:4px 2px 4px}
 /* 作る・直すダイアログの「なぜ」「いつまでに」 */
 .tgfield{display:flex;align-items:center;gap:10px;margin-top:12px}
 .tgfield span{flex:none;width:5.5em;font-size:13px;color:var(--fg-dim)}

@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-11-01.1";
+const APP_VERSION = "2026-11-01.2";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -2328,6 +2328,8 @@ function renderUnplaced(){
     return;
   }
   // 並びは todayTasks() の順（急ぎの順）のまま
+  // ▼ 2026-11-01：やりたいことタブと同じく、掴む未来ごとの枠 → フリー の順に分け、
+  //   枠の中を 単発／毎日／… で分ける（本人の指示）。枠の中でも急ぎの順はそのまま
   const row = o => {
     const t = o.t, st = o.st;
     const late = o.urgency >= 4;
@@ -2336,8 +2338,11 @@ function renderUnplaced(){
     sub.push(t.freq.unit === "once"
       ? (goalOf(t) > 1 ? "単発 " + doneCount(t) + "/" + goalOf(t) : "単発")
       : freqLabel(t.freq) + ' ' + st.actual + '/' + st.count + (st.remainDays ? '（残' + st.remainDays + '日）' : ''));
-    if(groupOf(t)) sub.push(groupPos(t));
+    // 掴む未来の名前は枠の見出しに出すので、行には書かない。単発は、枠の中の何番目かを左に出す
+    const g = groupOf(t);
+    const no = g && t.freq.unit === "once" ? groupOnce(g).indexOf(t) + 1 : 0;
     return '<div class="item" data-id="' + t.id + '" draggable="true">' +
+      (no ? '<span class="tgino">' + no + '</span>' : '') +
       '<span class="grip" title="ドラッグして箱かルーレットへ">⠿</span>' +
       '<div class="grow">' + taskTitle(t) + '<div class="s">' + escMark(sub.join(" ・ ")) + '</div></div>' +
       (late ? '<span class="tag late">遅れ</span>' : '') +
@@ -2346,7 +2351,7 @@ function renderUnplaced(){
   };
   const body = !list.length
     ? '<div class="empty-note">今日のやりたいことは、全部箱に入っています。</div>'
-    : list.map(row).join("");
+    : unplacedBody(list, row);
 
   $("unplaced").innerHTML =
     '<div class="panel">' +
@@ -2354,6 +2359,34 @@ function renderUnplaced(){
         list.length + ' 件 ・ 空き ' + emptyBoxes(d) + ' 箱</span></div>' +
       body +
     '</div>';
+}
+/* 今日タブのリストの中身。やりたいことタブ（renderTasks）と同じくくりにする：
+   掴む未来ごとの枠（優先順・番号つき）→ フリー。枠の中は 単発／毎日／… の小見出し。
+   ▼ 今日出すものが無い掴む未来は、枠ごと出さない
+   ▼ 掴む未来が1つも無いときは枠を出さず、小見出しだけで分ける（やりたいことタブと同じ） */
+function unplacedBody(list, row){
+  const byFreq = items => GROUPS.map(fg => {
+    const l = items.filter(o => o.t.freq.unit === fg.key);
+    return l.length ? '<div class="tgsub">' + esc(fg.key === "once" ? "単発" : fg.title) + '</div>' + l.map(row).join("") : "";
+  }).join("");
+  if(!S.tgroups.length) return byFreq(list);
+  const k = dayKey();
+  const frames = S.tgroups.map((g, gi) => {
+    const items = list.filter(o => groupOf(o.t) === g);
+    if(!items.length) return "";
+    const late = !!g.due && g.due < k;
+    return '<div class="tgroup" data-gid="' + esc(g.id) + '">' +
+      '<div class="tghead"><span class="tgno">' + (gi + 1) + '</span>' +
+        '<div class="grow"><div class="t">' + esc(g.name) + '</div>' +
+          (g.due ? '<div class="s"><span class="tgdue' + (late ? " late" : "") + '">' + esc(g.due.replace(/-/g, "/")) + ' までに</span></div>' : '') +
+        '</div></div>' +
+      byFreq(items) +
+    '</div>';
+  }).join("");
+  const free = list.filter(o => !groupOf(o.t));
+  return frames + (free.length
+    ? '<div class="tgroup tgfree"><div class="tghead"><div class="grow"><div class="t">フリー</div></div></div>' + byFreq(free) + '</div>'
+    : "");
 }
 $("unplaced").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if(!btn) return;
