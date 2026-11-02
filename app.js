@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-11-01.4";
+const APP_VERSION = "2026-11-02.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1056,9 +1056,16 @@ function removeImage(id){
   Object.keys(S.days).forEach(k => { if(S.days[k].img === id) delete S.days[k].img; });
   save(); renderAll(); toast("画像を削除しました");
 }
+/* 画像を1枚も保存していないときの、デザインごとの1枚（2026-11-02 本人）。
+   今は天使だけ。保存した画像が1枚でもあれば、そちらから選ぶ（これは出ない）。
+   days[key].img には覚えない（同期にも乗らない）。data は img.data と同じく url() にそのまま入る */
+const DEFAULT_REWARD = { angel: "img/angel/reward.webp" };
 /* その日の1枚。いちど選んだら日付が変わるまで変えない */
 function dayImage(){
-  if(!S.images.length) return null;
+  if(!S.images.length){
+    const src = DEFAULT_REWARD[currentTheme()];
+    return src ? { id: "default", data: src } : null;
+  }
   const d = getDay();
   if(!d.img || !S.images.some(x => x.id === d.img)){
     d.img = S.images[Math.floor(Math.random() * S.images.length)].id;
@@ -4088,6 +4095,7 @@ function setTheme(id){
   try{ localStorage.setItem(THEME_KEY, id || "dark"); }catch(e){}
   applyThemeBar();
   renderTheme();
+  renderAll();   // ごほうびの画像の既定がデザインで変わるので、箱と「いま、これ」も描き直す
 }
 function renderTheme(){
   const cur = currentTheme();
