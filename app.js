@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-11-02.1";
+const APP_VERSION = "2026-11-03.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1059,7 +1059,7 @@ function removeImage(id){
 /* 画像を1枚も保存していないときの、デザインごとの1枚（2026-11-02 本人）。
    今は天使だけ。保存した画像が1枚でもあれば、そちらから選ぶ（これは出ない）。
    days[key].img には覚えない（同期にも乗らない）。data は img.data と同じく url() にそのまま入る */
-const DEFAULT_REWARD = { angel: "img/angel/reward.webp" };
+const DEFAULT_REWARD = { angel: "img/angel/reward.webp?v=" + APP_VERSION };   // ?v= は絵を差し替えたときに古いのが残らないように
 /* その日の1枚。いちど選んだら日付が変わるまで変えない */
 function dayImage(){
   if(!S.images.length){
