@@ -9,7 +9,7 @@
 /* ▼ バージョン。上げるときは index.html の3か所（meta app-version、
    style.css?v=、app.js?v=）も同じ値に揃えること。
    揃っていないと「新しい版があります」が出っぱなしになる */
-const APP_VERSION = "2026-11-03.2";
+const APP_VERSION = "2026-11-04.1";
 
 /* ================= storage ================= */
 const KEY = "jiko-kanri-v1";
@@ -1056,25 +1056,36 @@ function removeImage(id){
   Object.keys(S.days).forEach(k => { if(S.days[k].img === id) delete S.days[k].img; });
   save(); renderAll(); toast("画像を削除しました");
 }
-/* 画像を1枚も保存していないときの、デザインごとの1枚（2026-11-02 本人）。
-   天使と闇（闇は 2026-11-03 から）。ダークには無い。保存した画像が1枚でもあれば、そちらから選ぶ（これは出ない）。
-   days[key].img には覚えない（同期にも乗らない）。data は img.data と同じく url() にそのまま入る */
+/* デザインごとの既定の1枚（2026-11-02 本人。闇は 2026-11-03 から。ダークには無い）。
+   2026-11-04 から、保存した画像があっても**くじの候補に混ざる**（本人）。
+   id は "default"。選ばれたら days[key].img に "default" と覚える。data は img.data と同じく url() にそのまま入る */
 const DEFAULT_REWARD = {
   angel: "img/angel/reward.webp?v=" + APP_VERSION,
   yami:  "img/yami/reward.webp?v="  + APP_VERSION,
 };   // ?v= は絵を差し替えたときに古いのが残らないように
+/* いまのデザインで、くじに入る画像（保存した画像 ＋ 既定の1枚） */
+function rewardPool(){
+  const src = DEFAULT_REWARD[currentTheme()];
+  return src ? S.images.concat([{ id: "default", data: src }]) : S.images.slice();
+}
 /* その日の1枚。いちど選んだら日付が変わるまで変えない */
 function dayImage(){
-  if(!S.images.length){
-    const src = DEFAULT_REWARD[currentTheme()];
-    return src ? { id: "default", data: src } : null;
-  }
   const d = getDay();
-  if(!d.img || !S.images.some(x => x.id === d.img)){
-    d.img = S.images[Math.floor(Math.random() * S.images.length)].id;
+  // 既定の1枚が選ばれた日に、既定の無いデザイン（ダーク）へ切り替えたとき。
+  // 覚えた "default" は書き換えない（戻せばまた出る・ほかの端末と取り合わない）。
+  // その間は保存した画像から日付で決まる1枚を出す
+  if(d.img === "default" && !DEFAULT_REWARD[currentTheme()]){
+    if(!S.images.length) return null;
+    const k = dayKey(), n = [...k].reduce((a, c)=> a + c.charCodeAt(0), 0);
+    return S.images[n % S.images.length];
+  }
+  const pool = rewardPool();
+  if(!pool.length) return null;
+  if(!d.img || !pool.some(x => x.id === d.img)){
+    d.img = pool[Math.floor(Math.random() * pool.length)].id;
     save();
   }
-  return S.images.find(x => x.id === d.img) || null;
+  return pool.find(x => x.id === d.img) || null;
 }
 
 /* ================= 頻度モデル =================
